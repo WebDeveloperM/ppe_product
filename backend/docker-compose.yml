@@ -18,16 +18,16 @@ services:
 
   employee-service:
     build:
-      context: ../../employee_service
+      context: ../employee_service
       dockerfile: Dockerfile
     container_name: tb_employee_service
     restart: unless-stopped
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8010"
     volumes:
-      - ../../employee_service:/app
+      - ../employee_service:/app
     env_file:
       - ../.env
-      - ../../employee_service/.env
+      - ../employee_service/.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,8 +91,8 @@ services:
     ports:
       - "5000:443"
     volumes:
-      - ../../employee_service/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ../../employee_service/certs:/etc/nginx/certs:ro
+      - ../employee_service/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../employee_service/certs:/etc/nginx/certs:ro
 
 volumes:
   tb_backend_postgres_data:
