@@ -1,0 +1,17 @@
+LOAD DATABASE
+     FROM sqlite:///Users/alirizokarimov/Desktop/qr/backend/db.sqlite3
+     INTO postgresql://admin_bnpz:shMM151416@localhost:5432/qr_code
+
+WITH data only
+
+SET work_mem to '16MB', maintenance_work_mem to '512 MB'
+
+BEFORE LOAD DO
+ $$ drop schema if exists public cascade; $$,
+ $$ create schema public; $$
+
+CAST
+ type datetime to timestamp,
+ type text to varchar
+
+EXCLUDING TABLE NAMES LIKE 'sqlite_%'; 

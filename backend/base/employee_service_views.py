@@ -1,0 +1,501 @@
+from urllib.parse import unquote, urlsplit
+
+import requests
+from django.conf import settings
+from django.http import HttpResponse
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
+from users.authentication import ExpiringTokenAuthentication as TokenAuthentication
+
+from .employee_service_client import (
+    list_departments,
+    create_department,
+    update_department,
+    delete_department,
+    list_sections,
+    create_section,
+    update_section,
+    delete_section,
+    list_employees,
+    get_employee_by_slug,
+    upsert_employee_payload,
+    update_employee_payload,
+    EmployeeServiceClientError,
+    is_employee_service_enabled,
+)
+
+
+class EmployeeServicePagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class EmployeeServiceMediaProxyApiView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        raw_path = unquote(str(request.query_params.get('path') or '').strip())
+        if not raw_path or not raw_path.startswith('/media/') or '..' in raw_path:
+            return Response({'error': 'Invalid media path'}, status=status.HTTP_400_BAD_REQUEST)
+
+        service_base = str(getattr(settings, 'EMPLOYEE_SERVICE_BASE_URL', '') or '').strip()
+        if not service_base:
+            return Response({'error': 'Employee service base URL is not configured'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        parsed = urlsplit(service_base)
+        origin = f'{parsed.scheme}://{parsed.netloc}'
+        media_url = f'{origin}{raw_path}'
+
+        try:
+            upstream = requests.get(media_url, timeout=getattr(settings, 'EMPLOYEE_SERVICE_TIMEOUT', 15), stream=False)
+        except requests.RequestException as exc:
+            return Response({'error': f'Employee service media request failed: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if upstream.status_code >= 400:
+            return Response({'error': 'Employee service media not found'}, status=upstream.status_code)
+
+        response = HttpResponse(
+            upstream.content,
+            content_type=upstream.headers.get('Content-Type', 'application/octet-stream'),
+            status=upstream.status_code,
+        )
+        cache_control = upstream.headers.get('Cache-Control')
+        if cache_control:
+            response['Cache-Control'] = cache_control
+        return response
+
+
+def normalize_employee_service_employee(employee):
+    return {
+        'id': employee.get('id'),
+        'slug': employee.get('slug'),
+        'external_id': employee.get('external_id'),
+        'first_name': employee.get('first_name', ''),
+        'last_name': employee.get('last_name', ''),
+        'surname': employee.get('surname', ''),
+        'tabel_number': employee.get('tabel_number', ''),
+        'gender': employee.get('gender', ''),
+        'height': employee.get('height'),
+        'clothe_size': employee.get('clothe_size'),
+        'shoe_size': employee.get('shoe_size'),
+        'position': employee.get('position', ''),
+        'date_of_employment': employee.get('date_of_employment'),
+        'date_of_change_position': employee.get('date_of_change_position'),
+        'requires_face_id_checkout': employee.get('requires_face_id_checkout', False),
+        'is_active': employee.get('is_active', True),
+        'is_deleted': employee.get('is_deleted', False),
+        'department_name': employee.get('department_name', ''),
+        'boss_full_name': employee.get('boss_full_name', ''),
+        'section_name': employee.get('section_name', ''),
+        'metadata': employee.get('metadata', {}),
+        'created_at': employee.get('created_at'),
+        'updated_at': employee.get('updated_at'),
+    }
+
+
+def normalize_employee_service_department(department):
+    return {
+        'id': department.get('id'),
+        'name': department.get('name', ''),
+        'boss_full_name': department.get('boss_full_name', ''),
+        'sort_order': department.get('sort_order', 0) or 0,
+        'created_at': department.get('created_at'),
+        'updated_at': department.get('updated_at'),
+    }
+
+
+def normalize_employee_service_section(section):
+    return {
+        'id': section.get('id'),
+        'name': section.get('name', ''),
+        'department': section.get('department'),
+        'created_at': section.get('created_at'),
+        'updated_at': section.get('updated_at'),
+    }
+
+
+class EmployeeServiceDepartmentListApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    pagination_class = EmployeeServicePagination
+
+    def get(self, request, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        try:
+            departments = list_departments()
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(departments)
+            
+            if page is not None:
+                return paginator.get_paginated_response([
+                    normalize_employee_service_department(dept) for dept in page
+                ])
+            
+            return Response([
+                normalize_employee_service_department(dept) for dept in departments
+            ])
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        data = request.data
+        payload = {
+            'name': data.get('name', '').strip(),
+            'boss_full_name': data.get('boss_full_name', '').strip(),
+        }
+
+        try:
+            department = create_department(payload)
+            return Response(
+                normalize_employee_service_department(department),
+                status=status.HTTP_201_CREATED
+            )
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployeeServiceDepartmentDetailApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, department_id, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        try:
+            departments = list_departments()
+            department = next((d for d in departments if str(d.get('id')) == str(department_id)), None)
+            
+            if not department:
+                return Response({"error": "Department not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+            return Response(normalize_employee_service_department(department))
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, department_id, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        data = request.data
+        payload = {
+            'name': data.get('name', '').strip(),
+            'boss_full_name': data.get('boss_full_name', '').strip(),
+        }
+
+        try:
+            department = update_department(department_id, payload)
+            return Response(normalize_employee_service_department(department))
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, department_id, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        try:
+            delete_department(department_id)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployeeServiceSectionListApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    pagination_class = EmployeeServicePagination
+
+    def get(self, request, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        try:
+            sections = list_sections()
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(sections)
+            
+            if page is not None:
+                return paginator.get_paginated_response([
+                    normalize_employee_service_section(section) for section in page
+                ])
+            
+            return Response([
+                normalize_employee_service_section(section) for section in sections
+            ])
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        data = request.data
+        payload = {
+            'name': data.get('name', '').strip(),
+            'department_id': data.get('department_id'),
+        }
+
+        try:
+            section = create_section(payload)
+            return Response(
+                normalize_employee_service_section(section),
+                status=status.HTTP_201_CREATED
+            )
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployeeServiceSectionDetailApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, section_id, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        try:
+            sections = list_sections()
+            section = next((s for s in sections if str(s.get('id')) == str(section_id)), None)
+            
+            if not section:
+                return Response({"error": "Section not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+            return Response(normalize_employee_service_section(section))
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, section_id, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        data = request.data
+        payload = {
+            'name': data.get('name', '').strip(),
+            'department_id': data.get('department_id'),
+        }
+
+        try:
+            section = update_section(section_id, payload)
+            return Response(normalize_employee_service_section(section))
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, section_id, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        try:
+            delete_section(section_id)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployeeServiceEmployeeListApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    pagination_class = EmployeeServicePagination
+
+    def get(self, request, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        search = request.query_params.get('search', '').strip()
+        try:
+            payload = list_employees(
+                search=search if search else None,
+                source_system=None,
+                no_pagination=False,
+                page=request.query_params.get('page'),
+                page_size=request.query_params.get('page_size'),
+            )
+            if isinstance(payload, dict):
+                employees = payload.get('results', [])
+                return Response({
+                    'count': payload.get('count', 0),
+                    'next': payload.get('next'),
+                    'previous': payload.get('previous'),
+                    'results': [normalize_employee_service_employee(emp) for emp in employees],
+                })
+
+            employees = payload if isinstance(payload, list) else []
+            paginator = self.pagination_class()
+            page = paginator.paginate_queryset(employees, request, view=self)
+
+            if page is not None:
+                return paginator.get_paginated_response([
+                    normalize_employee_service_employee(emp) for emp in page
+                ])
+
+            return Response([
+                normalize_employee_service_employee(emp) for emp in employees
+            ])
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        data = request.data
+        payload = {
+            'source_system': 'tb-project',
+            'first_name': data.get('first_name', '').strip(),
+            'last_name': data.get('last_name', '').strip(),
+            'surname': data.get('surname', '').strip(),
+            'tabel_number': data.get('tabel_number', '').strip(),
+            'gender': data.get('gender', '').strip(),
+            'height': data.get('height'),
+            'clothe_size': data.get('clothe_size', '').strip(),
+            'shoe_size': data.get('shoe_size', '').strip(),
+            'position': data.get('position', '').strip(),
+            'date_of_employment': data.get('date_of_employment', ''),
+            'date_of_change_position': data.get('date_of_change_position', ''),
+            'requires_face_id_checkout': str(bool(data.get('requires_face_id_checkout', False))).lower(),
+            'is_active': str(bool(data.get('is_active', True))).lower(),
+            'is_deleted': str(bool(data.get('is_deleted', False))).lower(),
+            'department_name': data.get('department_name', '').strip(),
+            'boss_full_name': data.get('boss_full_name', '').strip(),
+            'section_name': data.get('section_name', '').strip(),
+            'metadata': '{"origin": "tb-project"}',
+        }
+
+        # Remove None values
+        payload = {k: v for k, v in payload.items() if v is not None and v != ''}
+
+        files = None
+        if 'base_image' in request.FILES:
+            files = {'base_image': request.FILES['base_image']}
+
+        try:
+            employee = upsert_employee_payload(payload, files)
+            return Response(
+                normalize_employee_service_employee(employee),
+                status=status.HTTP_201_CREATED
+            )
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployeeServiceEmployeeDetailApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, slug, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        try:
+            employee = get_employee_by_slug(slug)
+            if not employee:
+                return Response({"error": "Employee not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+            return Response(normalize_employee_service_employee(employee))
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, slug, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        data = request.data
+        payload = {
+            'first_name': data.get('first_name', '').strip(),
+            'last_name': data.get('last_name', '').strip(),
+            'surname': data.get('surname', '').strip(),
+            'tabel_number': data.get('tabel_number', '').strip(),
+            'gender': data.get('gender', '').strip(),
+            'height': data.get('height'),
+            'clothe_size': data.get('clothe_size', '').strip(),
+            'shoe_size': data.get('shoe_size', '').strip(),
+            'position': data.get('position', '').strip(),
+            'date_of_employment': data.get('date_of_employment', ''),
+            'date_of_change_position': data.get('date_of_change_position', ''),
+            'requires_face_id_checkout': str(bool(data.get('requires_face_id_checkout', False))).lower(),
+            'is_active': str(bool(data.get('is_active', True))).lower(),
+            'is_deleted': str(bool(data.get('is_deleted', False))).lower(),
+            'department_name': data.get('department_name', '').strip(),
+            'boss_full_name': data.get('boss_full_name', '').strip(),
+            'section_name': data.get('section_name', '').strip(),
+        }
+
+        # Remove None values
+        payload = {k: v for k, v in payload.items() if v is not None and v != ''}
+
+        files = None
+        if 'base_image' in request.FILES:
+            files = {'base_image': request.FILES['base_image']}
+
+        try:
+            employee = update_employee_payload(slug, payload, files)
+            return Response(normalize_employee_service_employee(employee))
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, slug, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        try:
+            # Soft delete by setting is_deleted to true
+            payload = {'is_deleted': 'true'}
+            update_employee_payload(slug, payload)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
