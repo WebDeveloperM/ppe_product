@@ -45,20 +45,40 @@ class EmployeeServiceMediaProxyApiView(APIView):
             return Response({'error': 'Invalid media path'}, status=status.HTTP_400_BAD_REQUEST)
 
         service_base = str(getattr(settings, 'EMPLOYEE_SERVICE_BASE_URL', '') or '').strip()
-        if not service_base:
+        service_public = str(getattr(settings, 'EMPLOYEE_SERVICE_PUBLIC_URL', '') or '').strip()
+        candidate_origins = []
+        for raw_base in [service_base, service_public]:
+            if not raw_base:
+                continue
+            parsed = urlsplit(raw_base)
+            if not parsed.scheme or not parsed.netloc:
+                continue
+            origin = f'{parsed.scheme}://{parsed.netloc}'
+            if origin not in candidate_origins:
+                candidate_origins.append(origin)
+
+        if not candidate_origins:
             return Response({'error': 'Employee service base URL is not configured'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        parsed = urlsplit(service_base)
-        origin = f'{parsed.scheme}://{parsed.netloc}'
-        media_url = f'{origin}{raw_path}'
+        timeout = getattr(settings, 'EMPLOYEE_SERVICE_TIMEOUT', 15)
+        upstream = None
+        last_exception = None
+        for origin in candidate_origins:
+            media_url = f'{origin}{raw_path}'
+            try:
+                upstream = requests.get(media_url, timeout=timeout, stream=False)
+            except requests.RequestException as exc:
+                last_exception = exc
+                continue
 
-        try:
-            upstream = requests.get(media_url, timeout=getattr(settings, 'EMPLOYEE_SERVICE_TIMEOUT', 15), stream=False)
-        except requests.RequestException as exc:
-            return Response({'error': f'Employee service media request failed: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+            if upstream.status_code < 400 and upstream.content:
+                break
 
-        if upstream.status_code >= 400:
-            return Response({'error': 'Employee service media not found'}, status=upstream.status_code)
+        if upstream is None:
+            return Response({'error': f'Employee service media request failed: {last_exception}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        if upstream.status_code >= 400 or not upstream.content:
+            return Response({'error': 'Employee service media not found'}, status=upstream.status_code or status.HTTP_404_NOT_FOUND)
 
         response = HttpResponse(
             upstream.content,

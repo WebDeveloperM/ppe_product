@@ -9,6 +9,7 @@ from .models import Department, Section, Employee, PPEProduct, PendingItemIssue,
 from .employee_service_client import EmployeeServiceClientError
 from users.models import RolePageAccess, UserRole
 from unittest.mock import patch
+from requests import RequestException
 
 
 class PendingIssueTwoStepSignatureTests(APITestCase):
@@ -319,3 +320,32 @@ class ItemDetailEmployeeSnapshotRefreshTests(APITestCase):
 		self.assertEqual(response.data['employee']['department']['name'], '1-Цех. Технология')
 		by_ids_mock.assert_called_once()
 		by_slugs_mock.assert_called_once()
+
+
+class EmployeeServiceMediaProxyTests(APITestCase):
+	@patch('base.employee_service_views.requests.get')
+	@patch('base.employee_service_views.settings')
+	def test_media_proxy_falls_back_to_public_origin_when_internal_media_is_unavailable(self, settings_mock, requests_get_mock):
+		settings_mock.EMPLOYEE_SERVICE_BASE_URL = 'http://employee-service:8010'
+		settings_mock.EMPLOYEE_SERVICE_PUBLIC_URL = 'https://192.168.101.6:5001'
+		settings_mock.EMPLOYEE_SERVICE_TIMEOUT = 15
+
+		public_response = type('Response', (), {
+			'status_code': 200,
+			'content': b'image-bytes',
+			'headers': {'Content-Type': 'image/jpeg', 'Cache-Control': 'max-age=60'},
+		})()
+		requests_get_mock.side_effect = [
+			RequestException('internal media unavailable'),
+			public_response,
+		]
+
+		response = self.client.get('/api/v1/employee-service/media-proxy/?path=%2Fmedia%2Femployee_base_images%2Fphoto.jpg')
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.content, b'image-bytes')
+		self.assertEqual(response['Content-Type'], 'image/jpeg')
+		self.assertEqual(response['Cache-Control'], 'max-age=60')
+		self.assertEqual(requests_get_mock.call_count, 2)
+		self.assertEqual(requests_get_mock.call_args_list[0].args[0], 'http://employee-service:8010/media/employee_base_images/photo.jpg')
+		self.assertEqual(requests_get_mock.call_args_list[1].args[0], 'https://192.168.101.6:5001/media/employee_base_images/photo.jpg')
