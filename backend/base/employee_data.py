@@ -15,7 +15,7 @@ def _normalize_remote_media_reference(value):
     except Exception:
         return raw
 
-    internal_hosts = {'employee-service', 'localhost', '127.0.0.1'}
+    internal_hosts = {'employee-service', 'host.docker.internal', 'localhost', '127.0.0.1'}
     is_internal_media = (
         parsed.scheme in {'http', 'https'}
         and parsed.netloc

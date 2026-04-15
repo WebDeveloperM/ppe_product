@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from .models import Department, Section, Employee, PPEProduct, PendingItemIssue, Item
+from .employee_data import build_employee_snapshot
 from .employee_service_client import EmployeeServiceClientError
 from users.models import RolePageAccess, UserRole
 from unittest.mock import patch
@@ -323,6 +324,21 @@ class ItemDetailEmployeeSnapshotRefreshTests(APITestCase):
 
 
 class EmployeeServiceMediaProxyTests(APITestCase):
+	def test_build_employee_snapshot_rewrites_host_docker_internal_media_to_proxy_path(self):
+		payload = build_employee_snapshot({
+			'base_image': 'https://host.docker.internal:5000/media/employee_base_images/5413-a.jpg',
+			'base_image_url': 'https://host.docker.internal:5000/media/employee_base_images/5413-a.jpg',
+		})
+
+		self.assertEqual(
+			payload['base_image'],
+			'/api/v1/employee-service/media-proxy/?path=%2Fmedia%2Femployee_base_images%2F5413-a.jpg',
+		)
+		self.assertEqual(
+			payload['base_image_url'],
+			'/api/v1/employee-service/media-proxy/?path=%2Fmedia%2Femployee_base_images%2F5413-a.jpg',
+		)
+
 	@patch('base.employee_service_views.requests.get')
 	@patch('base.employee_service_views.settings')
 	def test_media_proxy_falls_back_to_public_origin_when_internal_media_is_unavailable(self, settings_mock, requests_get_mock):

@@ -849,8 +849,18 @@ export default function ComputerTable({
                     first={first}
                     rows={rows}
                     onPage={e => {
-                        setFirst(e.first);
+                        if (e.rows !== rows) {
+                            setRows(e.rows);
+                            setFirst(0);
+                            return;
+                        }
+
+                        const activeTotalRecords = (departmentSearch.trim() || sectionSearch.trim() || tabelNumberSearch.trim() || userSearch.trim() || positionSearch.trim() || issuedAtSearch || changeDateSearch || changeUserSearch.trim())
+                            ? filteredComputers.length
+                            : totalCount;
+                        const maxFirst = Math.max(0, Math.floor(Math.max(activeTotalRecords - 1, 0) / e.rows) * e.rows);
                         setRows(e.rows);
+                        setFirst(Math.min(e.first, maxFirst));
                     }}
                     totalRecords={(departmentSearch.trim() || sectionSearch.trim() || tabelNumberSearch.trim() || userSearch.trim() || positionSearch.trim() || issuedAtSearch || changeDateSearch || changeUserSearch.trim()) ? filteredComputers.length : totalCount}
                     filters={filters}

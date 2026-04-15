@@ -1648,13 +1648,13 @@ from rest_framework.response import Response
 class EmployeePagination(PageNumberPagination):
     page_size = 50
     page_size_query_param = 'page_size'
-    max_page_size = 100
+    max_page_size = 1000
 
 
 class ItemsPagination(PageNumberPagination):
     page_size = 50
     page_size_query_param = 'page_size'
-    max_page_size = 100
+    max_page_size = 1000
 
 
 from transliterate import translit
