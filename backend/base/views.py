@@ -2205,6 +2205,8 @@ class AllItemsApiView(APIView):
         department = str(request.GET.get('department', '')).strip().lower()
         section = str(request.GET.get('section', '')).strip().lower()
         tabel_number = str(request.GET.get('tabel_number', '')).strip().lower()
+        user = str(request.GET.get('user', '')).strip().lower()
+        position = str(request.GET.get('position', '')).strip().lower()
         search = request.GET.get('search', '').strip().lower()
         history_date = request.GET.get('history_date')
         history_user = str(request.GET.get('history_user', '')).strip().lower()
@@ -2238,6 +2240,17 @@ class AllItemsApiView(APIView):
                 rows = [row for row in rows if section in str(((row.get('employee') or {}).get('section') or {}).get('name') or '').lower()]
             if tabel_number:
                 rows = [row for row in rows if tabel_number in str((row.get('employee') or {}).get('tabel_number') or '').lower()]
+            if user:
+                rows = [
+                    row for row in rows
+                    if user in ' '.join([
+                        str((row.get('employee') or {}).get('last_name') or ''),
+                        str((row.get('employee') or {}).get('first_name') or ''),
+                        str((row.get('employee') or {}).get('surname') or ''),
+                    ]).lower()
+                ]
+            if position:
+                rows = [row for row in rows if position in str((row.get('employee') or {}).get('position') or '').lower()]
             if search:
                 filtered_rows = []
                 for row in rows:
@@ -2280,6 +2293,22 @@ class AllItemsApiView(APIView):
             employee_rows = [
                 employee for employee in employee_rows
                 if section in str((employee.get('section') or {}).get('name') or '').lower()
+            ]
+
+        if user:
+            employee_rows = [
+                employee for employee in employee_rows
+                if user in ' '.join([
+                    str(employee.get('last_name') or ''),
+                    str(employee.get('first_name') or ''),
+                    str(employee.get('surname') or ''),
+                ]).lower()
+            ]
+
+        if position:
+            employee_rows = [
+                employee for employee in employee_rows
+                if position in str(employee.get('position') or '').lower()
             ]
 
         latest_item_base = (

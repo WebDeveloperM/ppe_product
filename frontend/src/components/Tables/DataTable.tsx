@@ -216,42 +216,56 @@ export default function ComputerTable({
             })
             .catch(err => console.error(err))
             .finally(() => setLoading(false));
-    }, [isFiltered, first, rows, debouncedSearch, filters, checkedComputer, deleteCompData]);
+    }, [
+        isFiltered,
+        first,
+        rows,
+        debouncedSearch,
+        checkedComputer,
+        deleteCompData,
+        departmentSearch,
+        sectionSearch,
+        tabelNumberSearch,
+        userSearch,
+        positionSearch,
+        issuedAtSearch,
+        changeDateSearch,
+        changeUserSearch,
+    ]);
 
     const buildQueryParams = (search: string) => {
         const params = new URLSearchParams();
 
-        if (filters['employee.department.name'].value) {
-            params.append('department', filters['employee.department.name'].value);
+        if (departmentSearch.trim()) {
+            params.append('department', departmentSearch.trim());
         }
 
-        if (filters['employee.section.name'].value) {
-            params.append('section', filters['employee.section.name'].value);
+        if (sectionSearch.trim()) {
+            params.append('section', sectionSearch.trim());
         }
 
-        if (filters['employee.tabel_number'].value) {
-            params.append('tabel_number', filters['employee.tabel_number'].value);
+        if (tabelNumberSearch.trim()) {
+            params.append('tabel_number', tabelNumberSearch.trim());
         }
 
-        if (filters['type_compyuter.name'].value) {
-            params.append('type', filters['type_compyuter.name'].value);
+        if (userSearch.trim()) {
+            params.append('user', userSearch.trim());
         }
 
-        if (filters['issued_at'].value) {
-            params.append('issued_at', filters['issued_at'].value);
+        if (positionSearch.trim()) {
+            params.append('position', positionSearch.trim());
         }
 
-        if (filters['user'].value) {
-            params.append('user', filters['user'].value);
+        if (issuedAtSearch) {
+            params.append('issued_at', formatDateKey(issuedAtSearch));
         }
 
-        if (filters['history_date'].value) {
-            const date = new Date(filters['history_date'].value).toISOString().slice(0, 10);
-            params.append('history_date', date);
+        if (changeDateSearch) {
+            params.append('history_date', formatDateKey(changeDateSearch));
         }
 
-        if (filters['history_user'].value) {
-            params.append('history_user', filters['history_user'].value);
+        if (changeUserSearch.trim()) {
+            params.append('history_user', changeUserSearch.trim());
         }
 
         if (search) {
@@ -667,10 +681,13 @@ export default function ComputerTable({
         const source = isFiltered
             ? (checkedComputer && checkedComputer.length > 0 ? sortByDepartment(checkedComputer) : [])
             : computers;
+        if (!isFiltered) {
+            return source;
+        }
         return applyLocalTableFilters(source);
     }, [isFiltered, computers, checkedComputer, departmentSearch, sectionSearch, tabelNumberSearch, userSearch, positionSearch, issuedAtSearch, changeDateSearch, changeUserSearch, searchText]);
 
-    const hasLocalFilters = Boolean(
+    const hasLocalFilters = isFiltered && Boolean(
         departmentSearch.trim() ||
         sectionSearch.trim() ||
         tabelNumberSearch.trim() ||
@@ -700,7 +717,7 @@ export default function ComputerTable({
     }, [baseFilteredComputers, isFiltered, safeFirst, rows]);
 
     const departmentInputHeader = (
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-2 px-2 py-1">
             <span>Цехы</span>
             <select
                 value={departmentSearch}
@@ -708,7 +725,7 @@ export default function ComputerTable({
                     setDepartmentSearch(e.target.value);
                     setFirst(0);
                 }}
-                className="w-[140px] h-7 text-xs bg-transparent px-2 border border-gray-300 rounded-md"
+                className="w-[160px] h-8 text-xs bg-white px-2.5 py-1 border border-gray-300 rounded-md"
             >
                 <option value="">Все</option>
                 {filterOptions.departments.map((department) => (
