@@ -702,15 +702,21 @@ export default function ComputerTable({
     const departmentInputHeader = (
         <div className="flex flex-col items-center gap-2">
             <span>Цехы</span>
-            <InputText
+            <select
                 value={departmentSearch}
                 onChange={(e) => {
                     setDepartmentSearch(e.target.value);
                     setFirst(0);
                 }}
-                placeholder="Поиск..."
-                className="w-[140px] h-7 text-xs bg-transparent px-2 border border-gray-300 rounded-md placeholder:text-xs"
-            />
+                className="w-[140px] h-7 text-xs bg-transparent px-2 border border-gray-300 rounded-md"
+            >
+                <option value="">Все</option>
+                {filterOptions.departments.map((department) => (
+                    <option key={department.id} value={department.name}>
+                        {department.name}
+                    </option>
+                ))}
+            </select>
         </div>
     );
 
