@@ -258,7 +258,7 @@ export default function ComputerTable({
             params.append('search', search);
         }
 
-        params.append('page', String(Math.floor(first / rows) + 1));
+        params.append('page', String(Math.floor(safeFirst / rows) + 1));
         params.append('page_size', String(rows));
 
         return params.toString();
@@ -670,14 +670,34 @@ export default function ComputerTable({
         return applyLocalTableFilters(source);
     }, [isFiltered, computers, checkedComputer, departmentSearch, sectionSearch, tabelNumberSearch, userSearch, positionSearch, issuedAtSearch, changeDateSearch, changeUserSearch, searchText]);
 
+    const hasLocalFilters = Boolean(
+        departmentSearch.trim() ||
+        sectionSearch.trim() ||
+        tabelNumberSearch.trim() ||
+        userSearch.trim() ||
+        positionSearch.trim() ||
+        issuedAtSearch ||
+        changeDateSearch ||
+        changeUserSearch.trim()
+    );
+
+    const totalRecordsForPaginator = hasLocalFilters
+        ? baseFilteredComputers.length
+        : totalCount;
+
+    const safeFirst = Math.min(
+        first,
+        Math.max(0, Math.floor(Math.max(totalRecordsForPaginator - 1, 0) / rows) * rows),
+    );
+
     const filteredComputers = useMemo(() => {
         if (!isFiltered) {
             return baseFilteredComputers;
         }
-        const start = first;
-        const end = first + rows;
+        const start = safeFirst;
+        const end = safeFirst + rows;
         return baseFilteredComputers.slice(start, end);
-    }, [baseFilteredComputers, isFiltered, first, rows]);
+    }, [baseFilteredComputers, isFiltered, safeFirst, rows]);
 
     const departmentInputHeader = (
         <div className="flex flex-col items-center gap-2">
@@ -846,7 +866,7 @@ export default function ComputerTable({
                     value={filteredComputers}
                     paginator
                     lazy
-                    first={first}
+                    first={safeFirst}
                     rows={rows}
                     onPage={e => {
                         if (e.rows !== rows) {
@@ -855,14 +875,12 @@ export default function ComputerTable({
                             return;
                         }
 
-                        const activeTotalRecords = (departmentSearch.trim() || sectionSearch.trim() || tabelNumberSearch.trim() || userSearch.trim() || positionSearch.trim() || issuedAtSearch || changeDateSearch || changeUserSearch.trim())
-                            ? filteredComputers.length
-                            : totalCount;
+                        const activeTotalRecords = totalRecordsForPaginator;
                         const maxFirst = Math.max(0, Math.floor(Math.max(activeTotalRecords - 1, 0) / e.rows) * e.rows);
                         setRows(e.rows);
                         setFirst(Math.min(e.first, maxFirst));
                     }}
-                    totalRecords={(departmentSearch.trim() || sectionSearch.trim() || tabelNumberSearch.trim() || userSearch.trim() || positionSearch.trim() || issuedAtSearch || changeDateSearch || changeUserSearch.trim()) ? filteredComputers.length : totalCount}
+                    totalRecords={totalRecordsForPaginator}
                     filters={filters}
                     emptyMessage={
                         <div
@@ -904,7 +922,7 @@ export default function ComputerTable({
                     <Column
                         header="№"
                         body={(_, options) => {
-                            const globalIndex = first + options.rowIndex + 1;
+                            const globalIndex = safeFirst + options.rowIndex + 1;
                             return <span>{globalIndex}</span>;
                         }}
                         bodyStyle={{ border: '1px solid #c8c5c4', }}
