@@ -61,12 +61,13 @@ class EmployeeServiceMediaProxyApiView(APIView):
             return Response({'error': 'Employee service base URL is not configured'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         timeout = getattr(settings, 'EMPLOYEE_SERVICE_TIMEOUT', 15)
+        verify_ssl = bool(getattr(settings, 'EMPLOYEE_SERVICE_VERIFY_SSL', False))
         upstream = None
         last_exception = None
         for origin in candidate_origins:
             media_url = f'{origin}{raw_path}'
             try:
-                upstream = requests.get(media_url, timeout=timeout, stream=False)
+                upstream = requests.get(media_url, timeout=timeout, stream=False, verify=verify_ssl)
             except requests.RequestException as exc:
                 last_exception = exc
                 continue

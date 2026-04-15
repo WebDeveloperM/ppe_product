@@ -1,5 +1,7 @@
 services:
   employee-service:
+    profiles:
+      - embedded-employee-service
     build:
       context: ${EMPLOYEE_SERVICE_DIR:-../employee_service}
       dockerfile: Dockerfile
@@ -25,9 +27,6 @@ services:
       dockerfile: Dockerfile
     container_name: tb_backend
     restart: unless-stopped
-    depends_on:
-      employee-service:
-        condition: service_started
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8005"
     volumes:
       - .:/app
@@ -42,9 +41,11 @@ services:
       POSTGRES_HOST: ${POSTGRES_HOST:-192.168.101.6}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       EMPLOYEE_SERVICE_ENABLED: ${EMPLOYEE_SERVICE_ENABLED:-true}
-      EMPLOYEE_SERVICE_BASE_URL: ${EMPLOYEE_SERVICE_BASE_URL:-http://employee-service:8010}
+      EMPLOYEE_SERVICE_BASE_URL: ${EMPLOYEE_SERVICE_BASE_URL:-https://host.docker.internal:5000}
+      EMPLOYEE_SERVICE_PUBLIC_URL: ${EMPLOYEE_SERVICE_PUBLIC_URL:-https://192.168.101.6:5000}
       EMPLOYEE_SERVICE_API_KEY: ${EMPLOYEE_SERVICE_API_KEY:-dev-employee-service-key}
       EMPLOYEE_SERVICE_TIMEOUT: ${EMPLOYEE_SERVICE_TIMEOUT:-15}
+      EMPLOYEE_SERVICE_VERIFY_SSL: ${EMPLOYEE_SERVICE_VERIFY_SSL:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -61,6 +62,8 @@ services:
       - ./certs:/etc/nginx/certs:ro
 
   nginx-employee:
+    profiles:
+      - embedded-employee-service
     image: nginx:1.27-alpine
     container_name: tb_employee_https
     restart: unless-stopped

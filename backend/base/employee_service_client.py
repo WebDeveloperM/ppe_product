@@ -25,6 +25,10 @@ def _get_timeout() -> int:
     return int(getattr(settings, 'EMPLOYEE_SERVICE_TIMEOUT', 15))
 
 
+def _get_verify_ssl() -> bool:
+    return bool(getattr(settings, 'EMPLOYEE_SERVICE_VERIFY_SSL', False))
+
+
 def _build_headers() -> dict:
     headers = {'Accept': 'application/json'}
     api_key = str(getattr(settings, 'EMPLOYEE_SERVICE_API_KEY', '')).strip()
@@ -48,6 +52,7 @@ def _request(method: str, path: str, *, data=None, json=None, files=None, params
             files=files,
             params=params,
             timeout=_get_timeout(),
+            verify=_get_verify_ssl(),
         )
     except requests.RequestException as exc:
         raise EmployeeServiceClientError(f'Employee service request failed: {exc}') from exc
@@ -221,7 +226,12 @@ def download_employee_image(image_url):
         image_url = f'{base_url}/{image_url}'
 
     try:
-        response = requests.get(image_url, headers=_build_headers(), timeout=_get_timeout())
+        response = requests.get(
+            image_url,
+            headers=_build_headers(),
+            timeout=_get_timeout(),
+            verify=_get_verify_ssl(),
+        )
         if response.status_code == 200 and response.content:
             return response.content
     except requests.RequestException:

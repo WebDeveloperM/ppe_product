@@ -673,7 +673,11 @@ def load_employee_reference_image(employee):
             return None, "Сотрудник не имеет базового изображения для сравнения"
 
         try:
-            upstream = requests.get(image_url, timeout=getattr(settings, 'EMPLOYEE_SERVICE_TIMEOUT', 15))
+            upstream = requests.get(
+                image_url,
+                timeout=getattr(settings, 'EMPLOYEE_SERVICE_TIMEOUT', 15),
+                verify=bool(getattr(settings, 'EMPLOYEE_SERVICE_VERIFY_SSL', False)),
+            )
         except requests.RequestException:
             return None, "Не удалось получить базовое изображение сотрудника"
 
