@@ -1,16 +1,16 @@
 services:
   employee-service:
     build:
-      context: ../../employee_service
+      context: ${EMPLOYEE_SERVICE_DIR:-../employee_service}
       dockerfile: Dockerfile
     container_name: tb_employee_service
     restart: unless-stopped
     command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8010"
     volumes:
-      - ../../employee_service:/app
+      - ${EMPLOYEE_SERVICE_DIR:-../employee_service}:/app
     env_file:
       - ../.env
-      - ../../employee_service/.env
+      - ${EMPLOYEE_SERVICE_DIR:-../employee_service}/.env
     environment:
       EMPLOYEE_SERVICE_DEBUG: "true"
       ALLOWED_HOSTS: "localhost,127.0.0.1,employee-service"
@@ -69,5 +69,5 @@ services:
     ports:
       - "5000:443"
     volumes:
-      - ../../employee_service/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ../../employee_service/certs:/etc/nginx/certs:ro
+      - ${EMPLOYEE_SERVICE_DIR:-../employee_service}/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${EMPLOYEE_SERVICE_DIR:-../employee_service}/certs:/etc/nginx/certs:ro
