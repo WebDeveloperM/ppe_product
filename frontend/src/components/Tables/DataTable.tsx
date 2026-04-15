@@ -922,7 +922,7 @@ export default function ComputerTable({
                     <Column
                         header="№"
                         body={(_, options) => {
-                            const globalIndex = safeFirst + options.rowIndex + 1;
+                            const globalIndex = options.rowIndex + 1;
                             return <span>{globalIndex}</span>;
                         }}
                         bodyStyle={{ border: '1px solid #c8c5c4', }}
