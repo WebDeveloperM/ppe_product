@@ -6,7 +6,7 @@ import { FilterMatchMode } from 'primereact/api';
 import { OverlayPanel } from 'primereact/overlaypanel';
 import { Compyuter } from '../../types/compyuters';
 import axioss from '../../api/axios';
-import { BASE_IMAGE_URL, BASE_URL } from '../../utils/urls';
+import { BASE_URL } from '../../utils/urls';
 import { Link } from 'react-router-dom';
 import { ModalDeleteComponent } from '../Modal/ModalDelete';
 import { Calendar } from "primereact/calendar";
@@ -326,43 +326,14 @@ export default function ComputerTable({
         return position;
     };
 
-    const resolveEmployeeAvatarUrl = (employee: any) => {
-        const rawValue = String(employee?.base_image_url || employee?.base_image || '').trim();
-        if (!rawValue) return '';
-        if (rawValue.startsWith('data:') || rawValue.startsWith('http://') || rawValue.startsWith('https://')) {
-            return rawValue;
-        }
-        if (rawValue.startsWith('/')) {
-            return `${BASE_IMAGE_URL}${rawValue}`;
-        }
-        return `${BASE_IMAGE_URL}/${rawValue.replace(/^\/+/, '')}`;
-    };
-
     const userBodyTemplate = (rowData: Compyuter) => {
         const employee = (rowData as any)?.employee;
         if (!employee) return '—';
         const slug = employee?.slug || employee?.employee_slug || rowData?.slug;
         const fullName = [employee.last_name, employee.first_name].filter(Boolean).join(' ');
-        const avatarUrl = resolveEmployeeAvatarUrl(employee);
-        const initials = [employee?.last_name, employee?.first_name]
-            .filter(Boolean)
-            .map((value: string) => value.trim().charAt(0).toUpperCase())
-            .join('')
-            .slice(0, 2) || '—';
 
         const content = (
-            <div className="flex items-center gap-2 min-w-0">
-                {avatarUrl ? (
-                    <img
-                        src={avatarUrl}
-                        alt={fullName || 'employee-avatar'}
-                        className="h-8 w-8 rounded-full border border-slate-200 object-cover flex-shrink-0"
-                    />
-                ) : (
-                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600 border border-slate-200">
-                        {initials}
-                    </div>
-                )}
+            <div className="min-w-0">
                 <span className="truncate">{fullName || '—'}</span>
             </div>
         );

@@ -30,6 +30,8 @@ type ItemDetail = {
     surname?: string;
     tabel_number?: string;
     base_image?: string | null;
+    base_image_url?: string | null;
+    base_image_data?: string | null;
     position?: string;
     clothe_size?: string;
     shoe_size?: string;
@@ -50,6 +52,7 @@ const ViewCompyuter = () => {
 
   const [data, setData] = useState<ItemDetail | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
 
   const formatDate = (value?: string | null) => {
     if (!value) return '-';
@@ -62,14 +65,20 @@ const ViewCompyuter = () => {
   };
 
   const resolveImageUrl = (value?: string | null) => {
-    if (!value) return '';
-    if (String(value).startsWith('http://') || String(value).startsWith('https://')) {
-      return String(value);
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://')) {
+      return raw;
     }
-    return `${BASE_IMAGE_URL}${value}`;
+    if (raw.startsWith('/')) {
+      return `${BASE_IMAGE_URL}${raw}`;
+    }
+    return `${BASE_IMAGE_URL}/${raw.replace(/^\/+/, '')}`;
   };
 
-  const employeeBaseImageUrl = resolveImageUrl(data?.employee?.base_image);
+  const employeeBaseImageUrl = resolveImageUrl(
+    data?.employee?.base_image_data || data?.employee?.base_image_url || data?.employee?.base_image,
+  );
 
   useEffect(() => {
     if (!slug) return;
@@ -78,6 +87,7 @@ const ViewCompyuter = () => {
       .get(`${BASE_URL}/item-view/${slug}`)
       .then((response) => {
         setData(response.data);
+        setImageLoadFailed(false);
       })
       .catch((err) => console.log(err));
   }, [slug]);
@@ -145,7 +155,7 @@ const ViewCompyuter = () => {
 
                     <div className="w-full shrink-0 self-start lg:w-auto">
                       <label className="mb-2 block text-black dark:text-white">Базовое фото сотрудника</label>
-                      {employeeBaseImageUrl ? (
+                      {employeeBaseImageUrl && !imageLoadFailed ? (
                         <button
                           type="button"
                           onClick={() => setPreviewImage(employeeBaseImageUrl)}
@@ -155,6 +165,7 @@ const ViewCompyuter = () => {
                             src={employeeBaseImageUrl}
                             alt="employee_base_image"
                             className="h-full w-full rounded object-cover bg-black"
+                            onError={() => setImageLoadFailed(true)}
                           />
                         </button>
                       ) : (
