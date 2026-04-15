@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import axioss from "../../api/axios";
-import { BASE_IMAGE_URL, BASE_URL } from "../../utils/urls";
+import { BASE_URL, resolveEmployeeImageUrl } from "../../utils/urls";
 import { Link, useParams } from "react-router-dom";
 import { GrAddCircle } from "react-icons/gr";
 import { FaRegCalendarAlt } from "react-icons/fa";
@@ -114,13 +114,7 @@ export default function ViewPO() {
         );
     }
 
-    const resolveImageUrl = (value?: string | null) => {
-        if (!value) return '';
-        if (String(value).startsWith('http://') || String(value).startsWith('https://')) {
-            return String(value);
-        }
-        return `${BASE_IMAGE_URL}${value}`;
-    };
+    const resolveImageUrl = (value?: string | null) => resolveEmployeeImageUrl(value);
 
     const formatDate = (value?: string | null) => {
         if (!value) return '-';

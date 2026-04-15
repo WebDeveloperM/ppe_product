@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BASE_IMAGE_URL, BASE_URL } from '../../utils/urls';
+import { BASE_URL, resolveEmployeeImageUrl } from '../../utils/urls';
 import Skeleton from '../../components/Skeleton/Skeleton';
 import axioss from '../../api/axios';
 import { isAuthenticated } from '../../utils/auth';
@@ -64,19 +64,7 @@ const ViewCompyuter = () => {
     return `${day}.${month}.${year}`;
   };
 
-  const resolveImageUrl = (value?: string | null) => {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://')) {
-      return raw;
-    }
-    if (raw.startsWith('/')) {
-      return `${BASE_IMAGE_URL}${raw}`;
-    }
-    return `${BASE_IMAGE_URL}/${raw.replace(/^\/+/, '')}`;
-  };
-
-  const employeeBaseImageUrl = resolveImageUrl(
+  const employeeBaseImageUrl = resolveEmployeeImageUrl(
     data?.employee?.base_image_data || data?.employee?.base_image_url || data?.employee?.base_image,
   );
 
