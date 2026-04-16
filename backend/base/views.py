@@ -526,27 +526,44 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
         if permission_error:
             return permission_error
 
-        try:
-            department_service_id = int(request.data.get('department_service_id'))
-        except (TypeError, ValueError):
-            return Response({'error': 'Выберите цех.'}, status=status.HTTP_400_BAD_REQUEST)
+        raw_department_ids = request.data.get('department_service_ids')
+        if raw_department_ids is None:
+            raw_department_ids = [request.data.get('department_service_id')]
+        if not isinstance(raw_department_ids, list):
+            raw_department_ids = [raw_department_ids]
+
+        department_service_ids = []
+        for raw_value in raw_department_ids:
+            try:
+                department_service_id = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+            if department_service_id not in department_service_ids:
+                department_service_ids.append(department_service_id)
+
+        if not department_service_ids:
+            return Response({'error': 'Выберите хотя бы один цех.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             department_map = get_service_department_map()
         except EmployeeServiceClientError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        department = department_map.get(department_service_id)
-        if not department:
-            return Response({'error': 'Выбранный цех не найден.'}, status=status.HTTP_400_BAD_REQUEST)
+        payloads = []
+        for department_service_id in department_service_ids:
+            department = department_map.get(department_service_id)
+            if not department:
+                return Response({'error': f'Цех с ID {department_service_id} не найден.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        payload = request.data.copy()
-        payload['department_service_id'] = department_service_id
-        payload['department_name'] = department.get('name', '')
+            payload = request.data.copy()
+            payload['department_service_id'] = department_service_id
+            payload['department_name'] = department.get('name', '')
+            payloads.append(payload)
 
-        serializer = DepartmentPPERenewalRuleSerializer(data=payload)
+        serializer = DepartmentPPERenewalRuleSerializer(data=payloads, many=True)
         if serializer.is_valid():
-            serializer.save()
+            with transaction.atomic():
+                serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

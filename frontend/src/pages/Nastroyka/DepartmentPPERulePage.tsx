@@ -58,7 +58,7 @@ const DepartmentPPERulePage = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [rules, setRules] = useState<DepartmentPPERule[]>([]);
-  const [departmentId, setDepartmentId] = useState('');
+  const [selectedDepartmentIds, setSelectedDepartmentIds] = useState<number[]>([]);
   const [productId, setProductId] = useState('');
   const [renewalMonths, setRenewalMonths] = useState('');
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
@@ -92,29 +92,34 @@ const DepartmentPPERulePage = () => {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!departmentId || !productId) {
-      toast.warning('Выберите цех и средство защиты');
+    if (selectedDepartmentIds.length === 0 || !productId) {
+      toast.warning('Выберите хотя бы один цех и средство защиты');
       return;
     }
 
     try {
-      const payload = {
-        department_service_id: Number(departmentId),
-        ppeproduct: Number(productId),
-        renewal_months: Number(renewalMonths || 0),
-      };
-
       if (editingRuleId !== null) {
+        const payload = {
+          department_service_id: Number(selectedDepartmentIds[0]),
+          ppeproduct: Number(productId),
+          renewal_months: Number(renewalMonths || 0),
+        };
         const response = await axioss.put(`/settings/ppe-department-rules/${editingRuleId}/`, payload);
         setRules((prev) => prev.map((item) => (item.id === editingRuleId ? response.data : item)));
         toast.success('Норма обновлена');
       } else {
+        const payload = {
+          department_service_ids: selectedDepartmentIds,
+          ppeproduct: Number(productId),
+          renewal_months: Number(renewalMonths || 0),
+        };
         const response = await axioss.post('/settings/ppe-department-rules/', payload);
-        setRules((prev) => [...prev, response.data]);
-        toast.success('Норма добавлена');
+        const createdRules = Array.isArray(response.data) ? response.data : [response.data];
+        setRules((prev) => [...prev, ...createdRules]);
+        toast.success(createdRules.length > 1 ? 'Нормы добавлены' : 'Норма добавлена');
       }
 
-      setDepartmentId('');
+      setSelectedDepartmentIds([]);
       setProductId('');
       setRenewalMonths('');
       setEditingRuleId(null);
@@ -125,9 +130,20 @@ const DepartmentPPERulePage = () => {
 
   const handleEdit = (rule: DepartmentPPERule) => {
     setEditingRuleId(rule.id);
-    setDepartmentId(String(rule.department_service_id));
+    setSelectedDepartmentIds([rule.department_service_id]);
     setProductId(String(rule.ppeproduct));
     setRenewalMonths(String(rule.renewal_months));
+  };
+
+  const toggleDepartment = (departmentId: number) => {
+    setSelectedDepartmentIds((prev) => {
+      if (editingRuleId !== null) {
+        return prev.includes(departmentId) ? [] : [departmentId];
+      }
+      return prev.includes(departmentId)
+        ? prev.filter((item) => item !== departmentId)
+        : [...prev, departmentId];
+    });
   };
 
   const handleDelete = async (rule: DepartmentPPERule) => {
@@ -139,7 +155,7 @@ const DepartmentPPERulePage = () => {
       setRules((prev) => prev.filter((item) => item.id !== rule.id));
       if (editingRuleId === rule.id) {
         setEditingRuleId(null);
-        setDepartmentId('');
+        setSelectedDepartmentIds([]);
         setProductId('');
         setRenewalMonths('');
       }
@@ -151,7 +167,7 @@ const DepartmentPPERulePage = () => {
 
   const handleCancelEdit = () => {
     setEditingRuleId(null);
-    setDepartmentId('');
+    setSelectedDepartmentIds([]);
     setProductId('');
     setRenewalMonths('');
   };
@@ -196,18 +212,27 @@ const DepartmentPPERulePage = () => {
         <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
           <form onSubmit={handleSubmit} className="mb-6 space-y-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <select
-                value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              >
-                <option value="">Выберите цех</option>
-                {departments.map((department) => (
-                  <option key={department.id} value={department.id}>
-                    {department.name}
-                  </option>
-                ))}
-              </select>
+              <div className="rounded border border-stroke px-3 py-2 dark:border-strokedark">
+                <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
+                  {editingRuleId !== null ? 'Выберите один цех' : 'Выберите один или несколько цехов'}
+                </div>
+                <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                  {departments.map((department) => {
+                    const isChecked = selectedDepartmentIds.includes(department.id);
+                    return (
+                      <label key={department.id} className="flex items-start gap-2 text-sm text-black dark:text-white">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleDepartment(department.id)}
+                          className="mt-1"
+                        />
+                        <span>{department.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
 
               <select
                 value={productId}
@@ -222,6 +247,12 @@ const DepartmentPPERulePage = () => {
                 ))}
               </select>
             </div>
+
+            {selectedDepartmentIds.length > 0 && (
+              <div className="rounded border border-dashed border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
+                Выбрано цехов: {selectedDepartmentIds.length}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <input

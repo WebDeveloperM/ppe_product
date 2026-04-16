@@ -419,6 +419,35 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		self.assertEqual(response.data['error_code'], 'ppe_not_due')
 		self.assertIn('Спецодежда (мужское)', response.data['error'])
 
+	@patch('base.views.get_service_department_map')
+	def test_settings_rules_post_creates_multiple_departments_in_one_request(self, department_map_mock):
+		department_map_mock.return_value = {
+			2: {'id': 2, 'name': '2-Цех'},
+			3: {'id': 3, 'name': '3-Цех'},
+		}
+		bulk_product = PPEProduct.objects.create(name='Каска bulk', renewal_months=9, target_gender='ALL')
+
+		response = self.client.post(
+			'/api/v1/settings/ppe-department-rules/',
+			{
+				'department_service_ids': [2, 3],
+				'ppeproduct': bulk_product.id,
+				'renewal_months': 9,
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		self.assertEqual(len(response.data), 2)
+		self.assertCountEqual(
+			DepartmentPPERenewalRule.objects.filter(ppeproduct=bulk_product).values_list('department_service_id', flat=True),
+			[2, 3],
+		)
+		self.assertCountEqual(
+			[item['department_name'] for item in response.data],
+			['2-Цех', '3-Цех'],
+		)
+
 
 class EmployeeServiceFaceFallbackTests(APITestCase):
 	def setUp(self):
