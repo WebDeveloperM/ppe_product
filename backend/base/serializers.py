@@ -296,6 +296,35 @@ class ItemSerializer(serializers.ModelSerializer):
             "full_name": full_name or obj.issued_by.username,
         }
 
+    def _get_department_service_id(self, item_obj):
+        payload = getattr(item_obj, '_employee_snapshot_override', None) or getattr(item_obj, 'employee_snapshot', None)
+        employee_payload = build_employee_snapshot(payload)
+
+        department = employee_payload.get('department') or {}
+        section = employee_payload.get('section') or {}
+
+        for raw_value in (department.get('id'), section.get('department_id')):
+            try:
+                return int(raw_value)
+            except (TypeError, ValueError):
+                continue
+
+        return None
+
+    def _get_effective_renewal_months(self, product, item_obj):
+        department_service_id = self._get_department_service_id(item_obj)
+        if department_service_id is not None:
+            rule = (
+                DepartmentPPERenewalRule.objects
+                .filter(department_service_id=department_service_id, ppeproduct_id=product.id)
+                .only('renewal_months')
+                .first()
+            )
+            if rule:
+                return int(rule.renewal_months or 0)
+
+        return int(product.renewal_months or 0)
+
     def get_ppeproduct_info(self, obj):
         include_split = bool(self.context.get('include_ppe_split'))
         size_map = obj.ppe_sizes or {}
@@ -318,7 +347,7 @@ class ItemSerializer(serializers.ModelSerializer):
                 "name": product.name,
                 "type_product": product.type_product,
                 "type_product_display": product.get_type_product_display() if product.type_product else None,
-                "renewal_months": product.renewal_months,
+                "renewal_months": self._get_effective_renewal_months(product, obj),
                 "size": size_map.get(str(product.id)) or "",
                 "is_new": product.id not in previous_ppe_ids if include_split else None,
             }
@@ -391,7 +420,7 @@ class ItemSerializer(serializers.ModelSerializer):
                         "name": product.name,
                         "type_product": product.type_product,
                         "type_product_display": product.get_type_product_display() if product.type_product else None,
-                        "renewal_months": product.renewal_months,
+                        "renewal_months": self._get_effective_renewal_months(product, issue),
                         "size": issue_size_map.get(str(product.id)) or "",
                     }
                     for product in issue.ppeproduct.all()

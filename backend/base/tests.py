@@ -448,6 +448,15 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 			['2-Цех', '3-Цех'],
 		)
 
+	@patch('base.views.list_sections', return_value=[])
+	@patch('base.views.list_departments', return_value=[])
+	def test_item_view_uses_department_rule_for_product_renewal_months(self, departments_mock, sections_mock):
+		response = self.client.get(f'/api/v1/item-view/{self.employee.slug}')
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['ppeproduct_info'][0]['renewal_months'], 12)
+		self.assertEqual(response.data['issue_history'][0]['ppeproduct_info'][0]['renewal_months'], 12)
+
 
 class EmployeeServiceFaceFallbackTests(APITestCase):
 	def setUp(self):

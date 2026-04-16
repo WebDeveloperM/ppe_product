@@ -1,5 +1,6 @@
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '')
 const INTERNAL_EMPLOYEE_SERVICE_HOSTS = new Set(['host.docker.internal', 'employee-service'])
+const EMPLOYEE_SERVICE_MEDIA_PREFIXES = ['/media/employee_base_images/', '/media/user_face_images/']
 
 const resolveEmployeeServiceWebUrl = () => {
 	const configuredWebUrl = String(import.meta.env.VITE_EMPLOYEE_SERVICE_WEB_URL || '').trim()
@@ -35,7 +36,7 @@ export const resolveEmployeeImageUrl = (value?: string | null) => {
 	}
 
 	if (raw.startsWith('/')) {
-		if (raw.startsWith('/media/')) {
+		if (EMPLOYEE_SERVICE_MEDIA_PREFIXES.some((prefix) => raw.startsWith(prefix))) {
 			return `${EMPLOYEE_SERVICE_WEB_URL}${raw}`
 		}
 		return `${BASE_IMAGE_URL}${raw}`
