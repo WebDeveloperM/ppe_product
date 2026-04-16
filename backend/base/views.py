@@ -212,7 +212,7 @@ def build_section_service_payload(data):
 
 def fetch_employee_by_slug_or_404(slug: str):
     try:
-        return build_employee_snapshot(get_employee_by_slug(slug))
+        return apply_local_face_id_override(build_employee_snapshot(get_employee_by_slug(slug)))
     except EmployeeServiceClientError:
         return None
 
@@ -224,7 +224,7 @@ def fetch_employee_by_external_id_safe(employee_id):
         payload = get_employee_by_external_id(employee_id)
     except EmployeeServiceClientError:
         payload = None
-    return build_employee_snapshot(payload) if payload else None
+    return apply_local_face_id_override(build_employee_snapshot(payload)) if payload else None
 
 
 def fetch_employees_map_by_ids(employee_ids):
@@ -233,7 +233,7 @@ def fetch_employees_map_by_ids(employee_ids):
         return {}
     try:
         return {
-            key: build_employee_snapshot(value)
+            key: apply_local_face_id_override(build_employee_snapshot(value))
             for key, value in get_employees_by_external_ids(values).items()
         }
     except EmployeeServiceClientError:
@@ -246,7 +246,7 @@ def fetch_employees_map_by_slugs(slugs):
         return {}
     try:
         return {
-            key: build_employee_snapshot(value)
+            key: apply_local_face_id_override(build_employee_snapshot(value))
             for key, value in get_employees_by_slugs(values, source_system=None).items()
         }
     except EmployeeServiceClientError:
@@ -298,14 +298,14 @@ def attach_employee_snapshots(items):
         payload = (
             employee_map.get(str(item.employee_service_id))
             or employee_slug_map.get(str(item.employee_slug or '').strip())
-            or build_employee_snapshot(item.employee_snapshot)
+            or apply_local_face_id_override(build_employee_snapshot(item.employee_snapshot))
         )
         item._employee_snapshot_override = payload
     return items
 
 
 def build_employee_only_item_payload(employee_payload):
-    employee_data = build_employee_snapshot(employee_payload)
+    employee_data = apply_local_face_id_override(build_employee_snapshot(employee_payload))
     return {
         'id': None,
         'slug': None,
@@ -801,36 +801,119 @@ def should_fallback_from_employee_service_error(exc: EmployeeServiceClientError)
     return False
 
 
+def _get_employee_face_id_lookup(employee_payload: dict):
+    employee_data = build_employee_snapshot(employee_payload)
+
+    employee_slug = str(employee_data.get('slug') or '').strip() or None
+    tabel_number = str(employee_data.get('tabel_number') or '').strip() or None
+
+    external_id = str(employee_data.get('external_id') or employee_data.get('id') or '').strip()
+    employee_service_id = None
+    if external_id.isdigit():
+        employee_service_id = int(external_id)
+
+    return employee_data, employee_slug, employee_service_id, tabel_number
+
+
+def get_local_face_id_override_value(employee_payload: dict):
+    employee_data, employee_slug, employee_service_id, tabel_number = _get_employee_face_id_lookup(employee_payload)
+
+    override = None
+    if employee_slug:
+        override = EmployeeFaceIdOverride.objects.filter(employee_slug=employee_slug).first()
+    if override is None and employee_service_id is not None:
+        override = EmployeeFaceIdOverride.objects.filter(employee_service_id=employee_service_id).first()
+    if override is None and tabel_number:
+        override = EmployeeFaceIdOverride.objects.filter(tabel_number=tabel_number).first()
+    if override is not None:
+        return bool(override.requires_face_id_checkout)
+
+    local_employee = None
+    queryset = Employee.objects.filter(is_deleted=False)
+    if employee_slug:
+        local_employee = queryset.filter(slug=employee_slug).first()
+    if local_employee is None and tabel_number:
+        local_employee = queryset.filter(tabel_number=tabel_number).first()
+    if local_employee is None and employee_service_id is not None:
+        local_employee = queryset.filter(pk=employee_service_id).first()
+    if local_employee is not None:
+        return bool(local_employee.requires_face_id_checkout)
+
+    return None
+
+
+def apply_local_face_id_override(employee_payload: dict):
+    employee_data = build_employee_snapshot(employee_payload)
+    override_value = get_local_face_id_override_value(employee_data)
+    if override_value is None:
+        return employee_data
+
+    overridden = dict(employee_data)
+    overridden['requires_face_id_checkout'] = bool(override_value)
+    return overridden
+
+
 def update_local_face_id_exemption(employee_payload: dict, requires_face_id_checkout: bool):
     if not employee_payload:
         return None
 
+    employee_data, employee_slug, employee_service_id, tabel_number = _get_employee_face_id_lookup(employee_payload)
+    full_name = str(employee_data.get('full_name') or '').strip()
+
     queryset = Employee.objects.filter(is_deleted=False)
-    employee_slug = str(employee_payload.get('slug') or '').strip()
-    tabel_number = str(employee_payload.get('tabel_number') or '').strip()
-    external_id = str(employee_payload.get('external_id') or employee_payload.get('id') or '').strip()
 
     local_employee = None
     if employee_slug:
         local_employee = queryset.filter(slug=employee_slug).first()
     if local_employee is None and tabel_number:
         local_employee = queryset.filter(tabel_number=tabel_number).first()
-    if local_employee is None and external_id.isdigit():
-        local_employee = queryset.filter(pk=int(external_id)).first()
+    if local_employee is None and employee_service_id is not None:
+        local_employee = queryset.filter(pk=employee_service_id).first()
 
-    if local_employee is None:
+    override_defaults = {
+        'employee_service_id': employee_service_id,
+        'employee_slug': employee_slug,
+        'tabel_number': tabel_number,
+        'full_name': full_name,
+        'requires_face_id_checkout': bool(requires_face_id_checkout),
+    }
+
+    override = None
+    if employee_slug:
+        override, _ = EmployeeFaceIdOverride.objects.update_or_create(
+            employee_slug=employee_slug,
+            defaults=override_defaults,
+        )
+    elif employee_service_id is not None:
+        override, _ = EmployeeFaceIdOverride.objects.update_or_create(
+            employee_service_id=employee_service_id,
+            defaults=override_defaults,
+        )
+    elif tabel_number:
+        override, _ = EmployeeFaceIdOverride.objects.update_or_create(
+            tabel_number=tabel_number,
+            defaults=override_defaults,
+        )
+
+    normalized_employee = employee_data
+    if local_employee is not None:
+        local_employee.requires_face_id_checkout = bool(requires_face_id_checkout)
+        local_employee.save(update_fields=['requires_face_id_checkout', 'updatedAt'])
+        normalized_employee = build_employee_snapshot(local_employee)
+
+    if override is None and local_employee is None:
         return None
 
-    local_employee.requires_face_id_checkout = bool(requires_face_id_checkout)
-    local_employee.save(update_fields=['requires_face_id_checkout', 'updatedAt'])
-    normalized_employee = build_employee_snapshot(local_employee)
+    response_slug = str((normalized_employee or {}).get('slug') or employee_slug or '').strip()
+    response_id = (normalized_employee or {}).get('id') or employee_service_id
+    response_name = str((normalized_employee or {}).get('full_name') or full_name or '').strip()
     return {
         'success': True,
         'employee': {
-            'id': local_employee.id,
-            'slug': normalized_employee.get('slug'),
-            'full_name': normalized_employee.get('full_name'),
-            'requires_face_id_checkout': local_employee.requires_face_id_checkout,
+            'id': response_id,
+            'slug': response_slug,
+            'full_name': response_name,
+            'requires_face_id_checkout': bool(requires_face_id_checkout),
         },
     }
 
@@ -4060,13 +4143,14 @@ class EmployeeFaceIdExemptionApiView(APIView):
                     page_size=request.query_params.get('page_size'),
                 )
                 if isinstance(payload, dict):
+                    employees = [apply_local_face_id_override(employee) for employee in (payload.get('employees') or payload.get('results') or [])]
                     return Response({
                         'count': payload.get('count', 0),
                         'next': payload.get('next'),
                         'previous': payload.get('previous'),
-                        'employees': payload.get('employees') or payload.get('results') or [],
+                        'employees': employees,
                     }, status=status.HTTP_200_OK)
-                employees = payload if isinstance(payload, list) else []
+                employees = [apply_local_face_id_override(employee) for employee in (payload if isinstance(payload, list) else [])]
                 return Response({'count': len(employees), 'next': None, 'previous': None, 'employees': employees}, status=status.HTTP_200_OK)
             except EmployeeServiceClientError as exc:
                 return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

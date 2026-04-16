@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from .models import Department, Section, Employee, PPEProduct, DepartmentPPERenewalRule, PendingItemIssue, Item
+from .models import Department, Section, Employee, EmployeeFaceIdOverride, PPEProduct, DepartmentPPERenewalRule, PendingItemIssue, Item
 from .employee_data import build_employee_snapshot
 from .employee_service_client import EmployeeServiceClientError
 from users.models import RolePageAccess, UserRole
@@ -258,6 +258,66 @@ class FaceIdExemptionAccessTests(APITestCase):
 		self.assertFalse(self.local_employee.requires_face_id_checkout)
 		self.assertEqual(response.data['employee']['slug'], self.local_employee.slug)
 		self.assertFalse(response.data['employee']['requires_face_id_checkout'])
+
+	@patch('base.views.update_face_id_exemption')
+	@patch('base.views.fetch_employee_by_slug_or_404')
+	def test_warehouse_manager_persists_override_for_remote_employee_when_local_record_missing(self, fetch_employee_mock, update_face_id_mock):
+		fetch_employee_mock.return_value = {
+			'id': 9112,
+			'external_id': '9112',
+			'slug': 'default-9112-maruf-shabonov',
+			'tabel_number': '9112',
+			'first_name': 'Maruf',
+			'last_name': 'Shabonov',
+			'surname': 'Bahriddin Ugli',
+		}
+		update_face_id_mock.side_effect = EmployeeServiceClientError('Сервисный API-ключ поддерживает только операции чтения.')
+
+		response = self.client.patch(
+			'/api/v1/employees/default-9112-maruf-shabonov/face-id-exemption/',
+			{'requires_face_id_checkout': False},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		override = EmployeeFaceIdOverride.objects.get(employee_slug='default-9112-maruf-shabonov')
+		self.assertEqual(override.employee_service_id, 9112)
+		self.assertFalse(override.requires_face_id_checkout)
+		self.assertFalse(response.data['employee']['requires_face_id_checkout'])
+
+	@patch('base.views.list_face_id_exemptions')
+	def test_face_id_list_applies_local_override_to_remote_employees(self, list_face_id_exemptions_mock):
+		EmployeeFaceIdOverride.objects.create(
+			employee_service_id=9112,
+			employee_slug='default-9112-maruf-shabonov',
+			tabel_number='9112',
+			full_name='Shabonov Maruf Bahriddin Ugli',
+			requires_face_id_checkout=False,
+		)
+		list_face_id_exemptions_mock.return_value = {
+			'count': 1,
+			'next': None,
+			'previous': None,
+			'employees': [
+				{
+					'id': 9112,
+					'external_id': '9112',
+					'slug': 'default-9112-maruf-shabonov',
+					'first_name': 'Maruf',
+					'last_name': 'Shabonov',
+					'surname': 'Bahriddin Ugli',
+					'tabel_number': '9112',
+					'position': 'Engineer',
+					'requires_face_id_checkout': True,
+				},
+			],
+		}
+
+		response = self.client.get('/api/v1/employees/face-id-exemption/')
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['count'], 1)
+		self.assertFalse(response.data['employees'][0]['requires_face_id_checkout'])
 
 
 class ItemAddGenderFilteringTests(APITestCase):

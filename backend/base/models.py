@@ -126,6 +126,29 @@ class Employee(models.Model):
         verbose_name = 'Сотрудник'
         verbose_name_plural = 'Сотрудник'
         db_table = 'base_employee'
+
+
+class EmployeeFaceIdOverride(models.Model):
+    employee_service_id = models.BigIntegerField(null=True, blank=True, db_index=True, unique=True, verbose_name='ID сотрудника из employee_service')
+    employee_slug = models.SlugField(max_length=255, null=True, blank=True, db_index=True, unique=True, verbose_name='Slug сотрудника из employee_service')
+    tabel_number = models.CharField(max_length=255, null=True, blank=True, db_index=True, verbose_name='Табельный номер')
+    full_name = models.CharField(max_length=255, blank=True, default='', verbose_name='ФИО сотрудника')
+    requires_face_id_checkout = models.BooleanField(
+        default=True,
+        verbose_name='Требуется Face ID при выдаче СИЗ',
+        help_text='Локальный override для случаев, когда employee_service доступен только на чтение',
+    )
+    updatedAt = models.DateTimeField(auto_now=True, verbose_name='Дата изменения', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Локальная настройка Face ID'
+        verbose_name_plural = 'Локальные настройки Face ID'
+        db_table = 'base_employee_face_id_override'
+        ordering = ['full_name', 'employee_slug', 'id']
+
+    def __str__(self):
+        label = self.full_name or self.employee_slug or str(self.employee_service_id or self.tabel_number or self.pk)
+        return f"{label} — {'требуется' if self.requires_face_id_checkout else 'не требуется'}"
         
 
 class PPEProduct(models.Model):
