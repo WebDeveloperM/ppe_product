@@ -32,6 +32,7 @@ import NotFoundPage from './pages/NotFound';
 import DepartmentPage from './pages/Nastroyka/DepartmentPage';
 import SectionPage from './pages/Nastroyka/SectionPage';
 import ProductPage from './pages/Nastroyka/ProductPage';
+import DepartmentPPERulePage from './pages/Nastroyka/DepartmentPPERulePage.tsx';
 import PersonPage from './pages/Nastroyka/PersonPage';
 import UserPage from './pages/Nastroyka/UserPage';
 import FaceIDPage from './pages/Nastroyka/FaceIDPage';
@@ -304,6 +305,19 @@ function App() {
               <>
                 <PageTitle title="Средство инд. защиты" />
                 <ProductPage />
+              </>
+            ) : (
+              <Navigate to={isAuthenticated() ? getDeniedRoute() : '/auth/signin'} replace />
+            )
+          }
+        />
+        <Route
+          path="/nastroyka/ppe-norms"
+          element={
+            isAuthenticated() && canAccessSettings ? (
+              <>
+                <PageTitle title="Нормы выдачи по цехам" />
+                <DepartmentPPERulePage />
               </>
             ) : (
               <Navigate to={isAuthenticated() ? getDeniedRoute() : '/auth/signin'} replace />

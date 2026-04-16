@@ -159,6 +159,34 @@ class PPEProduct(models.Model):
         return self.name
 
 
+class DepartmentPPERenewalRule(models.Model):
+    department_service_id = models.PositiveIntegerField(db_index=True, verbose_name='ID цеха из employee_service')
+    department_name = models.CharField(max_length=255, verbose_name='Название цеха')
+    ppeproduct = models.ForeignKey(
+        PPEProduct,
+        on_delete=models.CASCADE,
+        related_name='department_renewal_rules',
+        verbose_name='Средство индивидуальной защиты',
+    )
+    renewal_months = models.PositiveIntegerField(default=0, verbose_name='Срок выдачи (в месяцах)')
+    updatedAt = models.DateTimeField(auto_now=True, verbose_name='Дата изменения', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Норма выдачи СИЗ по цеху'
+        verbose_name_plural = 'Нормы выдачи СИЗ по цехам'
+        db_table = 'base_department_ppe_renewal_rule'
+        ordering = ['department_name', 'ppeproduct__name', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['department_service_id', 'ppeproduct'],
+                name='unique_department_ppe_renewal_rule',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.department_name} — {self.ppeproduct.name} ({self.renewal_months} мес.)"
+
+
 class PPEArrival(models.Model):
     ppeproduct = models.ForeignKey(PPEProduct, on_delete=models.CASCADE, related_name='arrivals', verbose_name='Средство защиты')
     quantity = models.PositiveIntegerField(default=0, verbose_name='Количество (приход)')

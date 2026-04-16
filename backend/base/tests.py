@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from .models import Department, Section, Employee, PPEProduct, PendingItemIssue, Item
+from .models import Department, Section, Employee, PPEProduct, DepartmentPPERenewalRule, PendingItemIssue, Item
 from .employee_data import build_employee_snapshot
 from .employee_service_client import EmployeeServiceClientError
 from users.models import RolePageAccess, UserRole
@@ -336,6 +336,88 @@ class ItemAddGenderFilteringTests(APITestCase):
 		self.assertEqual(response.status_code, 400)
 		self.assertEqual(response.data['error_code'], 'ppe_gender_mismatch')
 		self.assertIn('Спецодежда женская', response.data['error'])
+
+
+class DepartmentPPERenewalRuleTests(APITestCase):
+	def setUp(self):
+		self.admin = User.objects.create_superuser(username='rule_admin', password='test12345')
+		self.client.force_authenticate(user=self.admin)
+
+		department = Department.objects.create(name='1-Цех', boss_fullName='Boss Name')
+		section = Section.objects.create(name='Section A', department=department)
+
+		self.employee = Employee.objects.create(
+			first_name='Ali',
+			last_name='Valiyev',
+			surname='Karimovich',
+			tabel_number='RULE-001',
+			gender='M',
+			height='180',
+			clothe_size='52',
+			shoe_size='42',
+			section=section,
+			department=department,
+			position='Operator',
+		)
+
+		self.product = PPEProduct.objects.create(name='Спецодежда (мужское)', renewal_months=6, target_gender='M')
+		DepartmentPPERenewalRule.objects.create(
+			department_service_id=1,
+			department_name='1-Цех',
+			ppeproduct=self.product,
+			renewal_months=12,
+		)
+
+		self.item = Item.objects.create(
+			employee_service_id=self.employee.id,
+			employee_slug=self.employee.slug,
+			slug=self.employee.slug,
+			employee_snapshot={
+				'id': self.employee.id,
+				'external_id': str(self.employee.id),
+				'slug': self.employee.slug,
+				'first_name': self.employee.first_name,
+				'last_name': self.employee.last_name,
+				'surname': self.employee.surname,
+				'tabel_number': self.employee.tabel_number,
+				'gender': self.employee.gender,
+				'height': self.employee.height,
+				'clothe_size': self.employee.clothe_size,
+				'shoe_size': self.employee.shoe_size,
+				'position': self.employee.position,
+				'department': {
+					'id': 1,
+					'name': '1-Цех',
+					'boss_fullName': self.employee.department.boss_fullName,
+				},
+				'section': {
+					'id': self.employee.section_id,
+					'name': self.employee.section.name,
+					'department_id': 1,
+				},
+			},
+			issued_at=timezone.now() - timedelta(days=240),
+			is_deleted=False,
+		)
+		self.item.ppeproduct.add(self.product)
+
+	def test_add_item_get_returns_department_override_months(self):
+		response = self.client.get(f'/api/v1/add-item/{self.employee.slug}')
+
+		self.assertEqual(response.status_code, 200)
+		product_payload = next(item for item in response.data['ppe_products'] if item['id'] == self.product.id)
+		self.assertEqual(product_payload['renewal_months'], 12)
+
+	def test_add_item_post_blocks_until_department_override_period_expires(self):
+		response = self.client.post(
+			f'/api/v1/add-item/{self.employee.slug}',
+			{'ppeproduct': [self.product.id], 'ppe_sizes': {str(self.product.id): '52'}},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertEqual(response.data['error_code'], 'ppe_not_due')
+		self.assertIn('Спецодежда (мужское)', response.data['error'])
 
 
 class EmployeeServiceFaceFallbackTests(APITestCase):

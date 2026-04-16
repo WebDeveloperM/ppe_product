@@ -27,6 +27,14 @@ type PPEProduct = {
   is_active: boolean;
 };
 
+type DepartmentPPERule = {
+  id: number;
+  department_service_id: number;
+  department_name: string;
+  ppeproduct: number;
+  renewal_months: number;
+};
+
 type ResponsiblePerson = {
   id: number;
   full_name: string;
@@ -124,6 +132,17 @@ const FaceIdIcon = () => (
   </svg>
 );
 
+const RulesIcon = () => (
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 6h11" />
+    <path d="M9 12h11" />
+    <path d="M9 18h11" />
+    <path d="M4 6h.01" />
+    <path d="M4 12h.01" />
+    <path d="M4 18h.01" />
+  </svg>
+);
+
 const LockIcon = () => (
   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="11" width="18" height="10" rx="2" />
@@ -146,6 +165,7 @@ const NastroykaPage = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [products, setProducts] = useState<PPEProduct[]>([]);
+  const [departmentRules, setDepartmentRules] = useState<DepartmentPPERule[]>([]);
   const [persons, setPersons] = useState<ResponsiblePerson[]>([]);
   const [users, setUsers] = useState<SettingsUser[]>([]);
   const [usersCount, setUsersCount] = useState(0);
@@ -154,16 +174,18 @@ const NastroykaPage = () => {
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const [departmentsRes, sectionsRes, productsRes, personsRes] = await Promise.all([
+      const [departmentsRes, sectionsRes, productsRes, rulesRes, personsRes] = await Promise.all([
         axioss.get('/settings/departments/'),
         axioss.get('/settings/sections/'),
         axioss.get('/settings/ppe-products/'),
+        axioss.get('/settings/ppe-department-rules/'),
         axioss.get('/settings/responsible-persons/'),
       ]);
 
       setDepartments(departmentsRes.data || []);
       setSections(sectionsRes.data || []);
       setProducts(productsRes.data || []);
+      setDepartmentRules(rulesRes.data || []);
       setPersons(personsRes.data || []);
 
       if (role === 'admin') {
@@ -269,6 +291,13 @@ const NastroykaPage = () => {
                   count={products.length}
                   onClick={() => navigate('/nastroyka/product')}
                   color="bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                />
+                <SettingCard
+                  icon={RulesIcon}
+                  title="Нормы выдачи по цехам"
+                  count={departmentRules.length}
+                  onClick={() => navigate('/nastroyka/ppe-norms')}
+                  color="bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400"
                 />
                 <SettingCard
                   icon={UserCheckIcon}

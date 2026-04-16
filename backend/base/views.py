@@ -107,8 +107,29 @@ def extract_service_results(payload):
 def get_employee_gender_code(employee_payload):
     if not employee_payload:
         return ''
-    gender = str(employee_payload.get('gender') or '').strip().upper()
-    return gender if gender in {'M', 'F'} else ''
+    if isinstance(employee_payload, dict):
+        gender = employee_payload.get('gender')
+    else:
+        gender = getattr(employee_payload, 'gender', '')
+    normalized = str(gender or '').strip().upper()
+    return normalized if normalized in {'M', 'F'} else ''
+
+
+def get_employee_department_service_id(employee_payload):
+    if not employee_payload:
+        return None
+
+    if isinstance(employee_payload, dict):
+        department = employee_payload.get('department') or {}
+        raw_value = department.get('id') or employee_payload.get('department_id')
+    else:
+        department = getattr(employee_payload, 'department', None)
+        raw_value = getattr(department, 'id', None) or getattr(employee_payload, 'department_id', None)
+
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
 
 
 def filter_ppe_products_for_employee_gender(products_queryset, employee_payload):
@@ -118,6 +139,32 @@ def filter_ppe_products_for_employee_gender(products_queryset, employee_payload)
     return products_queryset.filter(
         Q(target_gender=PPEProduct.TARGET_GENDER_ALL) | Q(target_gender=employee_gender)
     )
+
+
+def get_effective_product_renewal_months(product, employee_payload):
+    department_service_id = get_employee_department_service_id(employee_payload)
+    if department_service_id is not None:
+        rule = (
+            DepartmentPPERenewalRule.objects
+            .filter(department_service_id=department_service_id, ppeproduct_id=product.id)
+            .only('renewal_months')
+            .first()
+        )
+        if rule is not None:
+            return int(rule.renewal_months or 0)
+    return int(product.renewal_months or 0)
+
+
+def get_service_department_map():
+    departments = sorted(
+        [normalize_department_payload(item) for item in extract_service_results(list_departments())],
+        key=department_sort_key,
+    )
+    return {
+        int(item['id']): item
+        for item in departments
+        if item.get('id') is not None
+    }
 
 
 def normalize_department_payload(department):
@@ -461,6 +508,50 @@ class SettingsPPEProductListCreateApiView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+class SettingsPPEDepartmentRuleListCreateApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        permission_error = ensure_can_modify(request)
+        if permission_error:
+            return permission_error
+
+        rules = DepartmentPPERenewalRule.objects.select_related('ppeproduct').all()
+        serializer = DepartmentPPERenewalRuleSerializer(rules, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        permission_error = ensure_can_modify(request)
+        if permission_error:
+            return permission_error
+
+        try:
+            department_service_id = int(request.data.get('department_service_id'))
+        except (TypeError, ValueError):
+            return Response({'error': 'Выберите цех.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            department_map = get_service_department_map()
+        except EmployeeServiceClientError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        department = department_map.get(department_service_id)
+        if not department:
+            return Response({'error': 'Выбранный цех не найден.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = request.data.copy()
+        payload['department_service_id'] = department_service_id
+        payload['department_name'] = department.get('name', '')
+
+        serializer = DepartmentPPERenewalRuleSerializer(data=payload)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 class SettingsResponsiblePersonListCreateApiView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -564,6 +655,53 @@ class SettingsPPEProductDetailApiView(APIView):
 
         product = get_object_or_404(PPEProduct, pk=pk)
         product.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SettingsPPEDepartmentRuleDetailApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, pk):
+        permission_error = ensure_can_modify(request)
+        if permission_error:
+            return permission_error
+
+        rule = get_object_or_404(DepartmentPPERenewalRule, pk=pk)
+
+        department_service_id = request.data.get('department_service_id', rule.department_service_id)
+        try:
+            department_service_id = int(department_service_id)
+        except (TypeError, ValueError):
+            return Response({'error': 'Выберите цех.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            department_map = get_service_department_map()
+        except EmployeeServiceClientError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        department = department_map.get(department_service_id)
+        if not department:
+            return Response({'error': 'Выбранный цех не найден.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = request.data.copy()
+        payload['department_service_id'] = department_service_id
+        payload['department_name'] = department.get('name', '')
+
+        serializer = DepartmentPPERenewalRuleSerializer(rule, data=payload, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        permission_error = ensure_can_modify(request)
+        if permission_error:
+            return permission_error
+
+        rule = get_object_or_404(DepartmentPPERenewalRule, pk=pk)
+        rule.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -1415,7 +1553,10 @@ def get_due_soon_product_latest_item_ids(days: int = 30, product_name: str = 'Sp
         if not target_products:
             continue
 
-        renewal_months = max(product.renewal_months or 0 for product in target_products)
+        renewal_months = max(
+            get_effective_product_renewal_months(product, item.employee)
+            for product in target_products
+        )
         if renewal_months <= 0 or not item.issued_at:
             continue
 
@@ -1461,7 +1602,10 @@ def get_overdue_product_latest_item_ids(product_id: int | None = None):
             if not target_products:
                 continue
 
-            renewal_months = max(product.renewal_months or 0 for product in target_products)
+            renewal_months = max(
+                get_effective_product_renewal_months(product, item.employee)
+                for product in target_products
+            )
             if renewal_months <= 0 or not item.issued_at:
                 continue
 
@@ -1495,7 +1639,7 @@ def get_overdue_product_latest_item_ids(product_id: int | None = None):
                 continue
 
             for product in products:
-                renewal_months = product.renewal_months or 0
+                renewal_months = get_effective_product_renewal_months(product, item.employee)
                 if renewal_months <= 0 or not item.issued_at:
                     continue
 
@@ -1598,7 +1742,7 @@ def get_due_soon_employee_ppe_rows(days: int = 30, product_id: int | None = None
 
     rows = []
     for item, product in latest_by_pair.values():
-        renewal_months = product.renewal_months or 0
+        renewal_months = get_effective_product_renewal_months(product, item.employee)
         if renewal_months <= 0 or not item.issued_at:
             continue
 
@@ -3183,7 +3327,7 @@ class ItemAddApiView(APIView):
 
         ppe_products_payload = []
         for product in ppe_products:
-            renewal_months = int(product.renewal_months or 0)
+            renewal_months = get_effective_product_renewal_months(product, source_employee)
             last_issue_dt = latest_issue_dates_by_product.get(product.id)
             next_due_dt = (
                 add_calendar_months(last_issue_dt, renewal_months - 1)
@@ -3209,7 +3353,7 @@ class ItemAddApiView(APIView):
                 "name": product.name,
                 "type_product": product.type_product,
                 "type_product_display": product.get_type_product_display() if product.type_product else None,
-                "renewal_months": product.renewal_months,
+                "renewal_months": renewal_months,
                 "can_issue": can_issue,
                 "months_left": months_left,
                 "remaining_text": remaining_text,
@@ -3298,7 +3442,7 @@ class ItemAddApiView(APIView):
 
         blocked_products = []
         for product in products:
-            renewal_months = int(product.renewal_months or 0)
+            renewal_months = get_effective_product_renewal_months(product, source_employee)
             if renewal_months <= 0:
                 continue
 

@@ -63,6 +63,28 @@ class PPEProductSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "renewal_months", "low_stock_threshold", "type_product", "target_gender", "is_active"]
 
 
+class DepartmentPPERenewalRuleSerializer(serializers.ModelSerializer):
+    ppeproduct_name = serializers.CharField(source='ppeproduct.name', read_only=True)
+    ppeproduct_type_product = serializers.CharField(source='ppeproduct.type_product', read_only=True)
+    ppeproduct_target_gender = serializers.CharField(source='ppeproduct.target_gender', read_only=True)
+    ppeproduct_target_gender_display = serializers.CharField(source='ppeproduct.get_target_gender_display', read_only=True)
+
+    class Meta:
+        model = DepartmentPPERenewalRule
+        fields = [
+            'id',
+            'department_service_id',
+            'department_name',
+            'ppeproduct',
+            'ppeproduct_name',
+            'ppeproduct_type_product',
+            'ppeproduct_target_gender',
+            'ppeproduct_target_gender_display',
+            'renewal_months',
+            'updatedAt',
+        ]
+
+
 class ResponsiblePersonSerializer(serializers.ModelSerializer):
     class Meta:
         model = ResponsiblePerson
