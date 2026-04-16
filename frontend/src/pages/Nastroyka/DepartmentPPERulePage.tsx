@@ -1,5 +1,5 @@
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import axioss from '../../api/axios';
@@ -62,6 +62,28 @@ const DepartmentPPERulePage = () => {
   const [productId, setProductId] = useState('');
   const [renewalMonths, setRenewalMonths] = useState('');
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [isDepartmentDropdownOpen, setIsDepartmentDropdownOpen] = useState(false);
+  const departmentDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const isAllDepartmentsSelected = departments.length > 0 && selectedDepartmentIds.length === departments.length;
+
+  const departmentButtonLabel = useMemo(() => {
+    if (editingRuleId !== null) {
+      const selectedDepartment = departments.find((department) => department.id === selectedDepartmentIds[0]);
+      return selectedDepartment?.name || 'Выберите цех';
+    }
+    if (isAllDepartmentsSelected) {
+      return 'Выбраны все цехи';
+    }
+    if (selectedDepartmentIds.length === 0) {
+      return 'Выберите один или несколько цехов';
+    }
+    if (selectedDepartmentIds.length === 1) {
+      const selectedDepartment = departments.find((department) => department.id === selectedDepartmentIds[0]);
+      return selectedDepartment?.name || 'Выбран 1 цех';
+    }
+    return `Выбрано цехов: ${selectedDepartmentIds.length}`;
+  }, [departments, editingRuleId, isAllDepartmentsSelected, selectedDepartmentIds]);
 
   const loadData = async () => {
     setLoading(true);
@@ -89,6 +111,17 @@ const DepartmentPPERulePage = () => {
     }
     loadData();
   }, [canEditBaseSettings]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!departmentDropdownRef.current?.contains(event.target as Node)) {
+        setIsDepartmentDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -123,6 +156,7 @@ const DepartmentPPERulePage = () => {
       setProductId('');
       setRenewalMonths('');
       setEditingRuleId(null);
+      setIsDepartmentDropdownOpen(false);
     } catch (error) {
       toast.error(getBackendError(error, editingRuleId !== null ? 'Ошибка при обновлении нормы' : 'Ошибка при добавлении нормы'));
     }
@@ -133,6 +167,7 @@ const DepartmentPPERulePage = () => {
     setSelectedDepartmentIds([rule.department_service_id]);
     setProductId(String(rule.ppeproduct));
     setRenewalMonths(String(rule.renewal_months));
+    setIsDepartmentDropdownOpen(false);
   };
 
   const toggleDepartment = (departmentId: number) => {
@@ -144,6 +179,11 @@ const DepartmentPPERulePage = () => {
         ? prev.filter((item) => item !== departmentId)
         : [...prev, departmentId];
     });
+  };
+
+  const toggleAllDepartments = () => {
+    if (editingRuleId !== null) return;
+    setSelectedDepartmentIds(isAllDepartmentsSelected ? [] : departments.map((department) => department.id));
   };
 
   const handleDelete = async (rule: DepartmentPPERule) => {
@@ -158,6 +198,7 @@ const DepartmentPPERulePage = () => {
         setSelectedDepartmentIds([]);
         setProductId('');
         setRenewalMonths('');
+        setIsDepartmentDropdownOpen(false);
       }
       toast.success('Норма удалена');
     } catch (error) {
@@ -170,6 +211,7 @@ const DepartmentPPERulePage = () => {
     setSelectedDepartmentIds([]);
     setProductId('');
     setRenewalMonths('');
+    setIsDepartmentDropdownOpen(false);
   };
 
   if (!canEditBaseSettings) {
@@ -212,26 +254,52 @@ const DepartmentPPERulePage = () => {
         <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
           <form onSubmit={handleSubmit} className="mb-6 space-y-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="rounded border border-stroke px-3 py-2 dark:border-strokedark">
-                <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-                  {editingRuleId !== null ? 'Выберите один цех' : 'Выберите один или несколько цехов'}
-                </div>
-                <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
-                  {departments.map((department) => {
-                    const isChecked = selectedDepartmentIds.includes(department.id);
-                    return (
-                      <label key={department.id} className="flex items-start gap-2 text-sm text-black dark:text-white">
+              <div className="relative" ref={departmentDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsDepartmentDropdownOpen((prev) => !prev)}
+                  className="flex w-full items-center justify-between rounded border border-stroke bg-transparent px-3 py-2 text-left dark:border-strokedark dark:bg-transparent"
+                >
+                  <span className="truncate text-sm text-black dark:text-white">{departmentButtonLabel}</span>
+                  <span className="ml-3 text-xs text-slate-500">{isDepartmentDropdownOpen ? '▲' : '▼'}</span>
+                </button>
+
+                {isDepartmentDropdownOpen && (
+                  <div className="absolute z-20 mt-2 w-full rounded border border-stroke bg-white p-3 shadow-lg dark:border-strokedark dark:bg-boxdark">
+                    <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
+                      {editingRuleId !== null ? 'Выберите один цех' : 'Выберите один или несколько цехов'}
+                    </div>
+
+                    {editingRuleId === null && departments.length > 0 && (
+                      <label className="mb-3 flex items-start gap-2 border-b border-stroke pb-3 text-sm font-medium text-black dark:border-strokedark dark:text-white">
                         <input
                           type="checkbox"
-                          checked={isChecked}
-                          onChange={() => toggleDepartment(department.id)}
+                          checked={isAllDepartmentsSelected}
+                          onChange={toggleAllDepartments}
                           className="mt-1"
                         />
-                        <span>{department.name}</span>
+                        <span>Для всех цехов</span>
                       </label>
-                    );
-                  })}
-                </div>
+                    )}
+
+                    <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                      {departments.map((department) => {
+                        const isChecked = selectedDepartmentIds.includes(department.id);
+                        return (
+                          <label key={department.id} className="flex items-start gap-2 text-sm text-black dark:text-white">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleDepartment(department.id)}
+                              className="mt-1"
+                            />
+                            <span>{department.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <select
