@@ -253,9 +253,16 @@ def fetch_employees_map_by_slugs(slugs):
         return {}
 
 
-def list_employees_bootstrapped(*, search=None, tabel_number=None, source_system=None):
+def list_employees_bootstrapped(*, search=None, tabel_number=None, source_system=None, no_pagination=True, page=None, page_size=None):
     try:
-        payload = list_employees(search=search, tabel_number=tabel_number, source_system=source_system)
+        payload = list_employees(
+            search=search,
+            tabel_number=tabel_number,
+            source_system=source_system,
+            no_pagination=no_pagination,
+            page=page,
+            page_size=page_size,
+        )
         employees = extract_employee_results(payload)
     except EmployeeServiceClientError:
         employees = []
@@ -286,7 +293,14 @@ def list_employees_bootstrapped(*, search=None, tabel_number=None, source_system
         sync_employee_to_external_service_safe(employee)
 
     try:
-        return list_employees(search=search, tabel_number=tabel_number, source_system=source_system)
+        return list_employees(
+            search=search,
+            tabel_number=tabel_number,
+            source_system=source_system,
+            no_pagination=no_pagination,
+            page=page,
+            page_size=page_size,
+        )
     except EmployeeServiceClientError:
         return [build_employee_snapshot(employee) for employee in local_employees]
 
@@ -2011,11 +2025,13 @@ class InfoEmployeeApiView(APIView):
     @staticmethod
     def get(request, *args, **kwargs):
         try:
-            employees_payload = list_employees_bootstrapped()
-            all_employees = extract_employee_results(employees_payload)
+            employees_payload = list_employees_bootstrapped(no_pagination=False, page=1, page_size=1)
+            if isinstance(employees_payload, dict):
+                all_employees_count = int(employees_payload.get('count', 0) or 0)
+            else:
+                all_employees_count = len(extract_employee_results(employees_payload))
         except EmployeeServiceClientError:
-            all_employees = []
-        all_employees_count = len(all_employees)
+            all_employees_count = Employee.objects.filter(is_deleted=False).count()
 
         raw_due_days = request.query_params.get('due_days', '30')
         try:
@@ -2574,6 +2590,69 @@ class AllItemsApiView(APIView):
             result_page = paginator.paginate_queryset(rows, request)
             return paginator.get_paginated_response(result_page)
 
+        no_pagination = request.GET.get('no_pagination', '').lower() == 'true'
+        page = request.GET.get('page')
+        page_size = request.GET.get('page_size')
+        remote_only_filters = not any([department, section, user, position, history_date, history_user, issued_at])
+
+        if remote_only_filters and not no_pagination:
+            employees_payload = list_employees_bootstrapped(
+                search=search or None,
+                tabel_number=tabel_number or None,
+                no_pagination=False,
+                page=page,
+                page_size=page_size,
+            )
+            employee_rows = [build_employee_snapshot(employee) for employee in extract_employee_results(employees_payload)]
+            total_count = int((employees_payload or {}).get('count', len(employee_rows))) if isinstance(employees_payload, dict) else len(employee_rows)
+
+            employee_service_ids = [
+                str(employee.get('external_id') or employee.get('id'))
+                for employee in employee_rows
+                if str(employee.get('external_id') or employee.get('id')).strip()
+            ]
+            latest_items = []
+            latest_item_by_employee = {}
+            if employee_service_ids:
+                latest_item_base = (
+                    Item.objects
+                    .filter(employee_service_id=OuterRef('employee_service_id'), is_deleted=False)
+                    .order_by('-issued_at', '-id')
+                )
+                latest_items_queryset = (
+                    Item.objects
+                    .filter(is_deleted=False, employee_service_id__in=employee_service_ids)
+                    .annotate(_latest_item_id=Subquery(latest_item_base.values('id')[:1]))
+                    .filter(id=F('_latest_item_id'))
+                    .annotate(
+                        latest_history_date=Subquery(latest_item_history.values('history_date')[:1]),
+                        latest_history_user=Subquery(latest_item_history.values('history_user__username')[:1]),
+                    )
+                    .select_related('issued_by')
+                    .prefetch_related('ppeproduct')
+                )
+                latest_items = list(latest_items_queryset)
+                attach_employee_snapshots(latest_items)
+                latest_item_by_employee = {str(item.employee_service_id): item for item in latest_items}
+
+            enriched_employees = []
+            for employee in employee_rows:
+                employee_copy = dict(employee)
+                latest_item = latest_item_by_employee.get(str(employee_copy.get('external_id') or employee_copy.get('id')))
+                employee_copy['latest_item_id'] = latest_item.id if latest_item else None
+                employee_copy['latest_item_issued_at'] = latest_item.issued_at if latest_item else None
+                employee_copy['history_date'] = employee_copy.get('history_date') or (getattr(latest_item, 'latest_history_date', None) if latest_item else None)
+                employee_copy['history_user'] = employee_copy.get('history_user') or (getattr(latest_item, 'latest_history_user', None) if latest_item else None)
+                enriched_employees.append(employee_copy)
+
+            rows = build_employee_table_rows(enriched_employees, include_issue_history=include_issue_history)
+            return Response({
+                'count': total_count,
+                'next': employees_payload.get('next') if isinstance(employees_payload, dict) else None,
+                'previous': employees_payload.get('previous') if isinstance(employees_payload, dict) else None,
+                'results': rows,
+            })
+
         employees_payload = list_employees_bootstrapped(search=search or None, tabel_number=tabel_number or None)
         employee_rows = [build_employee_snapshot(employee) for employee in extract_employee_results(employees_payload)]
 
@@ -2654,7 +2733,6 @@ class AllItemsApiView(APIView):
                 if history_user in str(employee.get('history_user') or '').lower()
             ]
 
-        no_pagination = request.GET.get('no_pagination', '').lower() == 'true'
         if no_pagination:
             return Response(build_employee_table_rows(enriched_employees, include_issue_history=include_issue_history))
 
