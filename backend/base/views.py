@@ -104,6 +104,22 @@ def extract_service_results(payload):
     return []
 
 
+def get_employee_gender_code(employee_payload):
+    if not employee_payload:
+        return ''
+    gender = str(employee_payload.get('gender') or '').strip().upper()
+    return gender if gender in {'M', 'F'} else ''
+
+
+def filter_ppe_products_for_employee_gender(products_queryset, employee_payload):
+    employee_gender = get_employee_gender_code(employee_payload)
+    if not employee_gender:
+        return products_queryset
+    return products_queryset.filter(
+        Q(target_gender=PPEProduct.TARGET_GENDER_ALL) | Q(target_gender=employee_gender)
+    )
+
+
 def normalize_department_payload(department):
     return {
         'id': department.get('id'),
@@ -3113,7 +3129,10 @@ class ItemAddApiView(APIView):
             else:
                 payload_item = build_employee_only_item_payload(employee)
 
-        ppe_products = PPEProduct.objects.filter(is_active=True).order_by('name')
+        ppe_products = filter_ppe_products_for_employee_gender(
+            PPEProduct.objects.filter(is_active=True).order_by('name'),
+            source_employee,
+        )
 
         latest_issue_dates_by_product = {}
         if source_employee:
@@ -3258,6 +3277,24 @@ class ItemAddApiView(APIView):
         products = list(PPEProduct.objects.filter(id__in=ppeproduct_ids))
         if not products:
             return Response({"error": "Tanlangan Средства защиты topilmadi"}, status=status.HTTP_400_BAD_REQUEST)
+
+        employee_gender = get_employee_gender_code(source_employee)
+        incompatible_products = []
+        if employee_gender:
+            for product in products:
+                target_gender = str(product.target_gender or PPEProduct.TARGET_GENDER_ALL).strip().upper()
+                if target_gender not in {PPEProduct.TARGET_GENDER_ALL, employee_gender}:
+                    incompatible_products.append(product.name)
+
+        if incompatible_products:
+            return Response(
+                {
+                    "error": "Выбраны СИЗ, не подходящие по полу сотрудника: " + ", ".join(incompatible_products),
+                    "error_code": "ppe_gender_mismatch",
+                    "products": incompatible_products,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         blocked_products = []
         for product in products:

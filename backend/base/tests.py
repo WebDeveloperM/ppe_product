@@ -260,6 +260,84 @@ class FaceIdExemptionAccessTests(APITestCase):
 		self.assertFalse(response.data['employee']['requires_face_id_checkout'])
 
 
+class ItemAddGenderFilteringTests(APITestCase):
+	def setUp(self):
+		self.admin = User.objects.create_superuser(username='gender_admin', password='test12345')
+		self.client.force_authenticate(user=self.admin)
+
+		department = Department.objects.create(name='Gender Department', boss_fullName='Boss Name')
+		section = Section.objects.create(name='Gender Section', department=department)
+
+		self.employee = Employee.objects.create(
+			first_name='Ali',
+			last_name='Valiyev',
+			surname='Karimovich',
+			tabel_number='GENDER-001',
+			gender='M',
+			height='180',
+			clothe_size='52',
+			shoe_size='42',
+			section=section,
+			department=department,
+			position='Operator',
+		)
+
+		self.unisex_product = PPEProduct.objects.create(name='Каска', target_gender='ALL')
+		self.male_product = PPEProduct.objects.create(name='Спецодежда мужская', target_gender='M')
+		self.female_product = PPEProduct.objects.create(name='Спецодежда женская', target_gender='F')
+
+		self.item = Item.objects.create(
+			employee_service_id=self.employee.id,
+			employee_slug=self.employee.slug,
+			slug=self.employee.slug,
+			employee_snapshot={
+				'id': self.employee.id,
+				'external_id': str(self.employee.id),
+				'slug': self.employee.slug,
+				'first_name': self.employee.first_name,
+				'last_name': self.employee.last_name,
+				'surname': self.employee.surname,
+				'tabel_number': self.employee.tabel_number,
+				'gender': self.employee.gender,
+				'height': self.employee.height,
+				'clothe_size': self.employee.clothe_size,
+				'shoe_size': self.employee.shoe_size,
+				'position': self.employee.position,
+				'department': {
+					'id': self.employee.department_id,
+					'name': self.employee.department.name,
+					'boss_fullName': self.employee.department.boss_fullName,
+				},
+				'section': {
+					'id': self.employee.section_id,
+					'name': self.employee.section.name,
+					'department_id': self.employee.department_id,
+				},
+			},
+			is_deleted=False,
+		)
+
+	def test_add_item_get_filters_products_by_employee_gender(self):
+		response = self.client.get(f'/api/v1/add-item/{self.employee.slug}')
+
+		self.assertEqual(response.status_code, 200)
+		product_names = {product['name'] for product in response.data['ppe_products']}
+		self.assertIn('Каска', product_names)
+		self.assertIn('Спецодежда мужская', product_names)
+		self.assertNotIn('Спецодежда женская', product_names)
+
+	def test_add_item_post_rejects_product_with_wrong_gender(self):
+		response = self.client.post(
+			f'/api/v1/add-item/{self.employee.slug}',
+			{'ppeproduct': [self.female_product.id], 'ppe_sizes': {}},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertEqual(response.data['error_code'], 'ppe_gender_mismatch')
+		self.assertIn('Спецодежда женская', response.data['error'])
+
+
 class EmployeeServiceFaceFallbackTests(APITestCase):
 	def setUp(self):
 		self.admin = User.objects.create_superuser(username='face_fallback_admin', password='test12345')
