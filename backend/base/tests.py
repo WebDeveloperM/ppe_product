@@ -195,6 +195,22 @@ class FaceIdExemptionAccessTests(APITestCase):
 		profile.role = UserRole.WAREHOUSE_MANAGER
 		profile.save(update_fields=['role'])
 		self.client.force_authenticate(user=self.manager)
+		department = Department.objects.create(name='Face Department', boss_fullName='Boss Name')
+		section = Section.objects.create(name='Face Section', department=department)
+		self.local_employee = Employee.objects.create(
+			first_name='Timur',
+			last_name='Bakayev',
+			surname='Ruslanovich',
+			tabel_number='7777',
+			gender='M',
+			height='180',
+			clothe_size='52',
+			shoe_size='42',
+			section=section,
+			department=department,
+			position='Engineer',
+			requires_face_id_checkout=True,
+		)
 
 	@patch('base.views.update_face_id_exemption')
 	@patch('base.views.fetch_employee_by_slug_or_404')
@@ -218,6 +234,30 @@ class FaceIdExemptionAccessTests(APITestCase):
 		self.assertEqual(response.status_code, 200)
 		fetch_employee_mock.assert_called_once_with('default-7777-timur-bakayev')
 		update_face_id_mock.assert_called_once_with('default-7777-timur-bakayev', False)
+
+	@patch('base.views.update_face_id_exemption')
+	@patch('base.views.fetch_employee_by_slug_or_404')
+	def test_warehouse_manager_falls_back_to_local_face_id_update_when_service_key_is_read_only(self, fetch_employee_mock, update_face_id_mock):
+		fetch_employee_mock.return_value = {
+			'slug': 'default-7777-timur-bakayev',
+			'tabel_number': '7777',
+			'first_name': 'Timur',
+			'last_name': 'Bakayev',
+			'surname': 'Ruslanovich',
+		}
+		update_face_id_mock.side_effect = EmployeeServiceClientError('Сервисный API-ключ поддерживает только операции чтения.')
+
+		response = self.client.patch(
+			'/api/v1/employees/default-7777-timur-bakayev/face-id-exemption/',
+			{'requires_face_id_checkout': False},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.local_employee.refresh_from_db()
+		self.assertFalse(self.local_employee.requires_face_id_checkout)
+		self.assertEqual(response.data['employee']['slug'], self.local_employee.slug)
+		self.assertFalse(response.data['employee']['requires_face_id_checkout'])
 
 
 class EmployeeServiceFaceFallbackTests(APITestCase):
@@ -338,6 +378,21 @@ class EmployeeServiceMediaProxyTests(APITestCase):
 			payload['base_image_url'],
 			'/api/v1/employee-service/media-proxy/?path=%2Fmedia%2Femployee_base_images%2F5413-a.jpg',
 		)
+
+	def test_build_employee_snapshot_preserves_employee_service_size_fields(self):
+		payload = build_employee_snapshot({
+			'special_clothing_size': '54',
+			'clothe_size': '56',
+			'shoe_size': '42',
+			'jacket_size': '58',
+			'tshirt_size': 'L',
+		})
+
+		self.assertEqual(payload['special_clothing_size'], '54')
+		self.assertEqual(payload['clothe_size'], '56')
+		self.assertEqual(payload['shoe_size'], '42')
+		self.assertEqual(payload['jacket_size'], '58')
+		self.assertEqual(payload['tshirt_size'], 'L')
 
 	@patch('base.employee_service_views.requests.get')
 	@patch('base.employee_service_views.settings')

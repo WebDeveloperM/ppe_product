@@ -33,8 +33,11 @@ type ItemDetail = {
     base_image_url?: string | null;
     base_image_data?: string | null;
     position?: string;
+    special_clothing_size?: string;
     clothe_size?: string;
     shoe_size?: string;
+    jacket_size?: string;
+    tshirt_size?: string;
     date_of_employment?: string | null;
     date_of_change_position?: string | null;
     department?: {
@@ -168,6 +171,11 @@ const ViewCompyuter = () => {
                 <h1 className="p-5 pt-2 pb-3 font-semibold">Персональные данные</h1>
                 <div className="grid sm:grid-cols-12 gap-4 p-5 py-3 pb-7 border-b mb-2">
                   <ModalDataInput
+                    label="Спецодежда"
+                    inputData={data.employee?.special_clothing_size || '-'}
+                    wrapperClassName="col-span-3"
+                  />
+                  <ModalDataInput
                     label="Размер одежды"
                     inputData={data.employee?.clothe_size || '-'}
                     wrapperClassName="col-span-3"
@@ -175,6 +183,16 @@ const ViewCompyuter = () => {
                   <ModalDataInput
                     label="Размер обуви"
                     inputData={data.employee?.shoe_size || '-'}
+                    wrapperClassName="col-span-3"
+                  />
+                  <ModalDataInput
+                    label="Куртка"
+                    inputData={data.employee?.jacket_size || '-'}
+                    wrapperClassName="col-span-3"
+                  />
+                  <ModalDataInput
+                    label="Футболка"
+                    inputData={data.employee?.tshirt_size || '-'}
                     wrapperClassName="col-span-3"
                   />
                   <ModalDataInput

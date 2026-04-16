@@ -630,6 +630,40 @@ def should_fallback_from_employee_service_error(exc: EmployeeServiceClientError)
     return False
 
 
+def update_local_face_id_exemption(employee_payload: dict, requires_face_id_checkout: bool):
+    if not employee_payload:
+        return None
+
+    queryset = Employee.objects.filter(is_deleted=False)
+    employee_slug = str(employee_payload.get('slug') or '').strip()
+    tabel_number = str(employee_payload.get('tabel_number') or '').strip()
+    external_id = str(employee_payload.get('external_id') or employee_payload.get('id') or '').strip()
+
+    local_employee = None
+    if employee_slug:
+        local_employee = queryset.filter(slug=employee_slug).first()
+    if local_employee is None and tabel_number:
+        local_employee = queryset.filter(tabel_number=tabel_number).first()
+    if local_employee is None and external_id.isdigit():
+        local_employee = queryset.filter(pk=int(external_id)).first()
+
+    if local_employee is None:
+        return None
+
+    local_employee.requires_face_id_checkout = bool(requires_face_id_checkout)
+    local_employee.save(update_fields=['requires_face_id_checkout', 'updatedAt'])
+    normalized_employee = build_employee_snapshot(local_employee)
+    return {
+        'success': True,
+        'employee': {
+            'id': local_employee.id,
+            'slug': normalized_employee.get('slug'),
+            'full_name': normalized_employee.get('full_name'),
+            'requires_face_id_checkout': local_employee.requires_face_id_checkout,
+        },
+    }
+
+
 def resolve_employee_reference_image_url(employee_payload: dict):
     raw_value = str(
         employee_payload.get('base_image_url')
@@ -3878,6 +3912,10 @@ class EmployeeFaceIdExemptionApiView(APIView):
             remote_payload = update_face_id_exemption(target_slug, bool(requires_face_id))
             return Response(remote_payload, status=status.HTTP_200_OK)
         except EmployeeServiceClientError as exc:
+            if should_fallback_from_employee_service_error(exc):
+                local_payload = update_local_face_id_exemption(employee or {}, bool(requires_face_id))
+                if local_payload is not None:
+                    return Response(local_payload, status=status.HTTP_200_OK)
             return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
