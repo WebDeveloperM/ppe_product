@@ -60,7 +60,7 @@ class SettingsSectionSerializer(serializers.ModelSerializer):
 class PPEProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = PPEProduct
-        fields = ["id", "name", "renewal_months", "low_stock_threshold", "type_product", "is_active"]
+        fields = ["id", "name", "renewal_months", "low_stock_threshold", "type_product", "target_gender", "is_active"]
 
 
 class ResponsiblePersonSerializer(serializers.ModelSerializer):

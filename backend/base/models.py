@@ -129,12 +129,26 @@ class Employee(models.Model):
         
 
 class PPEProduct(models.Model):
+    TARGET_GENDER_ALL = 'ALL'
+    TARGET_GENDER_MALE = 'M'
+    TARGET_GENDER_FEMALE = 'F'
+    TARGET_GENDER_CHOICES = [
+        (TARGET_GENDER_ALL, 'Для всех'),
+        (TARGET_GENDER_MALE, 'Мужской'),
+        (TARGET_GENDER_FEMALE, 'Женский'),
+    ]
    
     name = models.CharField(max_length=255, verbose_name="Наименование")
     
     renewal_months = models.PositiveIntegerField(default=0, verbose_name="Срок обновления (в месяцах)", help_text="0 bo'lsa muddat yo'q (cheklanmagan)")
     low_stock_threshold = models.PositiveIntegerField(default=0, verbose_name="Порог остатка")
     type_product = models.CharField(max_length=255, choices=[('Комплект', 'Комплект'), ('Пара', 'Пара'), ('ШТ','ШТ')], verbose_name="Единица измерения", blank=True, null=True)
+    target_gender = models.CharField(
+        max_length=3,
+        choices=TARGET_GENDER_CHOICES,
+        default=TARGET_GENDER_ALL,
+        verbose_name='Для кого',
+    )
     is_active = models.BooleanField(default=True)
 
     class Meta:

@@ -10,7 +10,18 @@ type PPEProduct = {
   renewal_months: number;
   low_stock_threshold: number;
   type_product: 'Комплект' | 'Пора' | 'ШТ' | '';
+  target_gender: 'ALL' | 'M' | 'F';
   is_active: boolean;
+};
+
+const PRODUCT_GENDER_OPTIONS = [
+  { value: 'ALL', label: 'Для всех' },
+  { value: 'M', label: 'Мужской' },
+  { value: 'F', label: 'Женский' },
+] as const;
+
+const getProductGenderLabel = (value?: string) => {
+  return PRODUCT_GENDER_OPTIONS.find((option) => option.value === value)?.label || 'Для всех';
 };
 
 const normalizeRole = (rawRole: string | null): 'admin' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
@@ -45,6 +56,7 @@ const ProductPage = () => {
   const [productRenewalMonths, setProductRenewalMonths] = useState<string>('');
   const [productLowStockThreshold, setProductLowStockThreshold] = useState<string>('');
   const [productType, setProductType] = useState<'Комплект' | 'Пора' | 'ШТ'>('ШТ');
+  const [productGender, setProductGender] = useState<'ALL' | 'M' | 'F'>('ALL');
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
 
   const loadProducts = async () => {
@@ -82,6 +94,7 @@ const ProductPage = () => {
           renewal_months: Number(productRenewalMonths || 0),
           low_stock_threshold: Number(productLowStockThreshold || 0),
           type_product: productType,
+          target_gender: productGender,
           is_active: currentProduct?.is_active ?? true,
         });
         setProducts((prev) => prev.map((entry) => (entry.id === editingProductId ? response.data : entry)));
@@ -93,6 +106,7 @@ const ProductPage = () => {
           renewal_months: Number(productRenewalMonths || 0),
           low_stock_threshold: Number(productLowStockThreshold || 0),
           type_product: productType,
+          target_gender: productGender,
           is_active: true,
         });
         setProducts((prev) => [...prev, response.data]);
@@ -102,6 +116,7 @@ const ProductPage = () => {
       setProductRenewalMonths('');
       setProductLowStockThreshold('');
       setProductType('ШТ');
+      setProductGender('ALL');
     } catch (error) {
       toast.error(getBackendError(error, editingProductId !== null ? 'Ошибка при обновлении СИЗ' : 'Ошибка при добавлении СИЗ'));
     }
@@ -113,6 +128,7 @@ const ProductPage = () => {
     setProductRenewalMonths(String(item.renewal_months ?? ''));
     setProductLowStockThreshold(String(item.low_stock_threshold ?? ''));
     setProductType((item.type_product || 'ШТ') as 'Комплект' | 'Пора' | 'ШТ');
+    setProductGender((item.target_gender || 'ALL') as 'ALL' | 'M' | 'F');
   };
 
   const handleDeleteProduct = async (item: PPEProduct) => {
@@ -128,6 +144,7 @@ const ProductPage = () => {
         setProductRenewalMonths('');
         setProductLowStockThreshold('');
         setProductType('ШТ');
+        setProductGender('ALL');
       }
       toast.success('СИЗ удален');
     } catch (error) {
@@ -141,6 +158,7 @@ const ProductPage = () => {
     setProductRenewalMonths('');
     setProductLowStockThreshold('');
     setProductType('ШТ');
+    setProductGender('ALL');
   };
 
   if (!canEditBaseSettings) {
@@ -200,6 +218,17 @@ const ProductPage = () => {
               </select>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <select
+                value={productGender}
+                onChange={(e) => setProductGender(e.target.value as 'ALL' | 'M' | 'F')}
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              >
+                {PRODUCT_GENDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
               <input
                 type="number"
                 min={0}
@@ -208,6 +237,8 @@ const ProductPage = () => {
                 placeholder="Срок обновления (мес.)"
                 className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
               />
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <input
                 type="number"
                 min={0}
@@ -242,6 +273,7 @@ const ProductPage = () => {
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Название</th>
                     <th className="px-3 py-2 text-left font-semibold">Тип</th>
+                    <th className="px-3 py-2 text-left font-semibold">Для кого</th>
                     <th className="px-3 py-2 text-left font-semibold">Срок (мес.)</th>
                     <th className="px-3 py-2 text-left font-semibold">Порог</th>
                     {isAdmin && <th className="px-3 py-2 text-left font-semibold">Действия</th>}
@@ -252,6 +284,7 @@ const ProductPage = () => {
                     <tr key={item.id} className="border-t border-stroke dark:border-strokedark">
                       <td className="px-3 py-2">{item.name}</td>
                       <td className="px-3 py-2">{item.type_product}</td>
+                      <td className="px-3 py-2">{getProductGenderLabel(item.target_gender)}</td>
                       <td className="px-3 py-2">{item.renewal_months}</td>
                       <td className="px-3 py-2">{item.low_stock_threshold}</td>
                       {isAdmin && (

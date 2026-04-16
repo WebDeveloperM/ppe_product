@@ -168,20 +168,20 @@ const ViewCompyuter = () => {
                   </div>
                 </div>
 
-                <h1 className="p-5 pt-2 pb-3 font-semibold">Персональные данные</h1>
+                <h1 className="p-5 pt-2 pb-3 font-semibold">Размер персонала</h1>
                 <div className="grid sm:grid-cols-12 gap-4 p-5 py-3 pb-7 border-b mb-2">
                   <ModalDataInput
-                    label="Спецодежда"
+                    label="Спецодежды"
                     inputData={data.employee?.special_clothing_size || '-'}
                     wrapperClassName="col-span-3"
                   />
                   <ModalDataInput
-                    label="Размер одежды"
+                    label="Одежды"
                     inputData={data.employee?.clothe_size || '-'}
                     wrapperClassName="col-span-3"
                   />
                   <ModalDataInput
-                    label="Размер обуви"
+                    label="Обуви"
                     inputData={data.employee?.shoe_size || '-'}
                     wrapperClassName="col-span-3"
                   />
