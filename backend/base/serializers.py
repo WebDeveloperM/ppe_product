@@ -85,6 +85,50 @@ class DepartmentPPERenewalRuleSerializer(serializers.ModelSerializer):
         ]
 
 
+class PositionPPERenewalRuleSerializer(serializers.ModelSerializer):
+    ppeproduct_name = serializers.CharField(source='ppeproduct.name', read_only=True)
+    ppeproduct_type_product = serializers.CharField(source='ppeproduct.type_product', read_only=True)
+    ppeproduct_target_gender = serializers.CharField(source='ppeproduct.target_gender', read_only=True)
+    ppeproduct_target_gender_display = serializers.CharField(source='ppeproduct.get_target_gender_display', read_only=True)
+
+    class Meta:
+        model = PositionPPERenewalRule
+        fields = [
+            'id',
+            'position_name',
+            'ppeproduct',
+            'ppeproduct_name',
+            'ppeproduct_type_product',
+            'ppeproduct_target_gender',
+            'ppeproduct_target_gender_display',
+            'renewal_months',
+            'updatedAt',
+        ]
+
+    def validate_position_name(self, value):
+        normalized = ' '.join(str(value or '').strip().split())
+        if not normalized:
+            raise serializers.ValidationError('Выберите должность.')
+        return normalized
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        position_name = attrs.get('position_name', getattr(self.instance, 'position_name', ''))
+        ppeproduct = attrs.get('ppeproduct', getattr(self.instance, 'ppeproduct', None))
+        position_key = normalize_employee_position(position_name)
+
+        if position_key and ppeproduct is not None:
+            queryset = PositionPPERenewalRule.objects.filter(position_key=position_key, ppeproduct=ppeproduct)
+            if self.instance is not None:
+                queryset = queryset.exclude(pk=self.instance.pk)
+            if queryset.exists():
+                raise serializers.ValidationError({
+                    'position_name': 'Для этой должности уже задана норма по выбранному СИЗ.',
+                })
+
+        return attrs
+
+
 class ResponsiblePersonSerializer(serializers.ModelSerializer):
     class Meta:
         model = ResponsiblePerson
@@ -296,27 +340,17 @@ class ItemSerializer(serializers.ModelSerializer):
             "full_name": full_name or obj.issued_by.username,
         }
 
-    def _get_department_service_id(self, item_obj):
+    def _get_position_key(self, item_obj):
         payload = getattr(item_obj, '_employee_snapshot_override', None) or getattr(item_obj, 'employee_snapshot', None)
         employee_payload = build_employee_snapshot(payload)
-
-        department = employee_payload.get('department') or {}
-        section = employee_payload.get('section') or {}
-
-        for raw_value in (department.get('id'), section.get('department_id')):
-            try:
-                return int(raw_value)
-            except (TypeError, ValueError):
-                continue
-
-        return None
+        return normalize_employee_position(employee_payload.get('position'))
 
     def _get_effective_renewal_months(self, product, item_obj):
-        department_service_id = self._get_department_service_id(item_obj)
-        if department_service_id is not None:
+        position_key = self._get_position_key(item_obj)
+        if position_key:
             rule = (
-                DepartmentPPERenewalRule.objects
-                .filter(department_service_id=department_service_id, ppeproduct_id=product.id)
+                PositionPPERenewalRule.objects
+                .filter(position_key=position_key, ppeproduct_id=product.id)
                 .only('renewal_months')
                 .first()
             )

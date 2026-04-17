@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from .models import Department, Section, Employee, EmployeeFaceIdOverride, PPEProduct, DepartmentPPERenewalRule, PendingItemIssue, Item
+from .models import Department, Section, Employee, EmployeeFaceIdOverride, PPEProduct, PositionPPERenewalRule, PendingItemIssue, Item
 from .employee_data import build_employee_snapshot
 from .employee_service_client import EmployeeServiceClientError
 from users.models import RolePageAccess, UserRole
@@ -421,9 +421,8 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		)
 
 		self.product = PPEProduct.objects.create(name='Спецодежда (мужское)', renewal_months=6, target_gender='M')
-		DepartmentPPERenewalRule.objects.create(
-			department_service_id=1,
-			department_name='1-Цех',
+		PositionPPERenewalRule.objects.create(
+			position_name='Operator',
 			ppeproduct=self.product,
 			renewal_months=12,
 		)
@@ -461,14 +460,14 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		)
 		self.item.ppeproduct.add(self.product)
 
-	def test_add_item_get_returns_department_override_months(self):
+	def test_add_item_get_returns_position_override_months(self):
 		response = self.client.get(f'/api/v1/add-item/{self.employee.slug}')
 
 		self.assertEqual(response.status_code, 200)
 		product_payload = next(item for item in response.data['ppe_products'] if item['id'] == self.product.id)
 		self.assertEqual(product_payload['renewal_months'], 12)
 
-	def test_add_item_post_blocks_until_department_override_period_expires(self):
+	def test_add_item_post_blocks_until_position_override_period_expires(self):
 		response = self.client.post(
 			f'/api/v1/add-item/{self.employee.slug}',
 			{'ppeproduct': [self.product.id], 'ppe_sizes': {str(self.product.id): '52'}},
@@ -479,18 +478,13 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		self.assertEqual(response.data['error_code'], 'ppe_not_due')
 		self.assertIn('Спецодежда (мужское)', response.data['error'])
 
-	@patch('base.views.get_service_department_map')
-	def test_settings_rules_post_creates_multiple_departments_in_one_request(self, department_map_mock):
-		department_map_mock.return_value = {
-			2: {'id': 2, 'name': '2-Цех'},
-			3: {'id': 3, 'name': '3-Цех'},
-		}
+	def test_settings_rules_post_creates_multiple_positions_in_one_request(self):
 		bulk_product = PPEProduct.objects.create(name='Каска bulk', renewal_months=9, target_gender='ALL')
 
 		response = self.client.post(
 			'/api/v1/settings/ppe-department-rules/',
 			{
-				'department_service_ids': [2, 3],
+				'position_names': ['Operator', 'Welder'],
 				'ppeproduct': bulk_product.id,
 				'renewal_months': 9,
 			},
@@ -500,17 +494,35 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		self.assertEqual(response.status_code, 201)
 		self.assertEqual(len(response.data), 2)
 		self.assertCountEqual(
-			DepartmentPPERenewalRule.objects.filter(ppeproduct=bulk_product).values_list('department_service_id', flat=True),
-			[2, 3],
+			PositionPPERenewalRule.objects.filter(ppeproduct=bulk_product).values_list('position_name', flat=True),
+			['Operator', 'Welder'],
 		)
 		self.assertCountEqual(
-			[item['department_name'] for item in response.data],
-			['2-Цех', '3-Цех'],
+			[item['position_name'] for item in response.data],
+			['Operator', 'Welder'],
 		)
+
+	@patch('base.views.list_employees', return_value=[
+		{
+			'id': 1,
+			'external_id': '1',
+			'position': 'Operator',
+		},
+		{
+			'id': 2,
+			'external_id': '2',
+			'position': 'Welder',
+		},
+	])
+	def test_settings_positions_endpoint_returns_distinct_positions(self, _employees_mock):
+		response = self.client.get('/api/v1/settings/employee-positions/')
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual([item['position_name'] for item in response.data], ['Operator', 'Welder'])
 
 	@patch('base.views.list_sections', return_value=[])
 	@patch('base.views.list_departments', return_value=[])
-	def test_item_view_uses_department_rule_for_product_renewal_months(self, departments_mock, sections_mock):
+	def test_item_view_uses_position_rule_for_product_renewal_months(self, departments_mock, sections_mock):
 		response = self.client.get(f'/api/v1/item-view/{self.employee.slug}')
 
 		self.assertEqual(response.status_code, 200)

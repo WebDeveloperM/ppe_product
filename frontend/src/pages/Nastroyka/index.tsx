@@ -29,8 +29,7 @@ type PPEProduct = {
 
 type DepartmentPPERule = {
   id: number;
-  department_service_id: number;
-  department_name: string;
+  position_name: string;
   ppeproduct: number;
   renewal_months: number;
 };
@@ -294,7 +293,7 @@ const NastroykaPage = () => {
                 />
                 <SettingCard
                   icon={RulesIcon}
-                  title="Нормы выдачи по цехам"
+                  title="Нормы выдачи по должностям"
                   count={departmentRules.length}
                   onClick={() => navigate('/nastroyka/ppe-norms')}
                   color="bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400"

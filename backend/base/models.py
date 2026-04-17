@@ -182,6 +182,10 @@ class PPEProduct(models.Model):
         return self.name
 
 
+def normalize_employee_position(value):
+    return ' '.join(str(value or '').strip().lower().split())
+
+
 class DepartmentPPERenewalRule(models.Model):
     department_service_id = models.PositiveIntegerField(db_index=True, verbose_name='ID цеха из employee_service')
     department_name = models.CharField(max_length=255, verbose_name='Название цеха')
@@ -208,6 +212,39 @@ class DepartmentPPERenewalRule(models.Model):
 
     def __str__(self):
         return f"{self.department_name} — {self.ppeproduct.name} ({self.renewal_months} мес.)"
+
+
+class PositionPPERenewalRule(models.Model):
+    position_name = models.CharField(max_length=255, verbose_name='Должность')
+    position_key = models.CharField(max_length=255, db_index=True, editable=False, verbose_name='Ключ должности')
+    ppeproduct = models.ForeignKey(
+        PPEProduct,
+        on_delete=models.CASCADE,
+        related_name='position_renewal_rules',
+        verbose_name='Средство индивидуальной защиты',
+    )
+    renewal_months = models.PositiveIntegerField(default=0, verbose_name='Срок выдачи (в месяцах)')
+    updatedAt = models.DateTimeField(auto_now=True, verbose_name='Дата изменения', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Норма выдачи СИЗ по должности'
+        verbose_name_plural = 'Нормы выдачи СИЗ по должностям'
+        db_table = 'base_position_ppe_renewal_rule'
+        ordering = ['position_name', 'ppeproduct__name', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['position_key', 'ppeproduct'],
+                name='unique_position_ppe_renewal_rule',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.position_name = ' '.join(str(self.position_name or '').strip().split())
+        self.position_key = normalize_employee_position(self.position_name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.position_name} — {self.ppeproduct.name} ({self.renewal_months} мес.)"
 
 
 class PPEArrival(models.Model):

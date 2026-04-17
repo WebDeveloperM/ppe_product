@@ -316,7 +316,7 @@ function App() {
           element={
             isAuthenticated() && canAccessSettings ? (
               <>
-                <PageTitle title="Нормы выдачи по цехам" />
+                <PageTitle title="Нормы выдачи по должностям" />
                 <DepartmentPPERulePage />
               </>
             ) : (

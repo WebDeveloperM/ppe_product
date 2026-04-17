@@ -33,6 +33,7 @@ urlpatterns = [
     path("settings/departments/<int:pk>/", SettingsDepartmentDetailApiView.as_view()),
     path("settings/sections/", SettingsSectionListCreateApiView.as_view()),
     path("settings/sections/<int:pk>/", SettingsSectionDetailApiView.as_view()),
+    path("settings/employee-positions/", SettingsEmployeePositionListApiView.as_view()),
     path("settings/ppe-products/", SettingsPPEProductListCreateApiView.as_view()),
     path("settings/ppe-products/<int:pk>/", SettingsPPEProductDetailApiView.as_view()),
     path("settings/ppe-department-rules/", SettingsPPEDepartmentRuleListCreateApiView.as_view()),

@@ -43,7 +43,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
     canEditBaseSettings
       ? {
           to: '/nastroyka/ppe-norms',
-          label: 'Нормы выдачи по цехам',
+          label: 'Нормы выдачи по должностям',
           icon: (
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M8 6H20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>

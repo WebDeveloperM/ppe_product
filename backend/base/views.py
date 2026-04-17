@@ -115,21 +115,16 @@ def get_employee_gender_code(employee_payload):
     return normalized if normalized in {'M', 'F'} else ''
 
 
-def get_employee_department_service_id(employee_payload):
+def get_employee_position_key(employee_payload):
     if not employee_payload:
-        return None
+        return ''
 
     if isinstance(employee_payload, dict):
-        department = employee_payload.get('department') or {}
-        raw_value = department.get('id') or employee_payload.get('department_id')
+        raw_value = employee_payload.get('position', '')
     else:
-        department = getattr(employee_payload, 'department', None)
-        raw_value = getattr(department, 'id', None) or getattr(employee_payload, 'department_id', None)
+        raw_value = getattr(employee_payload, 'position', '')
 
-    try:
-        return int(raw_value)
-    except (TypeError, ValueError):
-        return None
+    return normalize_employee_position(raw_value)
 
 
 def filter_ppe_products_for_employee_gender(products_queryset, employee_payload):
@@ -142,17 +137,38 @@ def filter_ppe_products_for_employee_gender(products_queryset, employee_payload)
 
 
 def get_effective_product_renewal_months(product, employee_payload):
-    department_service_id = get_employee_department_service_id(employee_payload)
-    if department_service_id is not None:
+    position_key = get_employee_position_key(employee_payload)
+    if position_key:
         rule = (
-            DepartmentPPERenewalRule.objects
-            .filter(department_service_id=department_service_id, ppeproduct_id=product.id)
+            PositionPPERenewalRule.objects
+            .filter(position_key=position_key, ppeproduct_id=product.id)
             .only('renewal_months')
             .first()
         )
         if rule is not None:
             return int(rule.renewal_months or 0)
     return int(product.renewal_months or 0)
+
+
+def get_available_employee_positions():
+    payload = list_employees_bootstrapped(source_system=None, no_pagination=True)
+    employees = [build_employee_snapshot(item) for item in extract_employee_results(payload)]
+
+    position_map = {}
+    for employee in employees:
+        position_name = ' '.join(str(employee.get('position') or '').strip().split())
+        position_key = normalize_employee_position(position_name)
+        if not position_key:
+            continue
+
+        entry = position_map.setdefault(position_key, {
+            'position_name': position_name,
+            'position_key': position_key,
+            'employee_count': 0,
+        })
+        entry['employee_count'] += 1
+
+    return sorted(position_map.values(), key=lambda item: item['position_name'].lower())
 
 
 def get_service_department_map():
@@ -531,8 +547,8 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
         if permission_error:
             return permission_error
 
-        rules = DepartmentPPERenewalRule.objects.select_related('ppeproduct').all()
-        serializer = DepartmentPPERenewalRuleSerializer(rules, many=True)
+        rules = PositionPPERenewalRule.objects.select_related('ppeproduct').all()
+        serializer = PositionPPERenewalRuleSerializer(rules, many=True)
         return Response(serializer.data)
 
     def post(self, request):
@@ -540,41 +556,32 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
         if permission_error:
             return permission_error
 
-        raw_department_ids = request.data.get('department_service_ids')
-        if raw_department_ids is None:
-            raw_department_ids = [request.data.get('department_service_id')]
-        if not isinstance(raw_department_ids, list):
-            raw_department_ids = [raw_department_ids]
+        raw_position_names = request.data.get('position_names')
+        if raw_position_names is None:
+            raw_position_names = [request.data.get('position_name')]
+        if not isinstance(raw_position_names, list):
+            raw_position_names = [raw_position_names]
 
-        department_service_ids = []
-        for raw_value in raw_department_ids:
-            try:
-                department_service_id = int(raw_value)
-            except (TypeError, ValueError):
+        normalized_positions = []
+        seen_position_keys = set()
+        for raw_value in raw_position_names:
+            position_name = ' '.join(str(raw_value or '').strip().split())
+            position_key = normalize_employee_position(position_name)
+            if not position_key or position_key in seen_position_keys:
                 continue
-            if department_service_id not in department_service_ids:
-                department_service_ids.append(department_service_id)
+            seen_position_keys.add(position_key)
+            normalized_positions.append(position_name)
 
-        if not department_service_ids:
-            return Response({'error': 'Выберите хотя бы один цех.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            department_map = get_service_department_map()
-        except EmployeeServiceClientError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        if not normalized_positions:
+            return Response({'error': 'Выберите хотя бы одну должность.'}, status=status.HTTP_400_BAD_REQUEST)
 
         payloads = []
-        for department_service_id in department_service_ids:
-            department = department_map.get(department_service_id)
-            if not department:
-                return Response({'error': f'Цех с ID {department_service_id} не найден.'}, status=status.HTTP_400_BAD_REQUEST)
-
+        for position_name in normalized_positions:
             payload = request.data.copy()
-            payload['department_service_id'] = department_service_id
-            payload['department_name'] = department.get('name', '')
+            payload['position_name'] = position_name
             payloads.append(payload)
 
-        serializer = DepartmentPPERenewalRuleSerializer(data=payloads, many=True)
+        serializer = PositionPPERenewalRuleSerializer(data=payloads, many=True)
         if serializer.is_valid():
             with transaction.atomic():
                 serializer.save()
@@ -607,6 +614,18 @@ class SettingsResponsiblePersonListCreateApiView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class SettingsEmployeePositionListApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        permission_error = ensure_can_modify(request)
+        if permission_error:
+            return permission_error
+
+        return Response(get_available_employee_positions())
 
 
 class SettingsDepartmentDetailApiView(APIView):
@@ -698,28 +717,16 @@ class SettingsPPEDepartmentRuleDetailApiView(APIView):
         if permission_error:
             return permission_error
 
-        rule = get_object_or_404(DepartmentPPERenewalRule, pk=pk)
+        rule = get_object_or_404(PositionPPERenewalRule, pk=pk)
 
-        department_service_id = request.data.get('department_service_id', rule.department_service_id)
-        try:
-            department_service_id = int(department_service_id)
-        except (TypeError, ValueError):
-            return Response({'error': 'Выберите цех.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            department_map = get_service_department_map()
-        except EmployeeServiceClientError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-
-        department = department_map.get(department_service_id)
-        if not department:
-            return Response({'error': 'Выбранный цех не найден.'}, status=status.HTTP_400_BAD_REQUEST)
+        position_name = ' '.join(str(request.data.get('position_name', rule.position_name) or '').strip().split())
+        if not position_name:
+            return Response({'error': 'Выберите должность.'}, status=status.HTTP_400_BAD_REQUEST)
 
         payload = request.data.copy()
-        payload['department_service_id'] = department_service_id
-        payload['department_name'] = department.get('name', '')
+        payload['position_name'] = position_name
 
-        serializer = DepartmentPPERenewalRuleSerializer(rule, data=payload, partial=True)
+        serializer = PositionPPERenewalRuleSerializer(rule, data=payload, partial=True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
@@ -731,7 +738,7 @@ class SettingsPPEDepartmentRuleDetailApiView(APIView):
         if permission_error:
             return permission_error
 
-        rule = get_object_or_404(DepartmentPPERenewalRule, pk=pk)
+        rule = get_object_or_404(PositionPPERenewalRule, pk=pk)
         rule.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
