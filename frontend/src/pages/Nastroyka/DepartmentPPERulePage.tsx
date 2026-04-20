@@ -100,6 +100,7 @@ const DepartmentPPERulePage = () => {
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<DepartmentPPERuleGroup | null>(null);
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
   const treeDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -637,6 +638,14 @@ const DepartmentPPERulePage = () => {
     }
   };
 
+  const openBulkDeleteModal = () => {
+    if (selectedGroups.length === 0) {
+      toast.warning('Выберите хотя бы одну строку');
+      return;
+    }
+    setIsBulkDeleteModalOpen(true);
+  };
+
   if (!canEditBaseSettings) {
     return (
       <>
@@ -834,7 +843,7 @@ const DepartmentPPERulePage = () => {
             </div>
             <button
               type="button"
-              onClick={handleDeleteSelectedGroups}
+              onClick={openBulkDeleteModal}
               disabled={!isAdmin || selectedGroups.length === 0 || deleteLoading}
               className={`rounded px-4 py-2 text-sm ${isAdmin && selectedGroups.length > 0 && !deleteLoading ? 'bg-red-600 text-white' : 'cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
             >
@@ -956,6 +965,37 @@ const DepartmentPPERulePage = () => {
           </Button>
           <Button color="failure" onClick={confirmGroupDelete} disabled={deleteLoading}>
             {deleteLoading ? 'Удаление...' : 'Удалить все'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={isBulkDeleteModalOpen} onClose={() => !deleteLoading && setIsBulkDeleteModalOpen(false)}>
+        <Modal.Header>Подтвердите массовое удаление</Modal.Header>
+        <Modal.Body>
+          <div className="space-y-3">
+            <div className="flex justify-center text-red-500">
+              <FiAlertTriangle className="h-16 w-16" />
+            </div>
+            <p className="text-center text-base text-slate-600 dark:text-slate-300">
+              {`Танланган ${selectedGroups.length} та қатор нормаларини ўчиришни тасдиқлайсизми?`}
+            </p>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button color="gray" onClick={() => setIsBulkDeleteModalOpen(false)} disabled={deleteLoading}>
+            Отмена
+          </Button>
+          <Button
+            color="failure"
+            onClick={async () => {
+              await handleDeleteSelectedGroups();
+              if (!deleteLoading) {
+                setIsBulkDeleteModalOpen(false);
+              }
+            }}
+            disabled={deleteLoading}
+          >
+            {deleteLoading ? 'Удаление...' : 'Удалить'}
           </Button>
         </Modal.Footer>
       </Modal>
