@@ -95,6 +95,17 @@ const normalizeLoginPart = (value: string | null | undefined): string => {
     .toLowerCase();
 };
 
+const LARGE_USER_MODAL_THEME = {
+  root: {
+    sizes: {
+      '5xl': 'w-[80vw] max-w-[80vw]',
+    },
+  },
+  content: {
+    inner: 'relative flex h-[70vh] max-h-[70vh] flex-col rounded-lg bg-white shadow dark:bg-gray-700',
+  },
+};
+
 const UserPage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
@@ -594,9 +605,9 @@ const UserPage = () => {
         </div>
       </div>
 
-      <Modal show={isUserModalOpen} onClose={closeUserModal} size="5xl">
+      <Modal show={isUserModalOpen} onClose={closeUserModal} size="5xl" theme={LARGE_USER_MODAL_THEME}>
         <Modal.Header>{editingUserId !== null ? 'Изменить пользователя' : 'Добавить пользователя'}</Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="flex-1 overflow-y-auto">
           <form id="user-form" onSubmit={handleCreateOrUpdateUser} className="space-y-4">
             <div ref={employeeDropdownRef} className="relative">
               <label className="mb-1 block text-sm font-medium text-black dark:text-white">Сотрудник</label>
