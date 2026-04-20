@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
 import axioss from '../../api/axios';
 import { BASE_URL } from '../../utils/urls';
@@ -31,6 +31,7 @@ type ArrivalDetailsResponse = {
 type IssuedDetailRow = {
   item_id: number;
   employee_id: number;
+  employee_slug: string;
   employee_name: string;
   tabel_number: string;
   department_name: string;
@@ -236,7 +237,18 @@ const StatisticsDetailsPage = () => {
                   <tr key={`${issue.item_id}-${issue.employee_id}-${index}`} className="border-b border-stroke dark:border-strokedark">
                     <td className="px-3 py-2">{index + 1}</td>
                     <td className="px-3 py-2">{issue.tabel_number || '-'}</td>
-                    <td className="px-3 py-2">{issue.employee_name || '-'}</td>
+                    <td className="px-3 py-2">
+                      {issue.employee_slug ? (
+                        <Link
+                          to={`/item-view/${issue.employee_slug}`}
+                          className="text-blue-600 hover:text-blue-800 hover:underline"
+                        >
+                          {issue.employee_name || '-'}
+                        </Link>
+                      ) : (
+                        issue.employee_name || '-'
+                      )}
+                    </td>
                     <td className="px-3 py-2">{issue.size || '-'}</td>
                     <td className="px-3 py-2">{issue.department_name || '-'}</td>
                     <td className="px-3 py-2">{issue.section_name || '-'}</td>

@@ -710,6 +710,68 @@ class AllItemsDepartmentFilterTests(APITestCase):
 		self.assertEqual(response.data['results'][0]['employee']['department']['id'], 7)
 
 
+class PPEStatisticsIssuedDetailsTests(APITestCase):
+	def setUp(self):
+		self.admin = User.objects.create_superuser(username='issued_stats_admin', password='test12345')
+		self.client.force_authenticate(user=self.admin)
+
+		department = Department.objects.create(name='Stats Department', boss_fullName='Boss Name')
+		section = Section.objects.create(name='Stats Section', department=department)
+
+		self.employee = Employee.objects.create(
+			first_name='Ali',
+			last_name='Valiyev',
+			surname='Karimovich',
+			tabel_number='STAT-001',
+			gender='M',
+			height='180',
+			clothe_size='52',
+			shoe_size='42',
+			section=section,
+			department=department,
+			position='Operator',
+		)
+
+		self.product = PPEProduct.objects.create(name='Stats Helmet', renewal_months=6)
+		self.item = Item.objects.create(
+			employee_service_id=self.employee.id,
+			employee_slug=self.employee.slug,
+			employee_snapshot={
+				'id': self.employee.id,
+				'external_id': str(self.employee.id),
+				'slug': self.employee.slug,
+				'first_name': self.employee.first_name,
+				'last_name': self.employee.last_name,
+				'surname': self.employee.surname,
+				'tabel_number': self.employee.tabel_number,
+				'position': self.employee.position,
+				'department': {
+					'id': self.employee.department_id,
+					'name': self.employee.department.name,
+					'boss_fullName': self.employee.department.boss_fullName,
+				},
+				'section': {
+					'id': self.employee.section_id,
+					'name': self.employee.section.name,
+					'department_id': self.employee.department_id,
+				},
+			},
+			issued_at=timezone.now(),
+			is_deleted=False,
+			issued_by=self.admin,
+		)
+		self.item.ppeproduct.add(self.product)
+		self.item.ppe_sizes = {str(self.product.id): '52'}
+		self.item.save(update_fields=['ppe_sizes'])
+
+	def test_issued_details_response_contains_employee_slug(self):
+		response = self.client.get(f'/api/v1/statistics/ppe-issued-details/?product_id={self.product.id}')
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['total_issued'], 1)
+		self.assertEqual(response.data['issues'][0]['employee_slug'], self.employee.slug)
+
+
 class ItemDetailEmployeeSnapshotRefreshTests(APITestCase):
 	def setUp(self):
 		self.admin = User.objects.create_superuser(username='item_detail_admin', password='test12345')

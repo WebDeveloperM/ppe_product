@@ -3576,6 +3576,7 @@ class PPEStatisticsIssuedDetailsApiView(APIView):
             issues.append({
                 'item_id': item.id,
                 'employee_id': item.employee_service_id,
+                'employee_slug': item.employee_slug or getattr(employee, 'slug', ''),
                 'employee_name': employee_full_name,
                 'tabel_number': employee.tabel_number,
                 'department_name': employee.department.name if getattr(employee, 'department', None) else '',
