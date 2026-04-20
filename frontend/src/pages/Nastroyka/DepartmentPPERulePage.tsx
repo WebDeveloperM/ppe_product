@@ -60,6 +60,19 @@ const normalizeRole = (rawRole: string | null): 'admin' | 'warehouse_manager' | 
 const getBackendError = (error: any, fallback: string) => {
   const data = error?.response?.data;
   if (!data) return fallback;
+  if (Array.isArray(data) && data.length > 0) {
+    const firstItem = data[0];
+    if (typeof firstItem === 'string' && firstItem.trim()) return firstItem;
+    if (firstItem && typeof firstItem === 'object') {
+      const firstNestedField = Object.values(firstItem)[0];
+      if (Array.isArray(firstNestedField) && firstNestedField.length) {
+        return String(firstNestedField[0]);
+      }
+      if (typeof firstNestedField === 'string' && firstNestedField.trim()) {
+        return firstNestedField;
+      }
+    }
+  }
   if (typeof data?.error === 'string' && data.error.trim()) return data.error;
   if (typeof data?.detail === 'string' && data.detail.trim()) return data.detail;
   const firstField = Object.values(data)[0];
@@ -81,13 +94,10 @@ const DepartmentPPERulePage = () => {
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [rules, setRules] = useState<DepartmentPPERule[]>([]);
   const [selectedPositionKeys, setSelectedPositionKeys] = useState<string[]>([]);
-  const [productId, setProductId] = useState('');
-  const [renewalMonths, setRenewalMonths] = useState('');
   const [productMonths, setProductMonths] = useState<Record<number, string>>({});
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [positionSearch, setPositionSearch] = useState('');
-  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
-  const [ruleToDelete, setRuleToDelete] = useState<DepartmentPPERule | null>(null);
+  const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<DepartmentPPERuleGroup | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
@@ -120,6 +130,15 @@ const DepartmentPPERulePage = () => {
       }
     }
     return String(rule.department_name || '').trim();
+  };
+
+  const findExistingRule = (departmentId: number | null, positionName: string, ppeproductId: number) => {
+    const normalizedPositionName = positionName.trim().toLowerCase();
+    return rules.find((rule) => (
+      (rule.department_service_id ?? null) === departmentId
+      && rule.position_name.trim().toLowerCase() === normalizedPositionName
+      && rule.ppeproduct === ppeproductId
+    ));
   };
 
   const departmentTree = useMemo(() => {
@@ -156,27 +175,6 @@ const DepartmentPPERulePage = () => {
         return left.name.localeCompare(right.name, 'ru');
       });
   }, [departments, positions]);
-
-  const positionButtonLabel = useMemo(() => {
-    if (editingRuleId !== null) {
-      if (selectedPositionEntries[0]) {
-        const entry = selectedPositionEntries[0];
-        return entry.department_name ? `${entry.position_name} (${entry.department_name})` : entry.position_name;
-      }
-      return 'Выберите должность';
-    }
-    if (isAllPositionsSelected) {
-      return 'Выбраны все должности';
-    }
-    if (selectedPositionKeys.length === 0) {
-      return 'Выберите цех и должность';
-    }
-    if (selectedPositionEntries.length === 1) {
-      const entry = selectedPositionEntries[0];
-      return entry.department_name ? `${entry.position_name} (${entry.department_name})` : entry.position_name;
-    }
-    return `Выбрано должностей: ${selectedPositionKeys.length}`;
-  }, [editingRuleId, isAllPositionsSelected, selectedPositionEntries, selectedPositionKeys]);
 
   const filteredRules = useMemo(() => {
     const normalizedDepartmentSearch = departmentSearch.trim().toLowerCase();
@@ -223,7 +221,7 @@ const DepartmentPPERulePage = () => {
 
         return left.ppeproduct_name.localeCompare(right.ppeproduct_name, 'ru');
       });
-  }, [departmentNameMap, departmentOrderMap, departmentSearch, positionSearch, rules]);
+  }, [departmentOrderMap, departmentSearch, positionSearch, rules]);
 
   const groupedRules = useMemo<DepartmentPPERuleGroup[]>(() => {
     const groups = new Map<string, DepartmentPPERuleGroup>();
@@ -250,6 +248,32 @@ const DepartmentPPERulePage = () => {
 
     return Array.from(groups.values());
   }, [filteredRules]);
+
+  const editingGroup = useMemo(
+    () => groupedRules.find((group) => group.key === editingGroupKey) ?? null,
+    [editingGroupKey, groupedRules],
+  );
+
+  const positionButtonLabel = useMemo(() => {
+    if (editingGroup !== null) {
+      if (selectedPositionEntries[0]) {
+        const entry = selectedPositionEntries[0];
+        return entry.department_name ? `${entry.position_name} (${entry.department_name})` : entry.position_name;
+      }
+      return 'Выберите должность';
+    }
+    if (isAllPositionsSelected) {
+      return 'Выбраны все должности';
+    }
+    if (selectedPositionKeys.length === 0) {
+      return 'Выберите цех и должность';
+    }
+    if (selectedPositionEntries.length === 1) {
+      const entry = selectedPositionEntries[0];
+      return entry.department_name ? `${entry.position_name} (${entry.department_name})` : entry.position_name;
+    }
+    return `Выбрано должностей: ${selectedPositionKeys.length}`;
+  }, [editingGroup, isAllPositionsSelected, selectedPositionEntries, selectedPositionKeys]);
 
   const productsForBulkEdit = useMemo(
     () => products.filter((product) => product.is_active !== false).sort((left, right) => left.name.localeCompare(right.name, 'ru')),
@@ -296,6 +320,13 @@ const DepartmentPPERulePage = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const resetForm = () => {
+    setSelectedPositionKeys([]);
+    setProductMonths({});
+    setEditingGroupKey(null);
+    setIsTreeDropdownOpen(false);
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (selectedPositionKeys.length === 0) {
@@ -303,86 +334,175 @@ const DepartmentPPERulePage = () => {
       return;
     }
 
+    const selectedEntry = selectedPositionEntries[0];
+    if (!selectedEntry) {
+      toast.warning('Выберите должность');
+      return;
+    }
+
+    const productRules = Object.entries(productMonths)
+      .map(([key, value]) => ({
+        ppeproduct: Number(key),
+        renewal_months: Number(String(value).trim()),
+      }))
+      .filter((item) => Number.isFinite(item.renewal_months));
+
+    if (productRules.length === 0) {
+      toast.warning('Укажите срок выдачи хотя бы для одного СИЗ');
+      return;
+    }
+
     try {
-      if (editingRuleId !== null) {
-        const selectedEntry = selectedPositionEntries[0];
-        if (!selectedEntry) {
-          toast.warning('Выберите должность');
-          return;
-        }
+      if (editingGroup !== null) {
+        const existingRulesByProduct = new Map(editingGroup.items.map((rule) => [rule.ppeproduct, rule]));
+        const nextProductIds = new Set(productRules.map((item) => item.ppeproduct));
 
-        if (!productId) {
-          toast.warning('Выберите средство защиты');
-          return;
-        }
+        const updateRequests = productRules
+          .filter((item) => existingRulesByProduct.has(item.ppeproduct))
+          .map((item) => {
+            const existingRule = existingRulesByProduct.get(item.ppeproduct)!;
+            return axioss.put(`/settings/ppe-department-rules/${existingRule.id}/`, {
+              department_service_id: selectedEntry.department_id,
+              department_name: selectedEntry.department_name,
+              position_name: selectedEntry.position_name,
+              ppeproduct: item.ppeproduct,
+              renewal_months: item.renewal_months,
+            });
+          });
 
-        const payload = {
-          department_service_id: selectedEntry.department_id,
-          department_name: selectedEntry.department_name,
-          position_name: selectedEntry.position_name,
-          ppeproduct: Number(productId),
-          renewal_months: Number(renewalMonths || 0),
-        };
-        const response = await axioss.put(`/settings/ppe-department-rules/${editingRuleId}/`, payload);
-        setRules((prev) => prev.map((item) => (item.id === editingRuleId ? response.data : item)));
-        toast.success('Норма обновлена');
+        const createPayload = productRules
+          .filter((item) => !existingRulesByProduct.has(item.ppeproduct))
+          .map((item) => ({
+            ppeproduct: item.ppeproduct,
+            renewal_months: item.renewal_months,
+          }));
+
+        const deleteRequests = editingGroup.items
+          .filter((rule) => !nextProductIds.has(rule.ppeproduct))
+          .map((rule) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`));
+
+        const [updatedResponses, createdResponse] = await Promise.all([
+          Promise.all(updateRequests),
+          createPayload.length > 0
+            ? axioss.post('/settings/ppe-department-rules/', {
+              position_entries: [{
+                department_service_id: selectedEntry.department_id,
+                department_name: selectedEntry.department_name,
+                position_name: selectedEntry.position_name,
+              }],
+              product_rules: createPayload,
+            })
+            : Promise.resolve(null),
+        ]);
+
+        await Promise.all(deleteRequests);
+
+        const updatedRules = updatedResponses.map((response) => response.data as DepartmentPPERule);
+        const createdRules = createdResponse
+          ? ((Array.isArray(createdResponse.data) ? createdResponse.data : [createdResponse.data]) as DepartmentPPERule[])
+          : [];
+        const deletedRuleIds = new Set(
+          editingGroup.items.filter((rule) => !nextProductIds.has(rule.ppeproduct)).map((rule) => rule.id),
+        );
+
+        setRules((prev) => {
+          const remaining = prev.filter((item) => !deletedRuleIds.has(item.id));
+          const merged = remaining.map((item) => updatedRules.find((updatedItem) => updatedItem.id === item.id) ?? item);
+          return [...merged, ...createdRules];
+        });
+        toast.success('Нормы обновлены');
       } else {
-        const productRules = Object.entries(productMonths)
-          .map(([key, value]) => ({
-            ppeproduct: Number(key),
-            renewal_months: Number(String(value).trim()),
-          }))
-          .filter((item) => Number.isFinite(item.renewal_months));
+        const updateRequests: Promise<any>[] = [];
+        const createRequests: Promise<any>[] = [];
 
-        if (productRules.length === 0) {
-          toast.warning('Укажите срок выдачи хотя бы для одного СИЗ');
-          return;
-        }
+        selectedPositionEntries.forEach((entry) => {
+          const missingProductRules: Array<{ ppeproduct: number; renewal_months: number }> = [];
 
-        const payload = {
-          position_entries: selectedPositionEntries.map((entry) => ({
-            department_service_id: entry.department_id,
-            department_name: entry.department_name,
-            position_name: entry.position_name,
-          })),
-          product_rules: productRules,
-        };
-        const response = await axioss.post('/settings/ppe-department-rules/', payload);
-        const createdRules = Array.isArray(response.data) ? response.data : [response.data];
-        setRules((prev) => [...prev, ...createdRules]);
-        toast.success(createdRules.length > 1 ? 'Нормы добавлены' : 'Норма добавлена');
+          productRules.forEach((productRule) => {
+            const existingRule = findExistingRule(entry.department_id ?? null, entry.position_name, productRule.ppeproduct);
+            if (existingRule) {
+              updateRequests.push(
+                axioss.put(`/settings/ppe-department-rules/${existingRule.id}/`, {
+                  department_service_id: entry.department_id,
+                  department_name: entry.department_name,
+                  position_name: entry.position_name,
+                  ppeproduct: productRule.ppeproduct,
+                  renewal_months: productRule.renewal_months,
+                }),
+              );
+            } else {
+              missingProductRules.push(productRule);
+            }
+          });
+
+          if (missingProductRules.length > 0) {
+            createRequests.push(
+              axioss.post('/settings/ppe-department-rules/', {
+                position_entries: [{
+                  department_service_id: entry.department_id,
+                  department_name: entry.department_name,
+                  position_name: entry.position_name,
+                }],
+                product_rules: missingProductRules,
+              }),
+            );
+          }
+        });
+
+        const [updatedResponses, createdResponses] = await Promise.all([
+          Promise.all(updateRequests),
+          Promise.all(createRequests),
+        ]);
+
+        const updatedRules = updatedResponses.map((response) => response.data as DepartmentPPERule);
+        const createdRules = createdResponses.flatMap((response) => (
+          Array.isArray(response.data) ? response.data : [response.data]
+        )) as DepartmentPPERule[];
+
+        setRules((prev) => {
+          const merged = prev.map((item) => updatedRules.find((updatedItem) => updatedItem.id === item.id) ?? item);
+          const existingIds = new Set(merged.map((item) => item.id));
+          const nextCreatedRules = createdRules.filter((item) => !existingIds.has(item.id));
+          return [...merged, ...nextCreatedRules];
+        });
+
+        const affectedCount = updatedRules.length + createdRules.length;
+        toast.success(affectedCount > 1 ? 'Нормы сохранены' : 'Норма сохранена');
       }
 
-      setSelectedPositionKeys([]);
-      setProductId('');
-      setRenewalMonths('');
-      setProductMonths({});
-      setEditingRuleId(null);
-      setIsTreeDropdownOpen(false);
+      resetForm();
     } catch (error) {
-      toast.error(getBackendError(error, editingRuleId !== null ? 'Ошибка при обновлении нормы' : 'Ошибка при добавлении нормы'));
+      toast.error(getBackendError(error, editingGroup !== null ? 'Ошибка при обновлении норм' : 'Ошибка при добавлении нормы'));
     }
   };
 
-  const handleEdit = (rule: DepartmentPPERule) => {
+  const handleGroupEdit = (group: DepartmentPPERuleGroup) => {
+    const firstRule = group.items[0];
+    if (!firstRule) {
+      return;
+    }
+
     const matchedPosition = positions.find(
-      (position) => position.position_name === rule.position_name && (position.department_id ?? null) === (rule.department_service_id ?? null),
+      (position) => position.position_name === firstRule.position_name && (position.department_id ?? null) === (firstRule.department_service_id ?? null),
     );
 
-    setEditingRuleId(rule.id);
+    setEditingGroupKey(group.key);
     setSelectedPositionKeys([
       matchedPosition?.selection_key
-        || `${rule.department_service_id ?? 'none'}:${rule.position_name.toLowerCase().trim().replace(/\s+/g, '-')}`,
+        || `${firstRule.department_service_id ?? 'none'}:${firstRule.position_name.toLowerCase().trim().replace(/\s+/g, '-')}`,
     ]);
-    setProductId(String(rule.ppeproduct));
-    setRenewalMonths(String(rule.renewal_months));
-    setProductMonths({});
+    setProductMonths(
+      group.items.reduce<Record<number, string>>((accumulator, item) => {
+        accumulator[item.ppeproduct] = String(item.renewal_months);
+        return accumulator;
+      }, {}),
+    );
     setIsTreeDropdownOpen(false);
   };
 
   const togglePosition = (selectionKey: string) => {
     setSelectedPositionKeys((prev) => {
-      if (editingRuleId !== null) {
+      if (editingGroup !== null) {
         return prev.includes(selectionKey) ? [] : [selectionKey];
       }
       return prev.includes(selectionKey)
@@ -408,7 +528,7 @@ const DepartmentPPERulePage = () => {
   };
 
   const toggleDepartmentPositions = (departmentId: number | null, departmentName: string) => {
-    if (editingRuleId !== null) {
+    if (editingGroup !== null) {
       return;
     }
 
@@ -428,31 +548,8 @@ const DepartmentPPERulePage = () => {
   };
 
   const toggleAllPositions = () => {
-    if (editingRuleId !== null) return;
+    if (editingGroup !== null) return;
     setSelectedPositionKeys(isAllPositionsSelected ? [] : positions.map((position) => position.selection_key));
-  };
-
-  const confirmDelete = async () => {
-    if (!ruleToDelete) return;
-
-    setDeleteLoading(true);
-    try {
-      await axioss.delete(`/settings/ppe-department-rules/${ruleToDelete.id}/`);
-      setRules((prev) => prev.filter((item) => item.id !== ruleToDelete.id));
-      if (editingRuleId === ruleToDelete.id) {
-        setEditingRuleId(null);
-        setSelectedPositionKeys([]);
-        setProductId('');
-        setRenewalMonths('');
-        setIsTreeDropdownOpen(false);
-      }
-      setRuleToDelete(null);
-      toast.success('Норма удалена');
-    } catch (error) {
-      toast.error(getBackendError(error, 'Ошибка при удалении нормы'));
-    } finally {
-      setDeleteLoading(false);
-    }
   };
 
   const confirmGroupDelete = async () => {
@@ -460,19 +557,13 @@ const DepartmentPPERulePage = () => {
 
     setDeleteLoading(true);
     try {
-      await Promise.all(
-        groupToDelete.items.map((rule) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`)),
-      );
+      await Promise.all(groupToDelete.items.map((rule) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`)));
 
       const deletedIds = new Set(groupToDelete.items.map((rule) => rule.id));
       setRules((prev) => prev.filter((item) => !deletedIds.has(item.id)));
 
-      if (editingRuleId !== null && deletedIds.has(editingRuleId)) {
-        setEditingRuleId(null);
-        setSelectedPositionKeys([]);
-        setProductId('');
-        setRenewalMonths('');
-        setIsTreeDropdownOpen(false);
+      if (editingGroupKey !== null && editingGroupKey === groupToDelete.key) {
+        resetForm();
       }
 
       setGroupToDelete(null);
@@ -482,15 +573,6 @@ const DepartmentPPERulePage = () => {
     } finally {
       setDeleteLoading(false);
     }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingRuleId(null);
-    setSelectedPositionKeys([]);
-    setProductId('');
-    setRenewalMonths('');
-    setProductMonths({});
-    setIsTreeDropdownOpen(false);
   };
 
   if (!canEditBaseSettings) {
@@ -546,10 +628,10 @@ const DepartmentPPERulePage = () => {
                 {isTreeDropdownOpen && (
                   <div className="absolute z-20 mt-2 w-full rounded border border-stroke bg-white p-3 shadow-lg dark:border-strokedark dark:bg-boxdark">
                     <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-                      {editingRuleId !== null ? 'Выберите должность' : 'Выберите цех и одну или несколько должностей'}
+                      {editingGroup !== null ? 'Выберите должность' : 'Выберите цех и одну или несколько должностей'}
                     </div>
 
-                    {editingRuleId === null && positions.length > 0 && (
+                    {editingGroup === null && positions.length > 0 && (
                       <label className="mb-3 flex items-start gap-2 border-b border-stroke pb-3 text-sm font-medium text-black dark:border-strokedark dark:text-white">
                         <input
                           type="checkbox"
@@ -575,7 +657,7 @@ const DepartmentPPERulePage = () => {
                               }}
                               onChange={() => toggleDepartmentPositions(department.id, department.name)}
                               className="mt-1"
-                              disabled={editingRuleId !== null}
+                              disabled={editingGroup !== null}
                             />
                             <span>{department.name}</span>
                           </label>
@@ -609,24 +691,11 @@ const DepartmentPPERulePage = () => {
                 )}
               </div>
 
-              {editingRuleId !== null ? (
-                <select
-                  value={productId}
-                  onChange={(e) => setProductId(e.target.value)}
-                  className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-                >
-                  <option value="">Выберите СИЗ</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
-                  Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.
-                </div>
-              )}
+              <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
+                {editingGroup !== null
+                  ? 'Редактирование группы: измените сроки по нужным СИЗ. Пустое поле удалит норму для этого СИЗ.'
+                  : 'Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.'}
+              </div>
             </div>
 
             {selectedPositionKeys.length > 0 && (
@@ -635,56 +704,43 @@ const DepartmentPPERulePage = () => {
               </div>
             )}
 
-            {editingRuleId !== null ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <input
-                  type="number"
-                  min={0}
-                  value={renewalMonths}
-                  onChange={(e) => setRenewalMonths(e.target.value)}
-                  placeholder="Срок выдачи (мес.)"
-                  className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-                />
+            <div className="rounded border border-stroke p-4 dark:border-strokedark">
+              <div className="mb-3 text-sm font-medium text-black dark:text-white">Срок выдачи по СИЗ</div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {productsForBulkEdit.map((product) => (
+                  <label key={product.id} className="rounded border border-stroke p-3 dark:border-strokedark">
+                    <div className="mb-2 text-sm text-black dark:text-white">{product.name}</div>
+                    <input
+                      type="number"
+                      min={0}
+                      value={productMonths[product.id] || ''}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setProductMonths((prev) => {
+                          if (nextValue === '') {
+                            const nextState = { ...prev };
+                            delete nextState[product.id];
+                            return nextState;
+                          }
+                          return { ...prev, [product.id]: nextValue };
+                        });
+                      }}
+                      placeholder="Срок выдачи (мес.)"
+                      className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+                    />
+                  </label>
+                ))}
               </div>
-            ) : (
-              <div className="rounded border border-stroke p-4 dark:border-strokedark">
-                <div className="mb-3 text-sm font-medium text-black dark:text-white">Срок выдачи по СИЗ</div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {productsForBulkEdit.map((product) => (
-                    <label key={product.id} className="rounded border border-stroke p-3 dark:border-strokedark">
-                      <div className="mb-2 text-sm text-black dark:text-white">{product.name}</div>
-                      <input
-                        type="number"
-                        min={0}
-                        value={productMonths[product.id] || ''}
-                        onChange={(e) => {
-                          const nextValue = e.target.value;
-                          setProductMonths((prev) => {
-                            if (nextValue === '') {
-                              const nextState = { ...prev };
-                              delete nextState[product.id];
-                              return nextState;
-                            }
-                            return { ...prev, [product.id]: nextValue };
-                          });
-                        }}
-                        placeholder="Срок выдачи (мес.)"
-                        className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-                      />
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
+            </div>
 
             <div className="flex gap-2">
               <button type="submit" className="rounded bg-primary px-4 py-2 text-white">
-                {editingRuleId !== null ? 'Сохранить' : 'Добавить'}
+                {editingGroup !== null ? 'Сохранить' : 'Добавить'}
               </button>
-              {editingRuleId !== null && (
+              {editingGroup !== null && (
                 <button
                   type="button"
-                  onClick={handleCancelEdit}
+                  onClick={resetForm}
                   className="rounded border border-stroke px-4 py-2 dark:border-strokedark"
                 >
                   Отмена
@@ -762,35 +818,21 @@ const DepartmentPPERulePage = () => {
                         </div>
                       </td>
                       <td className="px-3 py-2">
-                        <div className="space-y-2">
-                          <div className="flex min-h-[28px] items-center gap-2">
-                            <button
-                              onClick={() => setGroupToDelete(group)}
-                              className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-500 bg-red-50 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
-                              title={isAdmin ? 'Удалить все нормы этой строки' : 'Удаление доступно только администратору'}
-                              disabled={!isAdmin}
-                            >
-                              Удалить все
-                            </button>
-                          </div>
-                          {group.items.map((rule) => (
-                            <div key={rule.id} className="flex min-h-[28px] items-center gap-2">
-                              <button
-                                onClick={() => handleEdit(rule)}
-                                className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark"
-                              >
-                                Изменить
-                              </button>
-                              <button
-                                onClick={() => setRuleToDelete(rule)}
-                                className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-400 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
-                                title={isAdmin ? 'Удалить' : 'Удаление доступно только администратору'}
-                                disabled={!isAdmin}
-                              >
-                                <FiTrash2 className="text-sm" />
-                              </button>
-                            </div>
-                          ))}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleGroupEdit(group)}
+                            className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark"
+                          >
+                            Изменить
+                          </button>
+                          <button
+                            onClick={() => setGroupToDelete(group)}
+                            className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-400 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
+                            title={isAdmin ? 'Удалить' : 'Удаление доступно только администратору'}
+                            disabled={!isAdmin}
+                          >
+                            <FiTrash2 className="text-sm" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -801,30 +843,6 @@ const DepartmentPPERulePage = () => {
           </div>
         </div>
       </div>
-
-      <Modal show={Boolean(ruleToDelete)} onClose={() => !deleteLoading && setRuleToDelete(null)}>
-        <Modal.Header>Подтвердите удаление</Modal.Header>
-        <Modal.Body>
-          <div className="space-y-3">
-            <div className="flex justify-center text-red-500">
-              <FiAlertTriangle className="h-16 w-16" />
-            </div>
-            <p className="text-center text-base text-slate-600 dark:text-slate-300">
-              {ruleToDelete
-                ? `Удалить норму для должности "${ruleToDelete.position_name}" и СИЗ "${ruleToDelete.ppeproduct_name}"?`
-                : 'Удалить выбранную норму?'}
-            </p>
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button color="gray" onClick={() => setRuleToDelete(null)} disabled={deleteLoading}>
-            Отмена
-          </Button>
-          <Button color="failure" onClick={confirmDelete} disabled={deleteLoading}>
-            {deleteLoading ? 'Удаление...' : 'Удалить'}
-          </Button>
-        </Modal.Footer>
-      </Modal>
 
       <Modal show={Boolean(groupToDelete)} onClose={() => !deleteLoading && setGroupToDelete(null)}>
         <Modal.Header>Подтвердите удаление группы</Modal.Header>
