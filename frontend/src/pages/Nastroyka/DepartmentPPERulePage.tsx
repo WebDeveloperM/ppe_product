@@ -795,12 +795,7 @@ const DepartmentPPERulePage = () => {
 
   const ruleForm = (
     <form id="department-ppe-rule-form" onSubmit={handleSubmit} className="space-y-3">
-      <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
-        {editingGroup !== null
-          ? 'Редактирование группы: измените сроки по нужным СИЗ. Пустое поле удалит норму для этого СИЗ.'
-          : 'Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.'}
-      </div>
-
+    
       <div className="rounded border border-stroke p-4 dark:border-strokedark">
         <div className="mb-3 text-sm font-medium text-black dark:text-white">Срок выдачи по СИЗ</div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -843,13 +838,25 @@ const DepartmentPPERulePage = () => {
       {selectedPositionKeys.length > 0 && (
         <div className="rounded border border-dashed border-stroke px-3 py-3 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
           <div className="mb-2 font-medium text-black dark:text-white">Танланган цех ва должностьлар</div>
-          <div className="space-y-2">
-            {selectedPositionsByDepartment.map((entry) => (
-              <div key={entry.departmentName}>
-                <div className="font-medium">{entry.departmentName}</div>
-                <div>{entry.positions.join(', ')}</div>
-              </div>
-            ))}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px] border-collapse">
+              <thead>
+                <tr className="border-b border-stroke text-left dark:border-strokedark">
+                  <th className="px-3 py-2 font-medium text-black dark:text-white">№</th>
+                  <th className="px-3 py-2 font-medium text-black dark:text-white">Цех</th>
+                  <th className="px-3 py-2 font-medium text-black dark:text-white">Должность</th>
+                </tr>
+              </thead>
+              <tbody>
+                {selectedPositionsByDepartment.map((entry, index) => (
+                  <tr key={entry.departmentName} className="border-b border-stroke last:border-b-0 dark:border-strokedark">
+                    <td className="px-3 py-2 align-top">{index + 1}</td>
+                    <td className="px-3 py-2 align-top font-medium text-black dark:text-white">{entry.departmentName}</td>
+                    <td className="px-3 py-2 align-top">{entry.positions.join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
