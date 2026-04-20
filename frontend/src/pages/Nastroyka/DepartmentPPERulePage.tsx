@@ -1,7 +1,7 @@
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Button, Modal } from 'flowbite-react';
 import { FiAlertTriangle, FiTrash2 } from 'react-icons/fi';
 import axioss from '../../api/axios';
@@ -95,9 +95,11 @@ const LARGE_RULE_MODAL_THEME = {
 
 const DepartmentPPERulePage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
   const canEditBaseSettings = role === 'admin' || role === 'warehouse_staff';
   const isAdmin = role === 'admin';
+  const isCreatePage = location.pathname.endsWith('/create');
 
   const [loading, setLoading] = useState(true);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
@@ -353,9 +355,18 @@ const DepartmentPPERulePage = () => {
     resetForm();
   };
 
-  const openCreateRuleModal = () => {
+  const openCreateRulePage = () => {
     resetForm();
-    setIsRuleModalOpen(true);
+    navigate('/nastroyka/ppe-norms/create');
+  };
+
+  const handleCancelRuleForm = () => {
+    if (isCreatePage) {
+      resetForm();
+      navigate('/nastroyka/ppe-norms');
+      return;
+    }
+    closeRuleModal();
   };
 
   const toggleGroupSelection = (groupKey: string) => {
@@ -525,7 +536,12 @@ const DepartmentPPERulePage = () => {
         toast.success(affectedCount > 1 ? 'Нормы сохранены' : 'Норма сохранена');
       }
 
-      closeRuleModal();
+      if (isCreatePage) {
+        resetForm();
+        navigate('/nastroyka/ppe-norms');
+      } else {
+        closeRuleModal();
+      }
     } catch (error) {
       toast.error(getBackendError(error, editingGroup !== null ? 'Ошибка при обновлении норм' : 'Ошибка при добавлении нормы'));
     }
@@ -686,6 +702,129 @@ const DepartmentPPERulePage = () => {
     );
   }
 
+  const ruleForm = (
+    <form id="department-ppe-rule-form" onSubmit={handleSubmit} className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="relative" ref={treeDropdownRef}>
+          <button
+            type="button"
+            onClick={() => setIsTreeDropdownOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded border border-stroke bg-transparent px-3 py-2 text-left dark:border-strokedark dark:bg-transparent"
+          >
+            <span className="truncate text-sm text-black dark:text-white">{positionButtonLabel}</span>
+            <span className="ml-3 text-xs text-slate-500">{isTreeDropdownOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {isTreeDropdownOpen && (
+            <div className="absolute z-20 mt-2 w-full rounded border border-stroke bg-white p-3 shadow-lg dark:border-strokedark dark:bg-boxdark">
+              <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
+                {editingGroup !== null ? 'Выберите должность' : 'Выберите цех и одну или несколько должностей'}
+              </div>
+
+              {editingGroup === null && positions.length > 0 && (
+                <label className="mb-3 flex items-start gap-2 border-b border-stroke pb-3 text-sm font-medium text-black dark:border-strokedark dark:text-white">
+                  <input
+                    type="checkbox"
+                    checked={isAllPositionsSelected}
+                    onChange={toggleAllPositions}
+                    className="mt-1"
+                  />
+                  <span>Для всех должностей</span>
+                </label>
+              )}
+
+              <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                {departmentTree.map((department) => (
+                  <div key={department.id} className="rounded border border-stroke/70 p-2 dark:border-strokedark/70">
+                    <label className="flex items-start gap-2 text-sm font-semibold text-black dark:text-white">
+                      <input
+                        type="checkbox"
+                        checked={isDepartmentChecked(department.id, department.name)}
+                        ref={(input) => {
+                          if (input) {
+                            input.indeterminate = isDepartmentIndeterminate(department.id, department.name);
+                          }
+                        }}
+                        onChange={() => toggleDepartmentPositions(department.id, department.name)}
+                        className="mt-1"
+                        disabled={editingGroup !== null}
+                      />
+                      <span>{department.name}</span>
+                    </label>
+
+                    <div className="mt-2 space-y-2 pl-6">
+                      {department.positions.map((position) => {
+                        const isChecked = selectedPositionKeys.includes(position.selection_key);
+                        return (
+                          <label key={position.selection_key} className="flex items-start gap-2 text-sm text-black dark:text-white">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => togglePosition(position.selection_key)}
+                              className="mt-1"
+                            />
+                            <span>{position.position_name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {departmentTree.length === 0 && (
+                  <div className="text-sm text-slate-500 dark:text-slate-400">
+                    Должности не найдены.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
+          {editingGroup !== null
+            ? 'Редактирование группы: измените сроки по нужным СИЗ. Пустое поле удалит норму для этого СИЗ.'
+            : 'Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.'}
+        </div>
+      </div>
+
+      {selectedPositionKeys.length > 0 && (
+        <div className="rounded border border-dashed border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
+          Выбрано должностей: {selectedPositionKeys.length}
+        </div>
+      )}
+
+      <div className="rounded border border-stroke p-4 dark:border-strokedark">
+        <div className="mb-3 text-sm font-medium text-black dark:text-white">Срок выдачи по СИЗ</div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {productsForBulkEdit.map((product) => (
+            <label key={product.id} className="rounded border border-stroke p-3 dark:border-strokedark">
+              <div className="mb-2 text-sm text-black dark:text-white">{product.name}</div>
+              <input
+                type="number"
+                min={0}
+                value={productMonths[product.id] || ''}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setProductMonths((prev) => {
+                    if (nextValue === '') {
+                      const nextState = { ...prev };
+                      delete nextState[product.id];
+                      return nextState;
+                    }
+                    return { ...prev, [product.id]: nextValue };
+                  });
+                }}
+                placeholder="Срок выдачи (мес.)"
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+    </form>
+  );
+
   return (
     <>
       <Breadcrumb pageName="Нормы выдачи по должностям" />
@@ -693,18 +832,20 @@ const DepartmentPPERulePage = () => {
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4">
           <button
-            onClick={() => navigate('/nastroyka')}
+            onClick={() => navigate(isCreatePage ? '/nastroyka/ppe-norms' : '/nastroyka')}
             className="rounded border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-700"
           >
             ← Назад
           </button>
-          <button
-            type="button"
-            onClick={openCreateRuleModal}
-            className="rounded bg-primary px-4 py-2 text-white hover:bg-opacity-90"
-          >
-            + Добавить
-          </button>
+          {!isCreatePage && (
+            <button
+              type="button"
+              onClick={openCreateRulePage}
+              className="rounded bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+            >
+              + Добавить
+            </button>
+          )}
         </div>
 
         {loading && (
@@ -713,257 +854,158 @@ const DepartmentPPERulePage = () => {
           </div>
         )}
 
-        <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
-          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <input
-              type="text"
-              value={departmentSearch}
-              onChange={(e) => setDepartmentSearch(e.target.value)}
-              placeholder="Поиск по цеху"
-              className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-            />
-            <input
-              type="text"
-              value={positionSearch}
-              onChange={(e) => setPositionSearch(e.target.value)}
-              placeholder="Поиск по должности"
-              className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-            />
-          </div>
-
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="text-sm text-slate-600 dark:text-slate-300">
-              Выбрано: {selectedGroups.length}
+        {isCreatePage ? (
+          <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
+            {ruleForm}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={handleCancelRuleForm}
+                className="rounded border border-stroke px-4 py-2 dark:border-strokedark"
+              >
+                Отмена
+              </button>
+              <button type="submit" form="department-ppe-rule-form" className="rounded bg-primary px-4 py-2 text-white">
+                Сохранить
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={openBulkDeleteModal}
-              disabled={!isAdmin || selectedGroups.length === 0 || deleteLoading}
-              className={`rounded px-4 py-2 text-sm ${isAdmin && selectedGroups.length > 0 && !deleteLoading ? 'bg-red-600 text-white' : 'cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
-            >
-              {deleteLoading ? 'Удаление...' : 'Удалить выбранные'}
-            </button>
           </div>
+        ) : (
+          <>
+            <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
+              <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input
+                  type="text"
+                  value={departmentSearch}
+                  onChange={(e) => setDepartmentSearch(e.target.value)}
+                  placeholder="Поиск по цеху"
+                  className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+                />
+                <input
+                  type="text"
+                  value={positionSearch}
+                  onChange={(e) => setPositionSearch(e.target.value)}
+                  placeholder="Поиск по должности"
+                  className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+                />
+              </div>
 
-          <div className="max-h-96 overflow-auto">
-            {groupedRules.length === 0 ? (
-              <p className="text-center text-gray-500">Нет данных</p>
-            ) : (
-              <table className="min-w-full text-sm">
-                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">№</th>
-                    <th className="px-3 py-2 text-left font-semibold">Цех</th>
-                    <th className="px-3 py-2 text-left font-semibold">Должность</th>
-                    <th className="px-3 py-2 text-left font-semibold">СИЗ</th>
-                    <th className="px-3 py-2 text-left font-semibold">Для кого</th>
-                    <th className="px-3 py-2 text-left font-semibold">Срок (мес.)</th>
-                    <th className="px-3 py-2 text-left font-semibold">Действия</th>
-                    <th className="px-3 py-2 text-center font-semibold">
-                      <input
-                        type="checkbox"
-                        checked={isAllVisibleGroupsSelected}
-                        onChange={toggleSelectAllVisibleGroups}
-                        aria-label="Выбрать все строки"
-                      />
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groupedRules.map((group, index) => (
-                    <tr key={group.key} className="border-t border-stroke align-top dark:border-strokedark">
-                      <td className="px-3 py-2">{index + 1}</td>
-                      <td className="px-3 py-2">{group.department_name || '-'}</td>
-                      <td className="px-3 py-2">{group.position_name}</td>
-                      <td className="px-3 py-2">
-                        <div className="space-y-2">
-                          {group.items.map((rule) => (
-                            <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_name}</div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="space-y-2">
-                          {group.items.map((rule) => (
-                            <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_target_gender_display || 'Для всех'}</div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="space-y-2">
-                          {group.items.map((rule) => (
-                            <div key={rule.id} className="min-h-[28px]">{rule.renewal_months}</div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleGroupEdit(group)}
-                            className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark"
-                          >
-                            Изменить
-                          </button>
-                          <button
-                            onClick={() => setGroupToDelete(group)}
-                            className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-400 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
-                            title={isAdmin ? 'Удалить' : 'Удаление доступно только администратору'}
-                            disabled={!isAdmin}
-                          >
-                            <FiTrash2 className="text-sm" />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-center align-top">
-                        <input
-                          type="checkbox"
-                          checked={selectedGroupKeys.includes(group.key)}
-                          onChange={() => toggleGroupSelection(group.key)}
-                          aria-label={`Выбрать ${group.department_name} ${group.position_name}`}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <Modal show={isRuleModalOpen} onClose={closeRuleModal} size="7xl" theme={LARGE_RULE_MODAL_THEME}>
-        <Modal.Header>{editingGroup !== null ? 'Изменить нормы выдачи' : 'Добавить нормы выдачи'}</Modal.Header>
-        <Modal.Body className="flex-1 overflow-y-auto">
-          <form id="department-ppe-rule-form" onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="relative" ref={treeDropdownRef}>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="text-sm text-slate-600 dark:text-slate-300">
+                  Выбрано: {selectedGroups.length}
+                </div>
                 <button
                   type="button"
-                  onClick={() => setIsTreeDropdownOpen((prev) => !prev)}
-                  className="flex w-full items-center justify-between rounded border border-stroke bg-transparent px-3 py-2 text-left dark:border-strokedark dark:bg-transparent"
+                  onClick={openBulkDeleteModal}
+                  disabled={!isAdmin || selectedGroups.length === 0 || deleteLoading}
+                  className={`rounded px-4 py-2 text-sm ${isAdmin && selectedGroups.length > 0 && !deleteLoading ? 'bg-red-600 text-white' : 'cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
                 >
-                  <span className="truncate text-sm text-black dark:text-white">{positionButtonLabel}</span>
-                  <span className="ml-3 text-xs text-slate-500">{isTreeDropdownOpen ? '▲' : '▼'}</span>
+                  {deleteLoading ? 'Удаление...' : 'Удалить выбранные'}
                 </button>
+              </div>
 
-                {isTreeDropdownOpen && (
-                  <div className="absolute z-20 mt-2 w-full rounded border border-stroke bg-white p-3 shadow-lg dark:border-strokedark dark:bg-boxdark">
-                    <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-                      {editingGroup !== null ? 'Выберите должность' : 'Выберите цех и одну или несколько должностей'}
-                    </div>
-
-                    {editingGroup === null && positions.length > 0 && (
-                      <label className="mb-3 flex items-start gap-2 border-b border-stroke pb-3 text-sm font-medium text-black dark:border-strokedark dark:text-white">
-                        <input
-                          type="checkbox"
-                          checked={isAllPositionsSelected}
-                          onChange={toggleAllPositions}
-                          className="mt-1"
-                        />
-                        <span>Для всех должностей</span>
-                      </label>
-                    )}
-
-                    <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
-                      {departmentTree.map((department) => (
-                        <div key={department.id} className="rounded border border-stroke/70 p-2 dark:border-strokedark/70">
-                          <label className="flex items-start gap-2 text-sm font-semibold text-black dark:text-white">
+              <div className="max-h-96 overflow-auto">
+                {groupedRules.length === 0 ? (
+                  <p className="text-center text-gray-500">Нет данных</p>
+                ) : (
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">№</th>
+                        <th className="px-3 py-2 text-left font-semibold">Цех</th>
+                        <th className="px-3 py-2 text-left font-semibold">Должность</th>
+                        <th className="px-3 py-2 text-left font-semibold">СИЗ</th>
+                        <th className="px-3 py-2 text-left font-semibold">Для кого</th>
+                        <th className="px-3 py-2 text-left font-semibold">Срок (мес.)</th>
+                        <th className="px-3 py-2 text-left font-semibold">Действия</th>
+                        <th className="px-3 py-2 text-center font-semibold">
+                          <input
+                            type="checkbox"
+                            checked={isAllVisibleGroupsSelected}
+                            onChange={toggleSelectAllVisibleGroups}
+                            aria-label="Выбрать все строки"
+                          />
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groupedRules.map((group, index) => (
+                        <tr key={group.key} className="border-t border-stroke align-top dark:border-strokedark">
+                          <td className="px-3 py-2">{index + 1}</td>
+                          <td className="px-3 py-2">{group.department_name || '-'}</td>
+                          <td className="px-3 py-2">{group.position_name}</td>
+                          <td className="px-3 py-2">
+                            <div className="space-y-2">
+                              {group.items.map((rule) => (
+                                <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_name}</div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="space-y-2">
+                              {group.items.map((rule) => (
+                                <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_target_gender_display || 'Для всех'}</div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="space-y-2">
+                              {group.items.map((rule) => (
+                                <div key={rule.id} className="min-h-[28px]">{rule.renewal_months}</div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleGroupEdit(group)}
+                                className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark"
+                              >
+                                Изменить
+                              </button>
+                              <button
+                                onClick={() => setGroupToDelete(group)}
+                                className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-400 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
+                                title={isAdmin ? 'Удалить' : 'Удаление доступно только администратору'}
+                                disabled={!isAdmin}
+                              >
+                                <FiTrash2 className="text-sm" />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-center align-top">
                             <input
                               type="checkbox"
-                              checked={isDepartmentChecked(department.id, department.name)}
-                              ref={(input) => {
-                                if (input) {
-                                  input.indeterminate = isDepartmentIndeterminate(department.id, department.name);
-                                }
-                              }}
-                              onChange={() => toggleDepartmentPositions(department.id, department.name)}
-                              className="mt-1"
-                              disabled={editingGroup !== null}
+                              checked={selectedGroupKeys.includes(group.key)}
+                              onChange={() => toggleGroupSelection(group.key)}
+                              aria-label={`Выбрать ${group.department_name} ${group.position_name}`}
                             />
-                            <span>{department.name}</span>
-                          </label>
-
-                          <div className="mt-2 space-y-2 pl-6">
-                            {department.positions.map((position) => {
-                              const isChecked = selectedPositionKeys.includes(position.selection_key);
-                              return (
-                                <label key={position.selection_key} className="flex items-start gap-2 text-sm text-black dark:text-white">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => togglePosition(position.selection_key)}
-                                    className="mt-1"
-                                  />
-                                  <span>{position.position_name}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
+                          </td>
+                        </tr>
                       ))}
-
-                      {departmentTree.length === 0 && (
-                        <div className="text-sm text-slate-500 dark:text-slate-400">
-                          Должности не найдены.
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                    </tbody>
+                  </table>
                 )}
               </div>
-
-              <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
-                {editingGroup !== null
-                  ? 'Редактирование группы: измените сроки по нужным СИЗ. Пустое поле удалит норму для этого СИЗ.'
-                  : 'Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.'}
-              </div>
             </div>
 
-            {selectedPositionKeys.length > 0 && (
-              <div className="rounded border border-dashed border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
-                Выбрано должностей: {selectedPositionKeys.length}
-              </div>
-            )}
-
-            <div className="rounded border border-stroke p-4 dark:border-strokedark">
-              <div className="mb-3 text-sm font-medium text-black dark:text-white">Срок выдачи по СИЗ</div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {productsForBulkEdit.map((product) => (
-                  <label key={product.id} className="rounded border border-stroke p-3 dark:border-strokedark">
-                    <div className="mb-2 text-sm text-black dark:text-white">{product.name}</div>
-                    <input
-                      type="number"
-                      min={0}
-                      value={productMonths[product.id] || ''}
-                      onChange={(e) => {
-                        const nextValue = e.target.value;
-                        setProductMonths((prev) => {
-                          if (nextValue === '') {
-                            const nextState = { ...prev };
-                            delete nextState[product.id];
-                            return nextState;
-                          }
-                          return { ...prev, [product.id]: nextValue };
-                        });
-                      }}
-                      placeholder="Срок выдачи (мес.)"
-                      className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-          </form>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button color="gray" onClick={closeRuleModal}>
-            Отмена
-          </Button>
-          <Button type="submit" form="department-ppe-rule-form">
-            Сохранить
-          </Button>
-        </Modal.Footer>
-      </Modal>
+            <Modal show={isRuleModalOpen} onClose={closeRuleModal} size="7xl" theme={LARGE_RULE_MODAL_THEME}>
+              <Modal.Header>{editingGroup !== null ? 'Изменить нормы выдачи' : 'Добавить нормы выдачи'}</Modal.Header>
+              <Modal.Body className="flex-1 overflow-y-auto">
+                {ruleForm}
+              </Modal.Body>
+              <Modal.Footer>
+                <Button color="gray" onClick={closeRuleModal}>
+                  Отмена
+                </Button>
+                <Button type="submit" form="department-ppe-rule-form">
+                  Сохранить
+                </Button>
+              </Modal.Footer>
+            </Modal>
+          </>
+        )}
+      </div>
 
       <Modal show={Boolean(groupToDelete)} onClose={() => !deleteLoading && setGroupToDelete(null)}>
         <Modal.Header>Подтвердите удаление группы</Modal.Header>

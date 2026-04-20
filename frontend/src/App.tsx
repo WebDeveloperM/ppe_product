@@ -325,6 +325,19 @@ function App() {
           }
         />
         <Route
+          path="/nastroyka/ppe-norms/create"
+          element={
+            isAuthenticated() && canAccessSettings ? (
+              <>
+                <PageTitle title="Нормы выдачи по должностям" />
+                <DepartmentPPERulePage />
+              </>
+            ) : (
+              <Navigate to={isAuthenticated() ? getDeniedRoute() : '/auth/signin'} replace />
+            )
+          }
+        />
+        <Route
           path="/nastroyka/person"
           element={
             isAuthenticated() && canAccessSettings ? (
