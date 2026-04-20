@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import axioss from '../../api/axios';
+import { Button, Modal } from 'flowbite-react';
 
 type PPEProduct = {
   id: number;
@@ -58,6 +59,26 @@ const ProductPage = () => {
   const [productType, setProductType] = useState<'Комплект' | 'Пора' | 'ШТ'>('ШТ');
   const [productGender, setProductGender] = useState<'ALL' | 'M' | 'F'>('ALL');
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+
+  const resetProductForm = () => {
+    setEditingProductId(null);
+    setProductName('');
+    setProductRenewalMonths('');
+    setProductLowStockThreshold('');
+    setProductType('ШТ');
+    setProductGender('ALL');
+  };
+
+  const closeProductModal = () => {
+    setIsProductModalOpen(false);
+    resetProductForm();
+  };
+
+  const openCreateProductModal = () => {
+    resetProductForm();
+    setIsProductModalOpen(true);
+  };
 
   const loadProducts = async () => {
     setLoading(true);
@@ -99,7 +120,6 @@ const ProductPage = () => {
         });
         setProducts((prev) => prev.map((entry) => (entry.id === editingProductId ? response.data : entry)));
         toast.success('СИЗ обновлен');
-        setEditingProductId(null);
       } else {
         const response = await axioss.post('/settings/ppe-products/', {
           name: productName.trim(),
@@ -112,11 +132,7 @@ const ProductPage = () => {
         setProducts((prev) => [...prev, response.data]);
         toast.success('Средство индивидуальной защиты добавлено');
       }
-      setProductName('');
-      setProductRenewalMonths('');
-      setProductLowStockThreshold('');
-      setProductType('ШТ');
-      setProductGender('ALL');
+      closeProductModal();
     } catch (error) {
       toast.error(getBackendError(error, editingProductId !== null ? 'Ошибка при обновлении СИЗ' : 'Ошибка при добавлении СИЗ'));
     }
@@ -129,6 +145,7 @@ const ProductPage = () => {
     setProductLowStockThreshold(String(item.low_stock_threshold ?? ''));
     setProductType((item.type_product || 'ШТ') as 'Комплект' | 'Пора' | 'ШТ');
     setProductGender((item.target_gender || 'ALL') as 'ALL' | 'M' | 'F');
+    setIsProductModalOpen(true);
   };
 
   const handleDeleteProduct = async (item: PPEProduct) => {
@@ -139,12 +156,7 @@ const ProductPage = () => {
       await axioss.delete(`/settings/ppe-products/${item.id}/`);
       setProducts((prev) => prev.filter((entry) => entry.id !== item.id));
       if (editingProductId === item.id) {
-        setEditingProductId(null);
-        setProductName('');
-        setProductRenewalMonths('');
-        setProductLowStockThreshold('');
-        setProductType('ШТ');
-        setProductGender('ALL');
+        closeProductModal();
       }
       toast.success('СИЗ удален');
     } catch (error) {
@@ -153,12 +165,7 @@ const ProductPage = () => {
   };
 
   const handleCancelEdit = () => {
-    setEditingProductId(null);
-    setProductName('');
-    setProductRenewalMonths('');
-    setProductLowStockThreshold('');
-    setProductType('ШТ');
-    setProductGender('ALL');
+    closeProductModal();
   };
 
   if (!canEditBaseSettings) {
@@ -183,13 +190,22 @@ const ProductPage = () => {
       <Breadcrumb pageName="Средство инд. защиты" />
 
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4">
           <button
             onClick={() => navigate('/nastroyka')}
             className="rounded border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-700"
           >
             ← Назад
           </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={openCreateProductModal}
+              className="rounded bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+            >
+              + Добавить
+            </button>
+          )}
         </div>
 
         {loading && (
@@ -199,71 +215,6 @@ const ProductPage = () => {
         )}
 
         <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
-          <form onSubmit={handleCreateProduct} className="mb-6 space-y-3">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <input
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                placeholder="Название СИЗ"
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              />
-              <select
-                value={productType}
-                onChange={(e) => setProductType(e.target.value as 'Комплект' | 'Пора' | 'ШТ')}
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              >
-                <option value="ШТ">ШТ</option>
-                <option value="Комплект">Комплект</option>
-                <option value="Пора">Пора</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <select
-                value={productGender}
-                onChange={(e) => setProductGender(e.target.value as 'ALL' | 'M' | 'F')}
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              >
-                {PRODUCT_GENDER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min={0}
-                value={productRenewalMonths}
-                onChange={(e) => setProductRenewalMonths(e.target.value)}
-                placeholder="Срок обновления (мес.)"
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <input
-                type="number"
-                min={0}
-                value={productLowStockThreshold}
-                onChange={(e) => setProductLowStockThreshold(e.target.value)}
-                placeholder="Порог остатка"
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button type="submit" className="rounded bg-primary px-4 py-2 text-white">
-                {editingProductId !== null ? 'Сохранить' : 'Добавить'}
-              </button>
-              {editingProductId !== null && (
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="rounded border border-stroke px-4 py-2 dark:border-strokedark"
-                >
-                  Отмена
-                </button>
-              )}
-            </div>
-          </form>
-
           <div className="max-h-96 overflow-auto">
             {products.length === 0 ? (
               <p className="text-center text-gray-500">Нет данных</p>
@@ -313,6 +264,70 @@ const ProductPage = () => {
           </div>
         </div>
       </div>
+
+      <Modal show={isProductModalOpen} onClose={handleCancelEdit} size="4xl">
+        <Modal.Header>{editingProductId !== null ? 'Изменить СИЗ' : 'Добавить СИЗ'}</Modal.Header>
+        <Modal.Body>
+          <form id="product-form" onSubmit={handleCreateProduct} className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <input
+                value={productName}
+                onChange={(e) => setProductName(e.target.value)}
+                placeholder="Название СИЗ"
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              />
+              <select
+                value={productType}
+                onChange={(e) => setProductType(e.target.value as 'Комплект' | 'Пора' | 'ШТ')}
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              >
+                <option value="ШТ">ШТ</option>
+                <option value="Комплект">Комплект</option>
+                <option value="Пора">Пора</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <select
+                value={productGender}
+                onChange={(e) => setProductGender(e.target.value as 'ALL' | 'M' | 'F')}
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              >
+                {PRODUCT_GENDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min={0}
+                value={productRenewalMonths}
+                onChange={(e) => setProductRenewalMonths(e.target.value)}
+                placeholder="Срок обновления (мес.)"
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <input
+                type="number"
+                min={0}
+                value={productLowStockThreshold}
+                onChange={(e) => setProductLowStockThreshold(e.target.value)}
+                placeholder="Порог остатка"
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              />
+            </div>
+          </form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button color="gray" onClick={handleCancelEdit}>
+            Отмена
+          </Button>
+          <Button type="submit" form="product-form">
+            Сохранить
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </>
   );
 };
