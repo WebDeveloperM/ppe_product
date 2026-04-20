@@ -581,6 +581,35 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		self.assertEqual([item['position_name'] for item in response.data], ['Economist', 'Economist'])
 		self.assertCountEqual([item['department_id'] for item in response.data], [1, 3])
 
+	@patch('base.views.list_departments', return_value=[
+		{'id': 3, 'name': '3-Цех', 'sort_order': 3},
+		{'id': 1, 'name': '1-Цех', 'sort_order': 1},
+	])
+	def test_settings_rules_get_restores_department_names_and_service_order(self, _departments_mock):
+		PositionPPERenewalRule.objects.all().delete()
+		second_product = PPEProduct.objects.create(name='Каска test', renewal_months=5, target_gender='ALL')
+
+		PositionPPERenewalRule.objects.create(
+			department_service_id=3,
+			department_name='',
+			position_name='Economist',
+			ppeproduct=self.product,
+			renewal_months=10,
+		)
+		PositionPPERenewalRule.objects.create(
+			department_service_id=1,
+			department_name='',
+			position_name='Operator',
+			ppeproduct=second_product,
+			renewal_months=8,
+		)
+
+		response = self.client.get('/api/v1/settings/ppe-department-rules/')
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual([item['department_name'] for item in response.data], ['1-Цех', '3-Цех'])
+		self.assertEqual([item['department_service_id'] for item in response.data], [1, 3])
+
 	@patch('base.views.list_sections', return_value=[])
 	@patch('base.views.list_departments', return_value=[])
 	def test_item_view_uses_position_rule_for_product_renewal_months(self, departments_mock, sections_mock):

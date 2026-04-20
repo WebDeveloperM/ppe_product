@@ -91,6 +91,28 @@ const DepartmentPPERulePage = () => {
     [positions, selectedPositionKeys],
   );
 
+  const departmentOrderMap = useMemo(() => {
+    const nextMap = new Map<number, number>();
+    departments.forEach((department, index) => nextMap.set(department.id, index));
+    return nextMap;
+  }, [departments]);
+
+  const departmentNameMap = useMemo(() => {
+    const nextMap = new Map<number, string>();
+    departments.forEach((department) => nextMap.set(department.id, department.name));
+    return nextMap;
+  }, [departments]);
+
+  const getRuleDepartmentName = (rule: DepartmentPPERule) => {
+    if (rule.department_service_id !== null && rule.department_service_id !== undefined) {
+      const mappedName = departmentNameMap.get(rule.department_service_id);
+      if (mappedName) {
+        return mappedName;
+      }
+    }
+    return String(rule.department_name || '').trim();
+  };
+
   const departmentTree = useMemo(() => {
     const orderMap = new Map<number, number>();
     departments.forEach((department, index) => orderMap.set(department.id, index));
@@ -153,22 +175,46 @@ const DepartmentPPERulePage = () => {
 
     return rules
       .filter((rule) => {
+        const resolvedDepartmentName = getRuleDepartmentName(rule);
         const matchesDepartment = !normalizedDepartmentSearch
-          || String(rule.department_name || '').toLowerCase().includes(normalizedDepartmentSearch);
+          || resolvedDepartmentName.toLowerCase().includes(normalizedDepartmentSearch);
         const matchesPosition = !normalizedPositionSearch
           || rule.position_name.toLowerCase().includes(normalizedPositionSearch);
 
         return matchesDepartment && matchesPosition;
       })
       .sort((left, right) => {
-        const departmentCompare = String(left.department_name || '').localeCompare(String(right.department_name || ''), 'ru');
+        const leftHasDepartmentId = left.department_service_id !== null && left.department_service_id !== undefined;
+        const rightHasDepartmentId = right.department_service_id !== null && right.department_service_id !== undefined;
+
+        if (leftHasDepartmentId !== rightHasDepartmentId) {
+          return leftHasDepartmentId ? -1 : 1;
+        }
+
+        const leftDepartmentOrder = leftHasDepartmentId
+          ? departmentOrderMap.get(left.department_service_id as number) ?? Number.MAX_SAFE_INTEGER
+          : Number.MAX_SAFE_INTEGER;
+        const rightDepartmentOrder = rightHasDepartmentId
+          ? departmentOrderMap.get(right.department_service_id as number) ?? Number.MAX_SAFE_INTEGER
+          : Number.MAX_SAFE_INTEGER;
+
+        if (leftDepartmentOrder !== rightDepartmentOrder) {
+          return leftDepartmentOrder - rightDepartmentOrder;
+        }
+
+        const departmentCompare = getRuleDepartmentName(left).localeCompare(getRuleDepartmentName(right), 'ru');
         if (departmentCompare !== 0) {
           return departmentCompare;
         }
 
-        return left.position_name.localeCompare(right.position_name, 'ru');
+        const positionCompare = left.position_name.localeCompare(right.position_name, 'ru');
+        if (positionCompare !== 0) {
+          return positionCompare;
+        }
+
+        return left.ppeproduct_name.localeCompare(right.ppeproduct_name, 'ru');
       });
-  }, [departmentSearch, positionSearch, rules]);
+  }, [departmentNameMap, departmentOrderMap, departmentSearch, positionSearch, rules]);
 
   const productsForBulkEdit = useMemo(
     () => products.filter((product) => product.is_active !== false).sort((left, right) => left.name.localeCompare(right.name, 'ru')),
@@ -619,7 +665,7 @@ const DepartmentPPERulePage = () => {
                 <tbody>
                   {filteredRules.map((rule) => (
                     <tr key={rule.id} className="border-t border-stroke dark:border-strokedark">
-                      <td className="px-3 py-2">{rule.department_name || '-'}</td>
+                      <td className="px-3 py-2">{getRuleDepartmentName(rule) || '-'}</td>
                       <td className="px-3 py-2">{rule.position_name}</td>
                       <td className="px-3 py-2">{rule.ppeproduct_name}</td>
                       <td className="px-3 py-2">{rule.ppeproduct_target_gender_display || 'Для всех'}</td>

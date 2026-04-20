@@ -228,6 +228,50 @@ def get_service_department_map():
     }
 
 
+def normalize_position_rule_payload(rule_payload, department_map=None):
+    normalized = dict(rule_payload)
+    department_map = department_map or {}
+
+    raw_department_id = normalized.get('department_service_id')
+    try:
+        department_service_id = int(raw_department_id) if raw_department_id not in [None, ''] else None
+    except (TypeError, ValueError):
+        department_service_id = None
+
+    service_department = department_map.get(department_service_id) if department_service_id is not None else None
+    normalized['department_name'] = ' '.join(
+        str(
+            (service_department or {}).get('name')
+            or normalized.get('department_name')
+            or ''
+        ).strip().split()
+    )
+    return normalized
+
+
+def position_rule_sort_key(rule_payload, department_order_map=None):
+    department_order_map = department_order_map or {}
+
+    raw_department_id = rule_payload.get('department_service_id')
+    try:
+        department_service_id = int(raw_department_id) if raw_department_id not in [None, ''] else None
+    except (TypeError, ValueError):
+        department_service_id = None
+
+    department_name = ' '.join(str(rule_payload.get('department_name') or '').strip().split())
+    position_name = ' '.join(str(rule_payload.get('position_name') or '').strip().split())
+    product_name = ' '.join(str(rule_payload.get('ppeproduct_name') or '').strip().split())
+
+    return (
+        0 if department_service_id is not None else 1,
+        department_order_map.get(department_service_id, 10 ** 9),
+        department_name.lower(),
+        position_name.lower(),
+        product_name.lower(),
+        int(rule_payload.get('id') or 0),
+    )
+
+
 def normalize_department_payload(department):
     return {
         'id': department.get('id'),
@@ -594,7 +638,16 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
 
         rules = PositionPPERenewalRule.objects.select_related('ppeproduct').all()
         serializer = PositionPPERenewalRuleSerializer(rules, many=True)
-        return Response(serializer.data)
+
+        try:
+            department_map = get_service_department_map()
+        except EmployeeServiceClientError:
+            department_map = {}
+
+        department_order_map = {department_id: index for index, department_id in enumerate(department_map.keys())}
+        payload = [normalize_position_rule_payload(item, department_map) for item in serializer.data]
+        payload.sort(key=lambda item: position_rule_sort_key(item, department_order_map))
+        return Response(payload)
 
     def post(self, request):
         permission_error = ensure_can_modify(request)
