@@ -82,6 +82,17 @@ const getBackendError = (error: any, fallback: string) => {
   return fallback;
 };
 
+const LARGE_RULE_MODAL_THEME = {
+  root: {
+    sizes: {
+      '7xl': 'w-[80vw] max-w-[80vw]',
+    },
+  },
+  content: {
+    inner: 'relative flex h-[70vh] max-h-[70vh] flex-col rounded-lg bg-white shadow dark:bg-gray-700',
+  },
+};
+
 const DepartmentPPERulePage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
@@ -820,9 +831,9 @@ const DepartmentPPERulePage = () => {
         </div>
       </div>
 
-      <Modal show={isRuleModalOpen} onClose={closeRuleModal} size="7xl">
+      <Modal show={isRuleModalOpen} onClose={closeRuleModal} size="7xl" theme={LARGE_RULE_MODAL_THEME}>
         <Modal.Header>{editingGroup !== null ? 'Изменить нормы выдачи' : 'Добавить нормы выдачи'}</Modal.Header>
-        <Modal.Body>
+        <Modal.Body className="flex-1 overflow-y-auto">
           <form id="department-ppe-rule-form" onSubmit={handleSubmit} className="space-y-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="relative" ref={treeDropdownRef}>
