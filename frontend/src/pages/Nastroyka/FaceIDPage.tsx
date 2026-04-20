@@ -191,8 +191,8 @@ const FaceIDPage = () => {
             <table className="min-w-full text-sm">
               <thead className="bg-slate-100 dark:bg-slate-800">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold">ФИО</th>
                   <th className="px-3 py-2 text-left font-semibold">Таб. №</th>
+                  <th className="px-3 py-2 text-left font-semibold">ФИО</th>
                   <th className="px-3 py-2 text-left font-semibold">Должность</th>
                   <th className="px-3 py-2 text-left font-semibold">Face ID при выдаче</th>
                 </tr>
@@ -202,8 +202,8 @@ const FaceIDPage = () => {
                   const fullName = `${emp.last_name} ${emp.first_name} ${emp.surname || ''}`.trim();
                   return (
                     <tr key={emp.id} className="border-t border-stroke dark:border-strokedark">
-                      <td className="px-3 py-2">{fullName || '—'}</td>
                       <td className="px-3 py-2 text-gray-500">{emp.tabel_number || '—'}</td>
+                      <td className="px-3 py-2">{fullName || '—'}</td>
                       <td className="px-3 py-2 text-gray-500">{emp.position || '—'}</td>
                       <td className="px-3 py-2">
                         <button
