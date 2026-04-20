@@ -110,13 +110,18 @@ export default function ComputerTable({
             axioss.get(`${BASE_URL}/settings/sections/`),
         ])
             .then(([departmentsResponse, sectionsResponse]) => {
-                const departments = Array.isArray(departmentsResponse.data) ? departmentsResponse.data : [];
+                const departments = Array.isArray(departmentsResponse.data)
+                    ? departmentsResponse.data.map((department: any) => ({
+                        ...department,
+                        id: Number(department.id),
+                    }))
+                    : [];
                 const sections = Array.isArray(sectionsResponse.data)
                     ? sectionsResponse.data.map((section: any) => ({
                         id: section.id,
                         name: section.name,
                         raw_name: section.name,
-                        department_id: section.department,
+                        department_id: Number(section.department),
                     }))
                     : [];
 
@@ -238,6 +243,9 @@ export default function ComputerTable({
 
         if (selectedDepartmentId) {
             params.append('department_id', String(selectedDepartmentId));
+            if (departmentSearch.trim()) {
+                params.append('department', departmentSearch.trim());
+            }
         }
 
         if (sectionSearch.trim()) {
