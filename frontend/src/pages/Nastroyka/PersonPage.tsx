@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import axioss from '../../api/axios';
+import { Button, Modal } from 'flowbite-react';
 
 type ResponsiblePerson = {
   id: number;
@@ -41,6 +42,23 @@ const PersonPage = () => {
   const [personFullName, setPersonFullName] = useState('');
   const [personPosition, setPersonPosition] = useState('');
   const [editingPersonId, setEditingPersonId] = useState<number | null>(null);
+  const [isPersonModalOpen, setIsPersonModalOpen] = useState(false);
+
+  const resetPersonForm = () => {
+    setEditingPersonId(null);
+    setPersonFullName('');
+    setPersonPosition('');
+  };
+
+  const closePersonModal = () => {
+    setIsPersonModalOpen(false);
+    resetPersonForm();
+  };
+
+  const openCreatePersonModal = () => {
+    resetPersonForm();
+    setIsPersonModalOpen(true);
+  };
 
   const loadPersons = async () => {
     setLoading(true);
@@ -77,7 +95,6 @@ const PersonPage = () => {
         });
         setPersons((prev) => prev.map((entry) => (entry.id === editingPersonId ? response.data : entry)));
         toast.success('Ответственное лицо обновлено');
-        setEditingPersonId(null);
       } else {
         const response = await axioss.post('/settings/responsible-persons/', {
           full_name: personFullName.trim(),
@@ -86,8 +103,7 @@ const PersonPage = () => {
         setPersons((prev) => [...prev, response.data]);
         toast.success('Ответственное лицо добавлено');
       }
-      setPersonFullName('');
-      setPersonPosition('');
+      closePersonModal();
     } catch (error) {
       toast.error(getBackendError(error, editingPersonId !== null ? 'Ошибка при обновлении ответственного лица' : 'Ошибка при добавлении ответственного лица'));
     }
@@ -97,6 +113,7 @@ const PersonPage = () => {
     setEditingPersonId(item.id);
     setPersonFullName(item.full_name || '');
     setPersonPosition(item.position || '');
+    setIsPersonModalOpen(true);
   };
 
   const handleDeletePerson = async (item: ResponsiblePerson) => {
@@ -107,9 +124,7 @@ const PersonPage = () => {
       await axioss.delete(`/settings/responsible-persons/${item.id}/`);
       setPersons((prev) => prev.filter((entry) => entry.id !== item.id));
       if (editingPersonId === item.id) {
-        setEditingPersonId(null);
-        setPersonFullName('');
-        setPersonPosition('');
+        closePersonModal();
       }
       toast.success('Ответственное лицо удалено');
     } catch (error) {
@@ -118,9 +133,7 @@ const PersonPage = () => {
   };
 
   const handleCancelEdit = () => {
-    setEditingPersonId(null);
-    setPersonFullName('');
-    setPersonPosition('');
+    closePersonModal();
   };
 
   if (!canEditBaseSettings) {
@@ -145,13 +158,22 @@ const PersonPage = () => {
       <Breadcrumb pageName="Ответственное лицо" />
 
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4">
           <button
             onClick={() => navigate('/nastroyka')}
             className="rounded border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-700"
           >
             ← Назад
           </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={openCreatePersonModal}
+              className="rounded bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+            >
+              + Добавить
+            </button>
+          )}
         </div>
 
         {loading && (
@@ -161,37 +183,6 @@ const PersonPage = () => {
         )}
 
         <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
-          <form onSubmit={handleCreatePerson} className="mb-6 space-y-3">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <input
-                value={personFullName}
-                onChange={(e) => setPersonFullName(e.target.value)}
-                placeholder="ФИО"
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              />
-              <input
-                value={personPosition}
-                onChange={(e) => setPersonPosition(e.target.value)}
-                placeholder="Должность"
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button type="submit" className="rounded bg-primary px-4 py-2 text-white">
-                {editingPersonId !== null ? 'Сохранить' : 'Добавить'}
-              </button>
-              {editingPersonId !== null && (
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="rounded border border-stroke px-4 py-2 dark:border-strokedark"
-                >
-                  Отмена
-                </button>
-              )}
-            </div>
-          </form>
-
           <div className="max-h-96 overflow-auto">
             {persons.length === 0 ? (
               <p className="text-center text-gray-500">Нет данных</p>
@@ -235,6 +226,36 @@ const PersonPage = () => {
           </div>
         </div>
       </div>
+
+      <Modal show={isPersonModalOpen} onClose={handleCancelEdit} size="4xl">
+        <Modal.Header>{editingPersonId !== null ? 'Изменить ответственное лицо' : 'Добавить ответственное лицо'}</Modal.Header>
+        <Modal.Body>
+          <form id="person-form" onSubmit={handleCreatePerson} className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <input
+                value={personFullName}
+                onChange={(e) => setPersonFullName(e.target.value)}
+                placeholder="ФИО"
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              />
+              <input
+                value={personPosition}
+                onChange={(e) => setPersonPosition(e.target.value)}
+                placeholder="Должность"
+                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+              />
+            </div>
+          </form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button color="gray" onClick={handleCancelEdit}>
+            Отмена
+          </Button>
+          <Button type="submit" form="person-form">
+            Сохранить
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </>
   );
 };

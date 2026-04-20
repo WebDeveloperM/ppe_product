@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import axioss from '../../api/axios';
+import { Button, Modal } from 'flowbite-react';
 
 type EmployeeItem = {
   slug: string;
@@ -120,6 +121,7 @@ const UserPage = () => {
   const [employeeResultCount, setEmployeeResultCount] = useState(0);
   const [generatedCredentials, setGeneratedCredentials] = useState<GeneratedCredentials | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<DeleteCandidate | null>(null);
+  const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const employeeDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const loadUsers = async (page = 1, search = usersSearch) => {
@@ -246,6 +248,16 @@ const UserPage = () => {
     setEmployeeDropdownOpen(false);
   };
 
+  const closeUserModal = () => {
+    setIsUserModalOpen(false);
+    resetUserForm();
+  };
+
+  const openCreateUserModal = () => {
+    resetUserForm();
+    setIsUserModalOpen(true);
+  };
+
   const handleCreateOrUpdateUser = async (event: FormEvent) => {
     event.preventDefault();
 
@@ -292,6 +304,7 @@ const UserPage = () => {
       }
 
       resetUserForm();
+      setIsUserModalOpen(false);
       await loadUsers(usersPage, usersSearch);
     } catch (error) {
       toast.error(getBackendError(error, editingUserId !== null ? 'Ошибка при обновлении пользователя' : 'Ошибка при добавлении пользователя'));
@@ -307,6 +320,7 @@ const UserPage = () => {
     setUserPassword('');
     setIsPasswordVisible(false);
     setEmployeeSearch('');
+    setIsUserModalOpen(true);
     if (item.employee) {
       setEmployees((prev) => {
         if (prev.some((entry) => entry.slug === item.employee?.slug)) {
@@ -325,7 +339,7 @@ const UserPage = () => {
     try {
       await axioss.delete(`/users/settings-users/${deleteCandidate.id}/`);
       if (editingUserId === deleteCandidate.id) {
-        resetUserForm();
+        closeUserModal();
       }
       setDeleteCandidate(null);
       toast.success('Пользователь удален');
@@ -463,12 +477,19 @@ const UserPage = () => {
       )}
 
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4">
           <button
             onClick={() => navigate('/nastroyka')}
             className="rounded border border-stroke px-4 py-2 hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-700"
           >
             ← Назад
+          </button>
+          <button
+            type="button"
+            onClick={openCreateUserModal}
+            className="rounded bg-primary px-4 py-2 text-white hover:bg-opacity-90"
+          >
+            + Добавить
           </button>
         </div>
 
@@ -479,7 +500,104 @@ const UserPage = () => {
         )}
 
         <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
-          <form onSubmit={handleCreateOrUpdateUser} className="mb-6 space-y-4">
+          <div className="mb-4">
+            <input
+              value={usersSearch}
+              onChange={(event) => setUsersSearch(event.target.value)}
+              placeholder="Поиск по логину, имени, фамилии, табельному номеру..."
+              className="w-full rounded border border-stroke bg-transparent px-3 py-2.5 dark:border-strokedark dark:bg-transparent"
+            />
+          </div>
+
+          <div className="max-h-96 overflow-auto">
+            {users.length === 0 ? (
+              <p className="text-center text-gray-500">Нет данных</p>
+            ) : (
+              <table className="min-w-full text-sm">
+                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Сотрудник</th>
+                    <th className="px-3 py-2 text-left font-semibold">Логин</th>
+                    <th className="px-3 py-2 text-left font-semibold">Роль</th>
+                    <th className="px-3 py-2 text-left font-semibold">Должность</th>
+                    <th className="px-3 py-2 text-left font-semibold">Face ID</th>
+                    <th className="px-3 py-2 text-left font-semibold">Действия</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((item) => {
+                    const employee = item.employee;
+                    const displayLogin = String(item.auth_username || item.username || '').trim() || '—';
+                    return (
+                      <tr key={item.id} className="border-t border-stroke dark:border-strokedark">
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{employee?.full_name || (item.first_name || item.last_name ? `${item.first_name} ${item.last_name}`.trim() : '—')}</div>
+                          {employee?.tabel_number && <div className="text-xs text-gray-400">Таб. № {employee.tabel_number}</div>}
+                        </td>
+                        <td className="px-3 py-2 text-gray-500">{displayLogin}</td>
+                        <td className="px-3 py-2">{ROLE_LABELS[item.role] || item.role}</td>
+                        <td className="px-3 py-2 text-xs text-gray-500">{employee?.position || '—'}</td>
+                        <td className="px-3 py-2">
+                          {normalizeBoolean(item.face_id_required, true) ? (
+                            <span className="inline-block rounded bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">Да</span>
+                          ) : (
+                            <span className="inline-block rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">Нет</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => handleEditUser(item)} className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark">
+                              Изменить
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteCandidate({ id: item.id, username: item.username })}
+                              className="rounded border border-red-400 px-2 py-1 text-xs text-red-600"
+                            >
+                              Удалить
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 border-t border-stroke pt-4 text-sm dark:border-strokedark sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-gray-500">
+              Показано {(usersCount === 0 ? 0 : ((usersPage - 1) * USERS_PAGE_SIZE) + 1)}-
+              {Math.min(usersPage * USERS_PAGE_SIZE, usersCount)} из {usersCount}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => loadUsers(Math.max(1, usersPage - 1), usersSearch)}
+                disabled={usersPage <= 1}
+                className="rounded border border-stroke px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark"
+              >
+                Назад
+              </button>
+              <span className="text-gray-500">{usersPage} / {totalUserPages}</span>
+              <button
+                type="button"
+                onClick={() => loadUsers(Math.min(totalUserPages, usersPage + 1), usersSearch)}
+                disabled={usersPage >= totalUserPages}
+                className="rounded border border-stroke px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark"
+              >
+                Вперёд
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Modal show={isUserModalOpen} onClose={closeUserModal} size="5xl">
+        <Modal.Header>{editingUserId !== null ? 'Изменить пользователя' : 'Добавить пользователя'}</Modal.Header>
+        <Modal.Body>
+          <form id="user-form" onSubmit={handleCreateOrUpdateUser} className="space-y-4">
             <div ref={employeeDropdownRef} className="relative">
               <label className="mb-1 block text-sm font-medium text-black dark:text-white">Сотрудник</label>
               <div
@@ -595,8 +713,6 @@ const UserPage = () => {
               </div>
             </div>
 
-
-
             {editingUserId !== null && (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div>
@@ -640,112 +756,17 @@ const UserPage = () => {
                 </div>
               </div>
             )}
-
-            <div className="flex gap-2">
-              <button type="submit" className="rounded bg-primary px-4 py-2 text-white">
-                {editingUserId !== null ? 'Сохранить' : 'Добавить'}
-              </button>
-              {editingUserId !== null && (
-                <button type="button" onClick={resetUserForm} className="rounded border border-stroke px-4 py-2 dark:border-strokedark">
-                  Отмена
-                </button>
-              )}
-            </div>
           </form>
-
-          <div className="mb-4">
-            <input
-              value={usersSearch}
-              onChange={(event) => setUsersSearch(event.target.value)}
-              placeholder="Поиск по логину, имени, фамилии, табельному номеру..."
-              className="w-full rounded border border-stroke bg-transparent px-3 py-2.5 dark:border-strokedark dark:bg-transparent"
-            />
-          </div>
-
-          <div className="max-h-96 overflow-auto">
-            {users.length === 0 ? (
-              <p className="text-center text-gray-500">Нет данных</p>
-            ) : (
-              <table className="min-w-full text-sm">
-                <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Сотрудник</th>
-                    <th className="px-3 py-2 text-left font-semibold">Логин</th>
-                    <th className="px-3 py-2 text-left font-semibold">Роль</th>
-                    <th className="px-3 py-2 text-left font-semibold">Должность</th>
-                    <th className="px-3 py-2 text-left font-semibold">Face ID</th>
-                    <th className="px-3 py-2 text-left font-semibold">Действия</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((item) => {
-                    const employee = item.employee;
-                    const displayLogin = String(item.auth_username || item.username || '').trim() || '—';
-                    return (
-                      <tr key={item.id} className="border-t border-stroke dark:border-strokedark">
-                        <td className="px-3 py-2">
-                          <div className="font-medium">{employee?.full_name || (item.first_name || item.last_name ? `${item.first_name} ${item.last_name}`.trim() : '—')}</div>
-                          {employee?.tabel_number && <div className="text-xs text-gray-400">Таб. № {employee.tabel_number}</div>}
-                        </td>
-                        <td className="px-3 py-2 text-gray-500">{displayLogin}</td>
-                        <td className="px-3 py-2">{ROLE_LABELS[item.role] || item.role}</td>
-                        <td className="px-3 py-2 text-xs text-gray-500">{employee?.position || '—'}</td>
-                        <td className="px-3 py-2">
-                          {normalizeBoolean(item.face_id_required, true) ? (
-                            <span className="inline-block rounded bg-green-100 px-2 py-0.5 text-xs text-green-700 dark:bg-green-900 dark:text-green-300">Да</span>
-                          ) : (
-                            <span className="inline-block rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">Нет</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
-                            <button onClick={() => handleEditUser(item)} className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark">
-                              Изменить
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setDeleteCandidate({ id: item.id, username: item.username })}
-                              className="rounded border border-red-400 px-2 py-1 text-xs text-red-600"
-                            >
-                              Удалить
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div className="mt-4 flex flex-col gap-3 border-t border-stroke pt-4 text-sm dark:border-strokedark sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-gray-500">
-              Показано {(usersCount === 0 ? 0 : ((usersPage - 1) * USERS_PAGE_SIZE) + 1)}-
-              {Math.min(usersPage * USERS_PAGE_SIZE, usersCount)} из {usersCount}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => loadUsers(Math.max(1, usersPage - 1), usersSearch)}
-                disabled={usersPage <= 1}
-                className="rounded border border-stroke px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark"
-              >
-                Назад
-              </button>
-              <span className="text-gray-500">{usersPage} / {totalUserPages}</span>
-              <button
-                type="button"
-                onClick={() => loadUsers(Math.min(totalUserPages, usersPage + 1), usersSearch)}
-                disabled={usersPage >= totalUserPages}
-                className="rounded border border-stroke px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark"
-              >
-                Вперёд
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button color="gray" onClick={closeUserModal}>
+            Отмена
+          </Button>
+          <Button type="submit" form="user-form">
+            Сохранить
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </>
   );
 };
