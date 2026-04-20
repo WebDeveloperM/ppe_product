@@ -8,6 +8,13 @@ type PositionOption = {
   position_name: string;
   position_key: string;
   employee_count: number;
+  department_ids: number[];
+  department_names: string[];
+};
+
+type DepartmentOption = {
+  id: number;
+  name: string;
 };
 
 type PPEProduct = {
@@ -55,6 +62,7 @@ const DepartmentPPERulePage = () => {
   const isAdmin = role === 'admin';
 
   const [loading, setLoading] = useState(true);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [positions, setPositions] = useState<PositionOption[]>([]);
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [rules, setRules] = useState<DepartmentPPERule[]>([]);
@@ -62,10 +70,20 @@ const DepartmentPPERulePage = () => {
   const [productId, setProductId] = useState('');
   const [renewalMonths, setRenewalMonths] = useState('');
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
-  const [isPositionDropdownOpen, setIsPositionDropdownOpen] = useState(false);
-  const positionDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
+  const treeDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const isAllPositionsSelected = positions.length > 0 && selectedPositionNames.length === positions.length;
+
+  const departmentTree = useMemo(() => (
+    departments.map((department) => ({
+      ...department,
+      positions: positions
+        .filter((position) => position.department_ids.includes(department.id))
+        .sort((left, right) => left.position_name.localeCompare(right.position_name, 'ru')),
+    }))
+      .filter((department) => department.positions.length > 0)
+  ), [departments, positions]);
 
   const positionButtonLabel = useMemo(() => {
     if (editingRuleId !== null) {
@@ -75,7 +93,7 @@ const DepartmentPPERulePage = () => {
       return 'Выбраны все должности';
     }
     if (selectedPositionNames.length === 0) {
-      return 'Выберите одну или несколько должностей';
+      return 'Выберите цех и должность';
     }
     if (selectedPositionNames.length === 1) {
       return selectedPositionNames[0] || 'Выбрана 1 должность';
@@ -86,12 +104,14 @@ const DepartmentPPERulePage = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [positionsRes, productsRes, rulesRes] = await Promise.all([
+      const [departmentsRes, positionsRes, productsRes, rulesRes] = await Promise.all([
+        axioss.get('/settings/departments/'),
         axioss.get('/settings/employee-positions/'),
         axioss.get('/settings/ppe-products/'),
         axioss.get('/settings/ppe-department-rules/'),
       ]);
 
+      setDepartments(departmentsRes.data || []);
       setPositions(positionsRes.data || []);
       setProducts(productsRes.data || []);
       setRules(rulesRes.data || []);
@@ -112,8 +132,8 @@ const DepartmentPPERulePage = () => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (!positionDropdownRef.current?.contains(event.target as Node)) {
-        setIsPositionDropdownOpen(false);
+      if (!treeDropdownRef.current?.contains(event.target as Node)) {
+        setIsTreeDropdownOpen(false);
       }
     };
 
@@ -154,7 +174,7 @@ const DepartmentPPERulePage = () => {
       setProductId('');
       setRenewalMonths('');
       setEditingRuleId(null);
-      setIsPositionDropdownOpen(false);
+      setIsTreeDropdownOpen(false);
     } catch (error) {
       toast.error(getBackendError(error, editingRuleId !== null ? 'Ошибка при обновлении нормы' : 'Ошибка при добавлении нормы'));
     }
@@ -165,7 +185,7 @@ const DepartmentPPERulePage = () => {
     setSelectedPositionNames([rule.position_name]);
     setProductId(String(rule.ppeproduct));
     setRenewalMonths(String(rule.renewal_months));
-    setIsPositionDropdownOpen(false);
+    setIsTreeDropdownOpen(false);
   };
 
   const togglePosition = (positionName: string) => {
@@ -176,6 +196,42 @@ const DepartmentPPERulePage = () => {
       return prev.includes(positionName)
         ? prev.filter((item) => item !== positionName)
         : [...prev, positionName];
+    });
+  };
+
+  const getDepartmentPositions = (departmentId: number) => (
+    positions.filter((position) => position.department_ids.includes(departmentId))
+  );
+
+  const isDepartmentChecked = (departmentId: number) => {
+    const departmentPositions = getDepartmentPositions(departmentId);
+    return departmentPositions.length > 0
+      && departmentPositions.every((position) => selectedPositionNames.includes(position.position_name));
+  };
+
+  const isDepartmentIndeterminate = (departmentId: number) => {
+    const departmentPositions = getDepartmentPositions(departmentId);
+    const selectedCount = departmentPositions.filter((position) => selectedPositionNames.includes(position.position_name)).length;
+    return selectedCount > 0 && selectedCount < departmentPositions.length;
+  };
+
+  const toggleDepartmentPositions = (departmentId: number) => {
+    if (editingRuleId !== null) {
+      return;
+    }
+
+    const departmentPositionNames = getDepartmentPositions(departmentId).map((position) => position.position_name);
+    setSelectedPositionNames((prev) => {
+      const current = new Set(prev);
+      const shouldClear = departmentPositionNames.every((positionName) => current.has(positionName));
+
+      if (shouldClear) {
+        departmentPositionNames.forEach((positionName) => current.delete(positionName));
+      } else {
+        departmentPositionNames.forEach((positionName) => current.add(positionName));
+      }
+
+      return Array.from(current);
     });
   };
 
@@ -196,7 +252,7 @@ const DepartmentPPERulePage = () => {
         setSelectedPositionNames([]);
         setProductId('');
         setRenewalMonths('');
-        setIsPositionDropdownOpen(false);
+        setIsTreeDropdownOpen(false);
       }
       toast.success('Норма удалена');
     } catch (error) {
@@ -209,7 +265,7 @@ const DepartmentPPERulePage = () => {
     setSelectedPositionNames([]);
     setProductId('');
     setRenewalMonths('');
-    setIsPositionDropdownOpen(false);
+    setIsTreeDropdownOpen(false);
   };
 
   if (!canEditBaseSettings) {
@@ -252,20 +308,20 @@ const DepartmentPPERulePage = () => {
         <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
           <form onSubmit={handleSubmit} className="mb-6 space-y-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="relative" ref={positionDropdownRef}>
+              <div className="relative" ref={treeDropdownRef}>
                 <button
                   type="button"
-                  onClick={() => setIsPositionDropdownOpen((prev) => !prev)}
+                  onClick={() => setIsTreeDropdownOpen((prev) => !prev)}
                   className="flex w-full items-center justify-between rounded border border-stroke bg-transparent px-3 py-2 text-left dark:border-strokedark dark:bg-transparent"
                 >
                   <span className="truncate text-sm text-black dark:text-white">{positionButtonLabel}</span>
-                  <span className="ml-3 text-xs text-slate-500">{isPositionDropdownOpen ? '▲' : '▼'}</span>
+                  <span className="ml-3 text-xs text-slate-500">{isTreeDropdownOpen ? '▲' : '▼'}</span>
                 </button>
 
-                {isPositionDropdownOpen && (
+                {isTreeDropdownOpen && (
                   <div className="absolute z-20 mt-2 w-full rounded border border-stroke bg-white p-3 shadow-lg dark:border-strokedark dark:bg-boxdark">
                     <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-                      {editingRuleId !== null ? 'Выберите одну должность' : 'Выберите одну или несколько должностей'}
+                      {editingRuleId !== null ? 'Выберите должность' : 'Выберите цех и одну или несколько должностей'}
                     </div>
 
                     {editingRuleId === null && positions.length > 0 && (
@@ -280,21 +336,49 @@ const DepartmentPPERulePage = () => {
                       </label>
                     )}
 
-                    <div className="max-h-60 space-y-2 overflow-y-auto pr-1">
-                      {positions.map((position) => {
-                        const isChecked = selectedPositionNames.includes(position.position_name);
-                        return (
-                          <label key={position.position_key} className="flex items-start gap-2 text-sm text-black dark:text-white">
+                    <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                      {departmentTree.map((department) => (
+                        <div key={department.id} className="rounded border border-stroke/70 p-2 dark:border-strokedark/70">
+                          <label className="flex items-start gap-2 text-sm font-semibold text-black dark:text-white">
                             <input
                               type="checkbox"
-                              checked={isChecked}
-                              onChange={() => togglePosition(position.position_name)}
+                              checked={isDepartmentChecked(department.id)}
+                              ref={(input) => {
+                                if (input) {
+                                  input.indeterminate = isDepartmentIndeterminate(department.id);
+                                }
+                              }}
+                              onChange={() => toggleDepartmentPositions(department.id)}
                               className="mt-1"
+                              disabled={editingRuleId !== null}
                             />
-                            <span>{position.position_name}</span>
+                            <span>{department.name}</span>
                           </label>
-                        );
-                      })}
+
+                          <div className="mt-2 space-y-2 pl-6">
+                            {department.positions.map((position) => {
+                              const isChecked = selectedPositionNames.includes(position.position_name);
+                              return (
+                                <label key={`${department.id}-${position.position_key}`} className="flex items-start gap-2 text-sm text-black dark:text-white">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => togglePosition(position.position_name)}
+                                    className="mt-1"
+                                  />
+                                  <span>{position.position_name}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+
+                      {departmentTree.length === 0 && (
+                        <div className="text-sm text-slate-500 dark:text-slate-400">
+                          Должности не найдены.
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

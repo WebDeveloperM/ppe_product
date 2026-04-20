@@ -161,12 +161,33 @@ def get_available_employee_positions():
         if not position_key:
             continue
 
+        department = employee.get('department') or {}
+        department_id = department.get('id')
+        department_name = ' '.join(str(department.get('name') or '').strip().split())
+
         entry = position_map.setdefault(position_key, {
             'position_name': position_name,
             'position_key': position_key,
             'employee_count': 0,
+            'department_ids': [],
+            'department_names': [],
         })
         entry['employee_count'] += 1
+
+        try:
+            normalized_department_id = int(department_id)
+        except (TypeError, ValueError):
+            normalized_department_id = None
+
+        if normalized_department_id is not None and normalized_department_id not in entry['department_ids']:
+            entry['department_ids'].append(normalized_department_id)
+
+        if department_name and department_name not in entry['department_names']:
+            entry['department_names'].append(department_name)
+
+    for entry in position_map.values():
+        entry['department_ids'].sort()
+        entry['department_names'].sort(key=str.lower)
 
     return sorted(position_map.values(), key=lambda item: item['position_name'].lower())
 
