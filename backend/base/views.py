@@ -596,6 +596,60 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
         if not normalized_positions:
             return Response({'error': 'Выберите хотя бы одну должность.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        raw_product_rules = request.data.get('product_rules')
+        if raw_product_rules is not None:
+            if not isinstance(raw_product_rules, list):
+                return Response({'error': 'Список СИЗ заполнен некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            normalized_product_rules = []
+            seen_products = set()
+            for raw_rule in raw_product_rules:
+                if not isinstance(raw_rule, dict):
+                    continue
+
+                raw_product_id = raw_rule.get('ppeproduct')
+                try:
+                    product_id = int(raw_product_id)
+                except (TypeError, ValueError):
+                    continue
+
+                if product_id in seen_products:
+                    continue
+
+                try:
+                    renewal_months = int(raw_rule.get('renewal_months', 0) or 0)
+                except (TypeError, ValueError):
+                    return Response({'error': 'Срок выдачи должен быть числом.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                if renewal_months < 0:
+                    return Response({'error': 'Срок выдачи не может быть отрицательным.'}, status=status.HTTP_400_BAD_REQUEST)
+
+                seen_products.add(product_id)
+                normalized_product_rules.append({
+                    'ppeproduct': product_id,
+                    'renewal_months': renewal_months,
+                })
+
+            if not normalized_product_rules:
+                return Response({'error': 'Укажите хотя бы один СИЗ и срок выдачи.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            payloads = []
+            for position_name in normalized_positions:
+                for product_rule in normalized_product_rules:
+                    payloads.append({
+                        'position_name': position_name,
+                        'ppeproduct': product_rule['ppeproduct'],
+                        'renewal_months': product_rule['renewal_months'],
+                    })
+
+            serializer = PositionPPERenewalRuleSerializer(data=payloads, many=True)
+            if serializer.is_valid():
+                with transaction.atomic():
+                    serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
         payloads = []
         for position_name in normalized_positions:
             payload = request.data.copy()

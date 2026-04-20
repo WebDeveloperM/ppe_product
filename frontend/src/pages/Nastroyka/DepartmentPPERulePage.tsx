@@ -24,6 +24,7 @@ type PPEProduct = {
   name: string;
   type_product: string | null;
   target_gender: 'ALL' | 'M' | 'F';
+  is_active?: boolean;
 };
 
 type DepartmentPPERule = {
@@ -71,6 +72,7 @@ const DepartmentPPERulePage = () => {
   const [selectedPositionNames, setSelectedPositionNames] = useState<string[]>([]);
   const [productId, setProductId] = useState('');
   const [renewalMonths, setRenewalMonths] = useState('');
+  const [productMonths, setProductMonths] = useState<Record<number, string>>({});
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [positionSearch, setPositionSearch] = useState('');
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
@@ -146,6 +148,11 @@ const DepartmentPPERulePage = () => {
       });
   }, [departmentSearch, positionSearch, positionDepartmentsMap, rules]);
 
+  const productsForBulkEdit = useMemo(
+    () => products.filter((product) => product.is_active !== false).sort((left, right) => left.name.localeCompare(right.name, 'ru')),
+    [products],
+  );
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -188,13 +195,18 @@ const DepartmentPPERulePage = () => {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (selectedPositionNames.length === 0 || !productId) {
-      toast.warning('Выберите хотя бы одну должность и средство защиты');
+    if (selectedPositionNames.length === 0) {
+      toast.warning('Выберите хотя бы одну должность');
       return;
     }
 
     try {
       if (editingRuleId !== null) {
+        if (!productId) {
+          toast.warning('Выберите средство защиты');
+          return;
+        }
+
         const payload = {
           position_name: selectedPositionNames[0],
           ppeproduct: Number(productId),
@@ -204,10 +216,21 @@ const DepartmentPPERulePage = () => {
         setRules((prev) => prev.map((item) => (item.id === editingRuleId ? response.data : item)));
         toast.success('Норма обновлена');
       } else {
+        const productRules = Object.entries(productMonths)
+          .map(([key, value]) => ({
+            ppeproduct: Number(key),
+            renewal_months: Number(String(value).trim()),
+          }))
+          .filter((item) => Number.isFinite(item.renewal_months));
+
+        if (productRules.length === 0) {
+          toast.warning('Укажите срок выдачи хотя бы для одного СИЗ');
+          return;
+        }
+
         const payload = {
           position_names: selectedPositionNames,
-          ppeproduct: Number(productId),
-          renewal_months: Number(renewalMonths || 0),
+          product_rules: productRules,
         };
         const response = await axioss.post('/settings/ppe-department-rules/', payload);
         const createdRules = Array.isArray(response.data) ? response.data : [response.data];
@@ -218,6 +241,7 @@ const DepartmentPPERulePage = () => {
       setSelectedPositionNames([]);
       setProductId('');
       setRenewalMonths('');
+      setProductMonths({});
       setEditingRuleId(null);
       setIsTreeDropdownOpen(false);
     } catch (error) {
@@ -230,6 +254,7 @@ const DepartmentPPERulePage = () => {
     setSelectedPositionNames([rule.position_name]);
     setProductId(String(rule.ppeproduct));
     setRenewalMonths(String(rule.renewal_months));
+    setProductMonths({});
     setIsTreeDropdownOpen(false);
   };
 
@@ -313,6 +338,7 @@ const DepartmentPPERulePage = () => {
     setSelectedPositionNames([]);
     setProductId('');
     setRenewalMonths('');
+    setProductMonths({});
     setIsTreeDropdownOpen(false);
   };
 
@@ -432,18 +458,24 @@ const DepartmentPPERulePage = () => {
                 )}
               </div>
 
-              <select
-                value={productId}
-                onChange={(e) => setProductId(e.target.value)}
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              >
-                <option value="">Выберите СИЗ</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-              </select>
+              {editingRuleId !== null ? (
+                <select
+                  value={productId}
+                  onChange={(e) => setProductId(e.target.value)}
+                  className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+                >
+                  <option value="">Выберите СИЗ</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
+                  Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.
+                </div>
+              )}
             </div>
 
             {selectedPositionNames.length > 0 && (
@@ -452,16 +484,47 @@ const DepartmentPPERulePage = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <input
-                type="number"
-                min={0}
-                value={renewalMonths}
-                onChange={(e) => setRenewalMonths(e.target.value)}
-                placeholder="Срок выдачи (мес.)"
-                className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
-              />
-            </div>
+            {editingRuleId !== null ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={renewalMonths}
+                  onChange={(e) => setRenewalMonths(e.target.value)}
+                  placeholder="Срок выдачи (мес.)"
+                  className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+                />
+              </div>
+            ) : (
+              <div className="rounded border border-stroke p-4 dark:border-strokedark">
+                <div className="mb-3 text-sm font-medium text-black dark:text-white">Срок выдачи по СИЗ</div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {productsForBulkEdit.map((product) => (
+                    <label key={product.id} className="rounded border border-stroke p-3 dark:border-strokedark">
+                      <div className="mb-2 text-sm text-black dark:text-white">{product.name}</div>
+                      <input
+                        type="number"
+                        min={0}
+                        value={productMonths[product.id] || ''}
+                        onChange={(e) => {
+                          const nextValue = e.target.value;
+                          setProductMonths((prev) => {
+                            if (nextValue === '') {
+                              const nextState = { ...prev };
+                              delete nextState[product.id];
+                              return nextState;
+                            }
+                            return { ...prev, [product.id]: nextValue };
+                          });
+                        }}
+                        placeholder="Срок выдачи (мес.)"
+                        className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-2">
               <button type="submit" className="rounded bg-primary px-4 py-2 text-white">

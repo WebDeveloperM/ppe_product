@@ -502,6 +502,33 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 			['Operator', 'Welder'],
 		)
 
+	def test_settings_rules_post_creates_multiple_products_for_multiple_positions(self):
+		bulk_product_1 = PPEProduct.objects.create(name='Перчатки bulk', renewal_months=3, target_gender='ALL')
+		bulk_product_2 = PPEProduct.objects.create(name='Каска bulk 2', renewal_months=8, target_gender='ALL')
+
+		response = self.client.post(
+			'/api/v1/settings/ppe-department-rules/',
+			{
+				'position_names': ['Operator', 'Welder'],
+				'product_rules': [
+					{'ppeproduct': bulk_product_1.id, 'renewal_months': 3},
+					{'ppeproduct': bulk_product_2.id, 'renewal_months': 8},
+				],
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		self.assertEqual(len(response.data), 4)
+		self.assertEqual(
+			PositionPPERenewalRule.objects.filter(position_name='Operator', ppeproduct=bulk_product_1).get().renewal_months,
+			3,
+		)
+		self.assertEqual(
+			PositionPPERenewalRule.objects.filter(position_name='Welder', ppeproduct=bulk_product_2).get().renewal_months,
+			8,
+		)
+
 	@patch('base.views.list_employees', return_value=[
 		{
 			'id': 1,
