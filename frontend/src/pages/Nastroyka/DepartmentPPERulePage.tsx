@@ -88,6 +88,7 @@ const DepartmentPPERulePage = () => {
   const [positionSearch, setPositionSearch] = useState('');
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
   const [ruleToDelete, setRuleToDelete] = useState<DepartmentPPERule | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<DepartmentPPERuleGroup | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
   const treeDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -454,6 +455,35 @@ const DepartmentPPERulePage = () => {
     }
   };
 
+  const confirmGroupDelete = async () => {
+    if (!groupToDelete) return;
+
+    setDeleteLoading(true);
+    try {
+      await Promise.all(
+        groupToDelete.items.map((rule) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`)),
+      );
+
+      const deletedIds = new Set(groupToDelete.items.map((rule) => rule.id));
+      setRules((prev) => prev.filter((item) => !deletedIds.has(item.id)));
+
+      if (editingRuleId !== null && deletedIds.has(editingRuleId)) {
+        setEditingRuleId(null);
+        setSelectedPositionKeys([]);
+        setProductId('');
+        setRenewalMonths('');
+        setIsTreeDropdownOpen(false);
+      }
+
+      setGroupToDelete(null);
+      toast.success('Нормы по выбранному цеху и должности удалены');
+    } catch (error) {
+      toast.error(getBackendError(error, 'Ошибка при удалении норм'));
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const handleCancelEdit = () => {
     setEditingRuleId(null);
     setSelectedPositionKeys([]);
@@ -687,6 +717,7 @@ const DepartmentPPERulePage = () => {
               <table className="min-w-full text-sm">
                 <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
                   <tr>
+                    <th className="px-3 py-2 text-left font-semibold">№</th>
                     <th className="px-3 py-2 text-left font-semibold">Цех</th>
                     <th className="px-3 py-2 text-left font-semibold">Должность</th>
                     <th className="px-3 py-2 text-left font-semibold">СИЗ</th>
@@ -697,8 +728,9 @@ const DepartmentPPERulePage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {groupedRules.map((group) => (
+                  {groupedRules.map((group, index) => (
                     <tr key={group.key} className="border-t border-stroke align-top dark:border-strokedark">
+                      <td className="px-3 py-2">{index + 1}</td>
                       <td className="px-3 py-2">{group.department_name || '-'}</td>
                       <td className="px-3 py-2">{group.position_name}</td>
                       <td className="px-3 py-2">
@@ -731,6 +763,16 @@ const DepartmentPPERulePage = () => {
                       </td>
                       <td className="px-3 py-2">
                         <div className="space-y-2">
+                          <div className="flex min-h-[28px] items-center gap-2">
+                            <button
+                              onClick={() => setGroupToDelete(group)}
+                              className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-500 bg-red-50 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
+                              title={isAdmin ? 'Удалить все нормы этой строки' : 'Удаление доступно только администратору'}
+                              disabled={!isAdmin}
+                            >
+                              Удалить все
+                            </button>
+                          </div>
                           {group.items.map((rule) => (
                             <div key={rule.id} className="flex min-h-[28px] items-center gap-2">
                               <button
@@ -780,6 +822,30 @@ const DepartmentPPERulePage = () => {
           </Button>
           <Button color="failure" onClick={confirmDelete} disabled={deleteLoading}>
             {deleteLoading ? 'Удаление...' : 'Удалить'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={Boolean(groupToDelete)} onClose={() => !deleteLoading && setGroupToDelete(null)}>
+        <Modal.Header>Подтвердите удаление группы</Modal.Header>
+        <Modal.Body>
+          <div className="space-y-3">
+            <div className="flex justify-center text-red-500">
+              <FiAlertTriangle className="h-16 w-16" />
+            </div>
+            <p className="text-center text-base text-slate-600 dark:text-slate-300">
+              {groupToDelete
+                ? `Удалить все нормы для должности "${groupToDelete.position_name}" в цехе "${groupToDelete.department_name || '-'}"?`
+                : 'Удалить выбранную группу норм?'}
+            </p>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button color="gray" onClick={() => setGroupToDelete(null)} disabled={deleteLoading}>
+            Отмена
+          </Button>
+          <Button color="failure" onClick={confirmGroupDelete} disabled={deleteLoading}>
+            {deleteLoading ? 'Удаление...' : 'Удалить все'}
           </Button>
         </Modal.Footer>
       </Modal>
