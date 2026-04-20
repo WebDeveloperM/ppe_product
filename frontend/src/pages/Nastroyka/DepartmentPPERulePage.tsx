@@ -41,6 +41,14 @@ type DepartmentPPERule = {
   renewal_months: number;
 };
 
+type DepartmentPPERuleGroup = {
+  key: string;
+  department_service_id: number | null;
+  department_name: string;
+  position_name: string;
+  items: DepartmentPPERule[];
+};
+
 const normalizeRole = (rawRole: string | null): 'admin' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
   const value = String(rawRole || '').trim().toLowerCase();
   if (value === 'admin' || value === 'админ') return 'admin';
@@ -215,6 +223,32 @@ const DepartmentPPERulePage = () => {
         return left.ppeproduct_name.localeCompare(right.ppeproduct_name, 'ru');
       });
   }, [departmentNameMap, departmentOrderMap, departmentSearch, positionSearch, rules]);
+
+  const groupedRules = useMemo<DepartmentPPERuleGroup[]>(() => {
+    const groups = new Map<string, DepartmentPPERuleGroup>();
+
+    filteredRules.forEach((rule) => {
+      const departmentName = getRuleDepartmentName(rule);
+      const departmentId = rule.department_service_id ?? null;
+      const groupKey = `${departmentId ?? 'none'}:${departmentName}:${rule.position_name}`;
+      const existingGroup = groups.get(groupKey);
+
+      if (existingGroup) {
+        existingGroup.items.push(rule);
+        return;
+      }
+
+      groups.set(groupKey, {
+        key: groupKey,
+        department_service_id: departmentId,
+        department_name: departmentName,
+        position_name: rule.position_name,
+        items: [rule],
+      });
+    });
+
+    return Array.from(groups.values());
+  }, [filteredRules]);
 
   const productsForBulkEdit = useMemo(
     () => products.filter((product) => product.is_active !== false).sort((left, right) => left.name.localeCompare(right.name, 'ru')),
@@ -647,7 +681,7 @@ const DepartmentPPERulePage = () => {
           </div>
 
           <div className="max-h-96 overflow-auto">
-            {filteredRules.length === 0 ? (
+            {groupedRules.length === 0 ? (
               <p className="text-center text-gray-500">Нет данных</p>
             ) : (
               <table className="min-w-full text-sm">
@@ -663,30 +697,58 @@ const DepartmentPPERulePage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredRules.map((rule) => (
-                    <tr key={rule.id} className="border-t border-stroke dark:border-strokedark">
-                      <td className="px-3 py-2">{getRuleDepartmentName(rule) || '-'}</td>
-                      <td className="px-3 py-2">{rule.position_name}</td>
-                      <td className="px-3 py-2">{rule.ppeproduct_name}</td>
-                      <td className="px-3 py-2">{rule.ppeproduct_target_gender_display || 'Для всех'}</td>
-                      <td className="px-3 py-2">{rule.ppeproduct_type_product || '-'}</td>
-                      <td className="px-3 py-2">{rule.renewal_months}</td>
+                  {groupedRules.map((group) => (
+                    <tr key={group.key} className="border-t border-stroke align-top dark:border-strokedark">
+                      <td className="px-3 py-2">{group.department_name || '-'}</td>
+                      <td className="px-3 py-2">{group.position_name}</td>
                       <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => handleEdit(rule)}
-                            className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark"
-                          >
-                            Изменить
-                          </button>
-                          <button
-                            onClick={() => setRuleToDelete(rule)}
-                            className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-400 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
-                            title={isAdmin ? 'Удалить' : 'Удаление доступно только администратору'}
-                            disabled={!isAdmin}
-                          >
-                            <FiTrash2 className="text-sm" />
-                          </button>
+                        <div className="space-y-2">
+                          {group.items.map((rule) => (
+                            <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_name}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="space-y-2">
+                          {group.items.map((rule) => (
+                            <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_target_gender_display || 'Для всех'}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="space-y-2">
+                          {group.items.map((rule) => (
+                            <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_type_product || '-'}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="space-y-2">
+                          {group.items.map((rule) => (
+                            <div key={rule.id} className="min-h-[28px]">{rule.renewal_months}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="space-y-2">
+                          {group.items.map((rule) => (
+                            <div key={rule.id} className="flex min-h-[28px] items-center gap-2">
+                              <button
+                                onClick={() => handleEdit(rule)}
+                                className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark"
+                              >
+                                Изменить
+                              </button>
+                              <button
+                                onClick={() => setRuleToDelete(rule)}
+                                className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-400 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
+                                title={isAdmin ? 'Удалить' : 'Удаление доступно только администратору'}
+                                disabled={!isAdmin}
+                              >
+                                <FiTrash2 className="text-sm" />
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       </td>
                     </tr>
