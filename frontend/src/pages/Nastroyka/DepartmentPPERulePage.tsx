@@ -69,6 +69,8 @@ const DepartmentPPERulePage = () => {
   const [selectedPositionNames, setSelectedPositionNames] = useState<string[]>([]);
   const [productId, setProductId] = useState('');
   const [renewalMonths, setRenewalMonths] = useState('');
+  const [departmentSearch, setDepartmentSearch] = useState('');
+  const [positionSearch, setPositionSearch] = useState('');
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
   const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
   const treeDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -100,6 +102,33 @@ const DepartmentPPERulePage = () => {
     }
     return `Выбрано должностей: ${selectedPositionNames.length}`;
   }, [editingRuleId, isAllPositionsSelected, selectedPositionNames]);
+
+  const positionDepartmentsMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+
+    positions.forEach((position) => {
+      const existingNames = map.get(position.position_name) || [];
+      const mergedNames = Array.from(new Set([...existingNames, ...position.department_names]));
+      map.set(position.position_name, mergedNames);
+    });
+
+    return map;
+  }, [positions]);
+
+  const filteredRules = useMemo(() => {
+    const normalizedDepartmentSearch = departmentSearch.trim().toLowerCase();
+    const normalizedPositionSearch = positionSearch.trim().toLowerCase();
+
+    return rules.filter((rule) => {
+      const departmentNames = positionDepartmentsMap.get(rule.position_name) || [];
+      const matchesDepartment = !normalizedDepartmentSearch
+        || departmentNames.some((departmentName) => departmentName.toLowerCase().includes(normalizedDepartmentSearch));
+      const matchesPosition = !normalizedPositionSearch
+        || rule.position_name.toLowerCase().includes(normalizedPositionSearch);
+
+      return matchesDepartment && matchesPosition;
+    });
+  }, [departmentSearch, positionSearch, positionDepartmentsMap, rules]);
 
   const loadData = async () => {
     setLoading(true);
@@ -431,13 +460,31 @@ const DepartmentPPERulePage = () => {
             </div>
           </form>
 
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <input
+              type="text"
+              value={departmentSearch}
+              onChange={(e) => setDepartmentSearch(e.target.value)}
+              placeholder="Поиск по цеху"
+              className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+            />
+            <input
+              type="text"
+              value={positionSearch}
+              onChange={(e) => setPositionSearch(e.target.value)}
+              placeholder="Поиск по должности"
+              className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+            />
+          </div>
+
           <div className="max-h-96 overflow-auto">
-            {rules.length === 0 ? (
+            {filteredRules.length === 0 ? (
               <p className="text-center text-gray-500">Нет данных</p>
             ) : (
               <table className="min-w-full text-sm">
                 <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800">
                   <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Цех</th>
                     <th className="px-3 py-2 text-left font-semibold">Должность</th>
                     <th className="px-3 py-2 text-left font-semibold">СИЗ</th>
                     <th className="px-3 py-2 text-left font-semibold">Для кого</th>
@@ -447,8 +494,9 @@ const DepartmentPPERulePage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {rules.map((rule) => (
+                  {filteredRules.map((rule) => (
                     <tr key={rule.id} className="border-t border-stroke dark:border-strokedark">
+                      <td className="px-3 py-2">{(positionDepartmentsMap.get(rule.position_name) || []).join(', ') || '-'}</td>
                       <td className="px-3 py-2">{rule.position_name}</td>
                       <td className="px-3 py-2">{rule.ppeproduct_name}</td>
                       <td className="px-3 py-2">{rule.ppeproduct_target_gender_display || 'Для всех'}</td>
