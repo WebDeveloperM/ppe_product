@@ -2,7 +2,8 @@ import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
-import { FiTrash2 } from 'react-icons/fi';
+import { Button, Modal } from 'flowbite-react';
+import { FiAlertTriangle, FiTrash2 } from 'react-icons/fi';
 import axioss from '../../api/axios';
 
 type PositionOption = {
@@ -73,6 +74,8 @@ const DepartmentPPERulePage = () => {
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [positionSearch, setPositionSearch] = useState('');
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [ruleToDelete, setRuleToDelete] = useState<DepartmentPPERule | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
   const treeDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -282,23 +285,26 @@ const DepartmentPPERulePage = () => {
     setSelectedPositionNames(isAllPositionsSelected ? [] : positions.map((position) => position.position_name));
   };
 
-  const handleDelete = async (rule: DepartmentPPERule) => {
-    const isConfirmed = window.confirm(`Удалить норму для должности "${rule.position_name}" и СИЗ "${rule.ppeproduct_name}"?`);
-    if (!isConfirmed) return;
+  const confirmDelete = async () => {
+    if (!ruleToDelete) return;
 
+    setDeleteLoading(true);
     try {
-      await axioss.delete(`/settings/ppe-department-rules/${rule.id}/`);
-      setRules((prev) => prev.filter((item) => item.id !== rule.id));
-      if (editingRuleId === rule.id) {
+      await axioss.delete(`/settings/ppe-department-rules/${ruleToDelete.id}/`);
+      setRules((prev) => prev.filter((item) => item.id !== ruleToDelete.id));
+      if (editingRuleId === ruleToDelete.id) {
         setEditingRuleId(null);
         setSelectedPositionNames([]);
         setProductId('');
         setRenewalMonths('');
         setIsTreeDropdownOpen(false);
       }
+      setRuleToDelete(null);
       toast.success('Норма удалена');
     } catch (error) {
       toast.error(getBackendError(error, 'Ошибка при удалении нормы'));
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -523,16 +529,14 @@ const DepartmentPPERulePage = () => {
                           >
                             Изменить
                           </button>
-                          {isAdmin && (
-                            <button
-                              onClick={() => handleDelete(rule)}
-                              className="inline-flex items-center gap-1 rounded border border-red-400 px-2 py-1 text-xs text-red-600"
-                              title="Удалить"
-                            >
-                              <FiTrash2 className="text-sm" />
-                              Удалить
-                            </button>
-                          )}
+                          <button
+                            onClick={() => setRuleToDelete(rule)}
+                            className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-400 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
+                            title={isAdmin ? 'Удалить' : 'Удаление доступно только администратору'}
+                            disabled={!isAdmin}
+                          >
+                            <FiTrash2 className="text-sm" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -543,6 +547,30 @@ const DepartmentPPERulePage = () => {
           </div>
         </div>
       </div>
+
+      <Modal show={Boolean(ruleToDelete)} onClose={() => !deleteLoading && setRuleToDelete(null)}>
+        <Modal.Header>Подтвердите удаление</Modal.Header>
+        <Modal.Body>
+          <div className="space-y-3">
+            <div className="flex justify-center text-red-500">
+              <FiAlertTriangle className="h-16 w-16" />
+            </div>
+            <p className="text-center text-base text-slate-600 dark:text-slate-300">
+              {ruleToDelete
+                ? `Удалить норму для должности "${ruleToDelete.position_name}" и СИЗ "${ruleToDelete.ppeproduct_name}"?`
+                : 'Удалить выбранную норму?'}
+            </p>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button color="gray" onClick={() => setRuleToDelete(null)} disabled={deleteLoading}>
+            Отмена
+          </Button>
+          <Button color="failure" onClick={confirmDelete} disabled={deleteLoading}>
+            {deleteLoading ? 'Удаление...' : 'Удалить'}
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </>
   );
 };
