@@ -2,6 +2,7 @@ import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import { FiTrash2 } from 'react-icons/fi';
 import axioss from '../../api/axios';
 
 type PositionOption = {
@@ -525,8 +526,10 @@ const DepartmentPPERulePage = () => {
                           {isAdmin && (
                             <button
                               onClick={() => handleDelete(rule)}
-                              className="rounded border border-red-400 px-2 py-1 text-xs text-red-600"
+                              className="inline-flex items-center gap-1 rounded border border-red-400 px-2 py-1 text-xs text-red-600"
+                              title="Удалить"
                             >
+                              <FiTrash2 className="text-sm" />
                               Удалить
                             </button>
                           )}
