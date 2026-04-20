@@ -847,7 +847,7 @@ const DepartmentPPERulePage = () => {
               disabled={!isAdmin || selectedGroups.length === 0 || deleteLoading}
               className={`rounded px-4 py-2 text-sm ${isAdmin && selectedGroups.length > 0 && !deleteLoading ? 'bg-red-600 text-white' : 'cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
             >
-              {deleteLoading ? 'Удаление...' : 'Танланганларни ўчириш'}
+              {deleteLoading ? 'Удаление...' : 'Удалить выбранные'}
             </button>
           </div>
 
@@ -977,7 +977,7 @@ const DepartmentPPERulePage = () => {
               <FiAlertTriangle className="h-16 w-16" />
             </div>
             <p className="text-center text-base text-slate-600 dark:text-slate-300">
-              {`Танланган ${selectedGroups.length} та қатор нормаларини ўчиришни тасдиқлайсизми?`}
+              {`Подтвердите удаление ${selectedGroups.length} выбранных групп?`}
             </p>
           </div>
         </Modal.Body>

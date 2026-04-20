@@ -176,11 +176,6 @@ const ViewCompyuter = () => {
                     wrapperClassName="col-span-3"
                   />
                   <ModalDataInput
-                    label="Одежды"
-                    inputData={data.employee?.clothe_size || '-'}
-                    wrapperClassName="col-span-3"
-                  />
-                  <ModalDataInput
                     label="Обуви"
                     inputData={data.employee?.shoe_size || '-'}
                     wrapperClassName="col-span-3"
