@@ -99,6 +99,7 @@ const DepartmentPPERulePage = () => {
   const [positionSearch, setPositionSearch] = useState('');
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<DepartmentPPERuleGroup | null>(null);
+  const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
   const treeDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -254,6 +255,13 @@ const DepartmentPPERulePage = () => {
     [editingGroupKey, groupedRules],
   );
 
+  const selectedGroups = useMemo(
+    () => groupedRules.filter((group) => selectedGroupKeys.includes(group.key)),
+    [groupedRules, selectedGroupKeys],
+  );
+
+  const isAllVisibleGroupsSelected = groupedRules.length > 0 && groupedRules.every((group) => selectedGroupKeys.includes(group.key));
+
   const positionButtonLabel = useMemo(() => {
     if (editingGroup !== null) {
       if (selectedPositionEntries[0]) {
@@ -325,6 +333,30 @@ const DepartmentPPERulePage = () => {
     setProductMonths({});
     setEditingGroupKey(null);
     setIsTreeDropdownOpen(false);
+  };
+
+  const toggleGroupSelection = (groupKey: string) => {
+    setSelectedGroupKeys((prev) => (
+      prev.includes(groupKey)
+        ? prev.filter((item) => item !== groupKey)
+        : [...prev, groupKey]
+    ));
+  };
+
+  const toggleSelectAllVisibleGroups = () => {
+    setSelectedGroupKeys((prev) => {
+      if (groupedRules.length === 0) {
+        return prev;
+      }
+
+      const visibleKeys = groupedRules.map((group) => group.key);
+      const allSelected = visibleKeys.every((key) => prev.includes(key));
+      if (allSelected) {
+        return prev.filter((key) => !visibleKeys.includes(key));
+      }
+
+      return Array.from(new Set([...prev, ...visibleKeys]));
+    });
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -566,10 +598,40 @@ const DepartmentPPERulePage = () => {
         resetForm();
       }
 
+      setSelectedGroupKeys((prev) => prev.filter((key) => key !== groupToDelete.key));
       setGroupToDelete(null);
       toast.success('Нормы по выбранному цеху и должности удалены');
     } catch (error) {
       toast.error(getBackendError(error, 'Ошибка при удалении норм'));
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleDeleteSelectedGroups = async () => {
+    if (selectedGroups.length === 0) {
+      toast.warning('Выберите хотя бы одну строку');
+      return;
+    }
+
+    setDeleteLoading(true);
+    try {
+      await Promise.all(
+        selectedGroups.flatMap((group) => group.items.map((rule) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`))),
+      );
+
+      const deletedIds = new Set(selectedGroups.flatMap((group) => group.items.map((rule) => rule.id)));
+      const deletedGroupKeys = new Set(selectedGroups.map((group) => group.key));
+      setRules((prev) => prev.filter((item) => !deletedIds.has(item.id)));
+      setSelectedGroupKeys((prev) => prev.filter((key) => !deletedGroupKeys.has(key)));
+
+      if (editingGroupKey !== null && deletedGroupKeys.has(editingGroupKey)) {
+        resetForm();
+      }
+
+      toast.success('Танланган нормалар ўчирилди');
+    } catch (error) {
+      toast.error(getBackendError(error, 'Танланган нормаларни ўчиришда хатолик'));
     } finally {
       setDeleteLoading(false);
     }
@@ -766,6 +828,20 @@ const DepartmentPPERulePage = () => {
             />
           </div>
 
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="text-sm text-slate-600 dark:text-slate-300">
+              Танланган қаторлар: {selectedGroups.length}
+            </div>
+            <button
+              type="button"
+              onClick={handleDeleteSelectedGroups}
+              disabled={!isAdmin || selectedGroups.length === 0 || deleteLoading}
+              className={`rounded px-4 py-2 text-sm ${isAdmin && selectedGroups.length > 0 && !deleteLoading ? 'bg-red-600 text-white' : 'cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+            >
+              {deleteLoading ? 'Удаление...' : 'Танланганларни ўчириш'}
+            </button>
+          </div>
+
           <div className="max-h-96 overflow-auto">
             {groupedRules.length === 0 ? (
               <p className="text-center text-gray-500">Нет данных</p>
@@ -781,6 +857,14 @@ const DepartmentPPERulePage = () => {
                     <th className="px-3 py-2 text-left font-semibold">Тип</th>
                     <th className="px-3 py-2 text-left font-semibold">Срок (мес.)</th>
                     <th className="px-3 py-2 text-left font-semibold">Действия</th>
+                    <th className="px-3 py-2 text-center font-semibold">
+                      <input
+                        type="checkbox"
+                        checked={isAllVisibleGroupsSelected}
+                        onChange={toggleSelectAllVisibleGroups}
+                        aria-label="Выбрать все строки"
+                      />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -834,6 +918,14 @@ const DepartmentPPERulePage = () => {
                             <FiTrash2 className="text-sm" />
                           </button>
                         </div>
+                      </td>
+                      <td className="px-3 py-2 text-center align-top">
+                        <input
+                          type="checkbox"
+                          checked={selectedGroupKeys.includes(group.key)}
+                          onChange={() => toggleGroupSelection(group.key)}
+                          aria-label={`Выбрать ${group.department_name} ${group.position_name}`}
+                        />
                       </td>
                     </tr>
                   ))}
