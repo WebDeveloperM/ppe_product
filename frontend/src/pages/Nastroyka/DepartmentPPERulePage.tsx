@@ -308,6 +308,34 @@ const DepartmentPPERulePage = () => {
     return `Выбрано должностей: ${selectedPositionKeys.length}`;
   }, [editingGroup, isAllPositionsSelected, selectedPositionEntries, selectedPositionKeys]);
 
+  const selectedPositionsByDepartment = useMemo(() => {
+    const groupedDepartments = new Map<string, { departmentName: string; positions: string[] }>();
+
+    selectedPositionEntries.forEach((entry) => {
+      const departmentName = entry.department_name || 'Без цеха';
+      const existingDepartment = groupedDepartments.get(departmentName);
+
+      if (existingDepartment) {
+        if (!existingDepartment.positions.includes(entry.position_name)) {
+          existingDepartment.positions.push(entry.position_name);
+        }
+        return;
+      }
+
+      groupedDepartments.set(departmentName, {
+        departmentName,
+        positions: [entry.position_name],
+      });
+    });
+
+    return Array.from(groupedDepartments.values())
+      .map((entry) => ({
+        ...entry,
+        positions: [...entry.positions].sort((left, right) => left.localeCompare(right, 'ru')),
+      }))
+      .sort((left, right) => left.departmentName.localeCompare(right.departmentName, 'ru'));
+  }, [selectedPositionEntries]);
+
   const productsForBulkEdit = useMemo(
     () => products.filter((product) => product.is_active !== false).sort((left, right) => left.name.localeCompare(right.name, 'ru')),
     [products],
@@ -773,12 +801,6 @@ const DepartmentPPERulePage = () => {
           : 'Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.'}
       </div>
 
-      {selectedPositionKeys.length > 0 && (
-        <div className="rounded border border-dashed border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
-          Выбрано должностей: {selectedPositionKeys.length}
-        </div>
-      )}
-
       <div className="rounded border border-stroke p-4 dark:border-strokedark">
         <div className="mb-3 text-sm font-medium text-black dark:text-white">Срок выдачи по СИЗ</div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -817,6 +839,20 @@ const DepartmentPPERulePage = () => {
           {positionButtonLabel}
         </button>
       </div>
+
+      {selectedPositionKeys.length > 0 && (
+        <div className="rounded border border-dashed border-stroke px-3 py-3 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
+          <div className="mb-2 font-medium text-black dark:text-white">Танланган цех ва должностьлар</div>
+          <div className="space-y-2">
+            {selectedPositionsByDepartment.map((entry) => (
+              <div key={entry.departmentName}>
+                <div className="font-medium">{entry.departmentName}</div>
+                <div>{entry.positions.join(', ')}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </form>
   );
 
