@@ -695,9 +695,9 @@ const DepartmentPPERulePage = () => {
         closeRuleModal();
       }
 
-      toast.success('Танланган нормалар ўчирилди');
+      toast.success('Выбранные нормы удалены');
     } catch (error) {
-      toast.error(getBackendError(error, 'Танланган нормаларни ўчиришда хатолик'));
+      toast.error(getBackendError(error, 'Ошибка при удалении выбранных норм'));
     } finally {
       setDeleteLoading(false);
     }
@@ -837,7 +837,7 @@ const DepartmentPPERulePage = () => {
 
       {selectedPositionKeys.length > 0 && (
         <div className="rounded border border-dashed border-stroke px-3 py-3 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
-          <div className="mb-2 font-medium text-black dark:text-white">Танланган цех ва должностьлар</div>
+          <div className="mb-2 font-medium text-black dark:text-white">Выбранные цехи и должности</div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[420px] border-collapse">
               <thead>
