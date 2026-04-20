@@ -1,5 +1,5 @@
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button, Modal } from 'flowbite-react';
@@ -93,6 +93,17 @@ const LARGE_RULE_MODAL_THEME = {
   },
 };
 
+const POSITION_PICKER_MODAL_THEME = {
+  root: {
+    sizes: {
+      '6xl': 'w-[80vw] max-w-[80vw]',
+    },
+  },
+  content: {
+    inner: 'relative flex h-[70vh] max-h-[70vh] flex-col rounded-lg bg-white shadow dark:bg-gray-700',
+  },
+};
+
 const DepartmentPPERulePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -115,9 +126,8 @@ const DepartmentPPERulePage = () => {
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+  const [isPositionPickerOpen, setIsPositionPickerOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
-  const treeDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const isAllPositionsSelected = positions.length > 0 && selectedPositionKeys.length === positions.length;
 
@@ -332,22 +342,11 @@ const DepartmentPPERulePage = () => {
     loadData();
   }, [canEditBaseSettings]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!treeDropdownRef.current?.contains(event.target as Node)) {
-        setIsTreeDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const resetForm = () => {
     setSelectedPositionKeys([]);
     setProductMonths({});
     setEditingGroupKey(null);
-    setIsTreeDropdownOpen(false);
+    setIsPositionPickerOpen(false);
   };
 
   const closeRuleModal = () => {
@@ -568,7 +567,6 @@ const DepartmentPPERulePage = () => {
         return accumulator;
       }, {}),
     );
-    setIsTreeDropdownOpen(false);
     setIsRuleModalOpen(true);
   };
 
@@ -702,90 +700,77 @@ const DepartmentPPERulePage = () => {
     );
   }
 
+  const positionPickerContent = (
+    <div className="space-y-3">
+      <div className="text-sm text-slate-600 dark:text-slate-300">
+        {editingGroup !== null ? 'Выберите должность' : 'Выберите цех и одну или несколько должностей'}
+      </div>
+
+      {editingGroup === null && positions.length > 0 && (
+        <label className="flex items-start gap-2 border-b border-stroke pb-3 text-sm font-medium text-black dark:border-strokedark dark:text-white">
+          <input
+            type="checkbox"
+            checked={isAllPositionsSelected}
+            onChange={toggleAllPositions}
+            className="mt-1"
+          />
+          <span>Для всех должностей</span>
+        </label>
+      )}
+
+      <div className="max-h-full space-y-3 overflow-y-auto pr-1">
+        {departmentTree.map((department) => (
+          <div key={department.id} className="rounded border border-stroke/70 p-2 dark:border-strokedark/70">
+            <label className="flex items-start gap-2 text-sm font-semibold text-black dark:text-white">
+              <input
+                type="checkbox"
+                checked={isDepartmentChecked(department.id, department.name)}
+                ref={(input) => {
+                  if (input) {
+                    input.indeterminate = isDepartmentIndeterminate(department.id, department.name);
+                  }
+                }}
+                onChange={() => toggleDepartmentPositions(department.id, department.name)}
+                className="mt-1"
+                disabled={editingGroup !== null}
+              />
+              <span>{department.name}</span>
+            </label>
+
+            <div className="mt-2 space-y-2 pl-6">
+              {department.positions.map((position) => {
+                const isChecked = selectedPositionKeys.includes(position.selection_key);
+                return (
+                  <label key={position.selection_key} className="flex items-start gap-2 text-sm text-black dark:text-white">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => togglePosition(position.selection_key)}
+                      className="mt-1"
+                    />
+                    <span>{position.position_name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        {departmentTree.length === 0 && (
+          <div className="text-sm text-slate-500 dark:text-slate-400">
+            Должности не найдены.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   const ruleForm = (
     <form id="department-ppe-rule-form" onSubmit={handleSubmit} className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div className="relative" ref={treeDropdownRef}>
-          <button
-            type="button"
-            onClick={() => setIsTreeDropdownOpen((prev) => !prev)}
-            className="flex w-full items-center justify-between rounded border border-stroke bg-transparent px-3 py-2 text-left dark:border-strokedark dark:bg-transparent"
-          >
-            <span className="truncate text-sm text-black dark:text-white">{positionButtonLabel}</span>
-            <span className="ml-3 text-xs text-slate-500">{isTreeDropdownOpen ? '▲' : '▼'}</span>
-          </button>
-
-          {isTreeDropdownOpen && (
-            <div className="absolute z-20 mt-2 w-full rounded border border-stroke bg-white p-3 shadow-lg dark:border-strokedark dark:bg-boxdark">
-              <div className="mb-2 text-sm text-slate-600 dark:text-slate-300">
-                {editingGroup !== null ? 'Выберите должность' : 'Выберите цех и одну или несколько должностей'}
-              </div>
-
-              {editingGroup === null && positions.length > 0 && (
-                <label className="mb-3 flex items-start gap-2 border-b border-stroke pb-3 text-sm font-medium text-black dark:border-strokedark dark:text-white">
-                  <input
-                    type="checkbox"
-                    checked={isAllPositionsSelected}
-                    onChange={toggleAllPositions}
-                    className="mt-1"
-                  />
-                  <span>Для всех должностей</span>
-                </label>
-              )}
-
-              <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
-                {departmentTree.map((department) => (
-                  <div key={department.id} className="rounded border border-stroke/70 p-2 dark:border-strokedark/70">
-                    <label className="flex items-start gap-2 text-sm font-semibold text-black dark:text-white">
-                      <input
-                        type="checkbox"
-                        checked={isDepartmentChecked(department.id, department.name)}
-                        ref={(input) => {
-                          if (input) {
-                            input.indeterminate = isDepartmentIndeterminate(department.id, department.name);
-                          }
-                        }}
-                        onChange={() => toggleDepartmentPositions(department.id, department.name)}
-                        className="mt-1"
-                        disabled={editingGroup !== null}
-                      />
-                      <span>{department.name}</span>
-                    </label>
-
-                    <div className="mt-2 space-y-2 pl-6">
-                      {department.positions.map((position) => {
-                        const isChecked = selectedPositionKeys.includes(position.selection_key);
-                        return (
-                          <label key={position.selection_key} className="flex items-start gap-2 text-sm text-black dark:text-white">
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => togglePosition(position.selection_key)}
-                              className="mt-1"
-                            />
-                            <span>{position.position_name}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-
-                {departmentTree.length === 0 && (
-                  <div className="text-sm text-slate-500 dark:text-slate-400">
-                    Должности не найдены.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
-          {editingGroup !== null
-            ? 'Редактирование группы: измените сроки по нужным СИЗ. Пустое поле удалит норму для этого СИЗ.'
-            : 'Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.'}
-        </div>
+      <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
+        {editingGroup !== null
+          ? 'Редактирование группы: измените сроки по нужным СИЗ. Пустое поле удалит норму для этого СИЗ.'
+          : 'Для выбранных должностей можно сразу указать сроки по всем СИЗ ниже.'}
       </div>
 
       {selectedPositionKeys.length > 0 && (
@@ -821,6 +806,16 @@ const DepartmentPPERulePage = () => {
             </label>
           ))}
         </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => setIsPositionPickerOpen(true)}
+          className="rounded border border-stroke bg-transparent px-4 py-2 text-sm text-black hover:bg-gray-100 dark:border-strokedark dark:text-white dark:hover:bg-gray-700"
+        >
+          {positionButtonLabel}
+        </button>
       </div>
     </form>
   );
@@ -1006,6 +1001,21 @@ const DepartmentPPERulePage = () => {
           </>
         )}
       </div>
+
+      <Modal show={isPositionPickerOpen} onClose={() => setIsPositionPickerOpen(false)} size="6xl" theme={POSITION_PICKER_MODAL_THEME}>
+        <Modal.Header>Выберите цех и должность</Modal.Header>
+        <Modal.Body className="flex-1 overflow-y-auto">
+          {positionPickerContent}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button color="gray" onClick={() => setIsPositionPickerOpen(false)}>
+            Закрыть
+          </Button>
+          <Button onClick={() => setIsPositionPickerOpen(false)}>
+            Выбрать
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       <Modal show={Boolean(groupToDelete)} onClose={() => !deleteLoading && setGroupToDelete(null)}>
         <Modal.Header>Подтвердите удаление группы</Modal.Header>
