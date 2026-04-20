@@ -119,15 +119,27 @@ const DepartmentPPERulePage = () => {
     const normalizedDepartmentSearch = departmentSearch.trim().toLowerCase();
     const normalizedPositionSearch = positionSearch.trim().toLowerCase();
 
-    return rules.filter((rule) => {
-      const departmentNames = positionDepartmentsMap.get(rule.position_name) || [];
-      const matchesDepartment = !normalizedDepartmentSearch
-        || departmentNames.some((departmentName) => departmentName.toLowerCase().includes(normalizedDepartmentSearch));
-      const matchesPosition = !normalizedPositionSearch
-        || rule.position_name.toLowerCase().includes(normalizedPositionSearch);
+    return rules
+      .filter((rule) => {
+        const departmentNames = positionDepartmentsMap.get(rule.position_name) || [];
+        const matchesDepartment = !normalizedDepartmentSearch
+          || departmentNames.some((departmentName) => departmentName.toLowerCase().includes(normalizedDepartmentSearch));
+        const matchesPosition = !normalizedPositionSearch
+          || rule.position_name.toLowerCase().includes(normalizedPositionSearch);
 
-      return matchesDepartment && matchesPosition;
-    });
+        return matchesDepartment && matchesPosition;
+      })
+      .sort((left, right) => {
+        const leftDepartments = (positionDepartmentsMap.get(left.position_name) || []).join(', ');
+        const rightDepartments = (positionDepartmentsMap.get(right.position_name) || []).join(', ');
+
+        const departmentCompare = leftDepartments.localeCompare(rightDepartments, 'ru');
+        if (departmentCompare !== 0) {
+          return departmentCompare;
+        }
+
+        return left.position_name.localeCompare(right.position_name, 'ru');
+      });
   }, [departmentSearch, positionSearch, positionDepartmentsMap, rules]);
 
   const loadData = async () => {
