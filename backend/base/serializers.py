@@ -95,6 +95,8 @@ class PositionPPERenewalRuleSerializer(serializers.ModelSerializer):
         model = PositionPPERenewalRule
         fields = [
             'id',
+            'department_service_id',
+            'department_name',
             'position_name',
             'ppeproduct',
             'ppeproduct_name',
@@ -111,19 +113,30 @@ class PositionPPERenewalRuleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Выберите должность.')
         return normalized
 
+    def validate_department_name(self, value):
+        return ' '.join(str(value or '').strip().split())
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        department_service_id = attrs.get('department_service_id', getattr(self.instance, 'department_service_id', None))
+        department_name = attrs.get('department_name', getattr(self.instance, 'department_name', ''))
         position_name = attrs.get('position_name', getattr(self.instance, 'position_name', ''))
         ppeproduct = attrs.get('ppeproduct', getattr(self.instance, 'ppeproduct', None))
         position_key = normalize_employee_position(position_name)
 
+        attrs['department_name'] = ' '.join(str(department_name or '').strip().split())
+
         if position_key and ppeproduct is not None:
-            queryset = PositionPPERenewalRule.objects.filter(position_key=position_key, ppeproduct=ppeproduct)
+            queryset = PositionPPERenewalRule.objects.filter(
+                department_service_id=department_service_id,
+                position_key=position_key,
+                ppeproduct=ppeproduct,
+            )
             if self.instance is not None:
                 queryset = queryset.exclude(pk=self.instance.pk)
             if queryset.exists():
                 raise serializers.ValidationError({
-                    'position_name': 'Для этой должности уже задана норма по выбранному СИЗ.',
+                    'position_name': 'Для этой должности в выбранном цехе уже задана норма по выбранному СИЗ.',
                 })
 
         return attrs
@@ -345,12 +358,32 @@ class ItemSerializer(serializers.ModelSerializer):
         employee_payload = build_employee_snapshot(payload)
         return normalize_employee_position(employee_payload.get('position'))
 
+    def _get_department_service_id(self, item_obj):
+        payload = getattr(item_obj, '_employee_snapshot_override', None) or getattr(item_obj, 'employee_snapshot', None)
+        employee_payload = build_employee_snapshot(payload)
+        department = employee_payload.get('department') or {}
+        try:
+            return int(department.get('id'))
+        except (TypeError, ValueError):
+            return None
+
     def _get_effective_renewal_months(self, product, item_obj):
+        department_service_id = self._get_department_service_id(item_obj)
         position_key = self._get_position_key(item_obj)
         if position_key:
+            if department_service_id is not None:
+                rule = (
+                    PositionPPERenewalRule.objects
+                    .filter(department_service_id=department_service_id, position_key=position_key, ppeproduct_id=product.id)
+                    .only('renewal_months')
+                    .first()
+                )
+                if rule:
+                    return int(rule.renewal_months or 0)
+
             rule = (
                 PositionPPERenewalRule.objects
-                .filter(position_key=position_key, ppeproduct_id=product.id)
+                .filter(department_service_id__isnull=True, position_key=position_key, ppeproduct_id=product.id)
                 .only('renewal_months')
                 .first()
             )

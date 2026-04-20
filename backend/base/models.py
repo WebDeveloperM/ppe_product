@@ -1,6 +1,7 @@
 import datetime
 
 from django.db import models
+from django.db.models import Q
 from io import BytesIO
 from django.core.files.base import ContentFile
 import qrcode
@@ -215,6 +216,13 @@ class DepartmentPPERenewalRule(models.Model):
 
 
 class PositionPPERenewalRule(models.Model):
+    department_service_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name='ID цеха из employee_service',
+    )
+    department_name = models.CharField(max_length=255, blank=True, default='', verbose_name='Цех')
     position_name = models.CharField(max_length=255, verbose_name='Должность')
     position_key = models.CharField(max_length=255, db_index=True, editable=False, verbose_name='Ключ должности')
     ppeproduct = models.ForeignKey(
@@ -230,20 +238,28 @@ class PositionPPERenewalRule(models.Model):
         verbose_name = 'Норма выдачи СИЗ по должности'
         verbose_name_plural = 'Нормы выдачи СИЗ по должностям'
         db_table = 'base_position_ppe_renewal_rule'
-        ordering = ['position_name', 'ppeproduct__name', 'id']
+        ordering = ['department_name', 'position_name', 'ppeproduct__name', 'id']
         constraints = [
             models.UniqueConstraint(
+                fields=['department_service_id', 'position_key', 'ppeproduct'],
+                name='unique_department_position_ppe_renewal_rule',
+            ),
+            models.UniqueConstraint(
                 fields=['position_key', 'ppeproduct'],
-                name='unique_position_ppe_renewal_rule',
+                condition=Q(department_service_id__isnull=True),
+                name='unique_global_position_ppe_renewal_rule',
             ),
         ]
 
     def save(self, *args, **kwargs):
+        self.department_name = ' '.join(str(self.department_name or '').strip().split())
         self.position_name = ' '.join(str(self.position_name or '').strip().split())
         self.position_key = normalize_employee_position(self.position_name)
         super().save(*args, **kwargs)
 
     def __str__(self):
+        if self.department_name:
+            return f"{self.department_name} — {self.position_name} — {self.ppeproduct.name} ({self.renewal_months} мес.)"
         return f"{self.position_name} — {self.ppeproduct.name} ({self.renewal_months} мес.)"
 
 

@@ -127,6 +127,23 @@ def get_employee_position_key(employee_payload):
     return normalize_employee_position(raw_value)
 
 
+def get_employee_department_service_id(employee_payload):
+    if not employee_payload:
+        return None
+
+    if isinstance(employee_payload, dict):
+        department = employee_payload.get('department') or {}
+        raw_value = department.get('id')
+    else:
+        department = getattr(employee_payload, 'department', None)
+        raw_value = getattr(department, 'id', None) if department is not None else None
+
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
 def filter_ppe_products_for_employee_gender(products_queryset, employee_payload):
     employee_gender = get_employee_gender_code(employee_payload)
     if not employee_gender:
@@ -137,11 +154,22 @@ def filter_ppe_products_for_employee_gender(products_queryset, employee_payload)
 
 
 def get_effective_product_renewal_months(product, employee_payload):
+    department_service_id = get_employee_department_service_id(employee_payload)
     position_key = get_employee_position_key(employee_payload)
     if position_key:
+        if department_service_id is not None:
+            rule = (
+                PositionPPERenewalRule.objects
+                .filter(department_service_id=department_service_id, position_key=position_key, ppeproduct_id=product.id)
+                .only('renewal_months')
+                .first()
+            )
+            if rule is not None:
+                return int(rule.renewal_months or 0)
+
         rule = (
             PositionPPERenewalRule.objects
-            .filter(position_key=position_key, ppeproduct_id=product.id)
+            .filter(department_service_id__isnull=True, position_key=position_key, ppeproduct_id=product.id)
             .only('renewal_months')
             .first()
         )
@@ -165,31 +193,27 @@ def get_available_employee_positions():
         department_id = department.get('id')
         department_name = ' '.join(str(department.get('name') or '').strip().split())
 
-        entry = position_map.setdefault(position_key, {
-            'position_name': position_name,
-            'position_key': position_key,
-            'employee_count': 0,
-            'department_ids': [],
-            'department_names': [],
-        })
-        entry['employee_count'] += 1
-
         try:
             normalized_department_id = int(department_id)
         except (TypeError, ValueError):
             normalized_department_id = None
 
-        if normalized_department_id is not None and normalized_department_id not in entry['department_ids']:
-            entry['department_ids'].append(normalized_department_id)
+        entry_key = (normalized_department_id, department_name.lower(), position_key)
 
-        if department_name and department_name not in entry['department_names']:
-            entry['department_names'].append(department_name)
+        entry = position_map.setdefault(entry_key, {
+            'position_name': position_name,
+            'position_key': position_key,
+            'selection_key': f"{normalized_department_id if normalized_department_id is not None else 'none'}:{position_key}",
+            'employee_count': 0,
+            'department_id': normalized_department_id,
+            'department_name': department_name,
+        })
+        entry['employee_count'] += 1
 
-    for entry in position_map.values():
-        entry['department_ids'].sort()
-        entry['department_names'].sort(key=str.lower)
-
-    return sorted(position_map.values(), key=lambda item: item['position_name'].lower())
+    return sorted(
+        position_map.values(),
+        key=lambda item: ((item['department_name'] or '').lower(), item['position_name'].lower()),
+    )
 
 
 def get_service_department_map():
@@ -577,21 +601,59 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
         if permission_error:
             return permission_error
 
-        raw_position_names = request.data.get('position_names')
-        if raw_position_names is None:
-            raw_position_names = [request.data.get('position_name')]
-        if not isinstance(raw_position_names, list):
-            raw_position_names = [raw_position_names]
-
+        raw_position_entries = request.data.get('position_entries')
         normalized_positions = []
-        seen_position_keys = set()
-        for raw_value in raw_position_names:
-            position_name = ' '.join(str(raw_value or '').strip().split())
-            position_key = normalize_employee_position(position_name)
-            if not position_key or position_key in seen_position_keys:
-                continue
-            seen_position_keys.add(position_key)
-            normalized_positions.append(position_name)
+
+        if raw_position_entries is not None:
+            if not isinstance(raw_position_entries, list):
+                return Response({'error': 'Список должностей заполнен некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            seen_position_scopes = set()
+            for raw_entry in raw_position_entries:
+                if not isinstance(raw_entry, dict):
+                    continue
+
+                position_name = ' '.join(str(raw_entry.get('position_name') or '').strip().split())
+                position_key = normalize_employee_position(position_name)
+                if not position_key:
+                    continue
+
+                raw_department_id = raw_entry.get('department_service_id')
+                try:
+                    department_service_id = int(raw_department_id)
+                except (TypeError, ValueError):
+                    department_service_id = None
+
+                department_name = ' '.join(str(raw_entry.get('department_name') or '').strip().split())
+                scope_key = (department_service_id, position_key)
+                if scope_key in seen_position_scopes:
+                    continue
+
+                seen_position_scopes.add(scope_key)
+                normalized_positions.append({
+                    'department_service_id': department_service_id,
+                    'department_name': department_name,
+                    'position_name': position_name,
+                })
+        else:
+            raw_position_names = request.data.get('position_names')
+            if raw_position_names is None:
+                raw_position_names = [request.data.get('position_name')]
+            if not isinstance(raw_position_names, list):
+                raw_position_names = [raw_position_names]
+
+            seen_position_keys = set()
+            for raw_value in raw_position_names:
+                position_name = ' '.join(str(raw_value or '').strip().split())
+                position_key = normalize_employee_position(position_name)
+                if not position_key or position_key in seen_position_keys:
+                    continue
+                seen_position_keys.add(position_key)
+                normalized_positions.append({
+                    'department_service_id': None,
+                    'department_name': '',
+                    'position_name': position_name,
+                })
 
         if not normalized_positions:
             return Response({'error': 'Выберите хотя бы одну должность.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -634,10 +696,12 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
                 return Response({'error': 'Укажите хотя бы один СИЗ и срок выдачи.'}, status=status.HTTP_400_BAD_REQUEST)
 
             payloads = []
-            for position_name in normalized_positions:
+            for position_entry in normalized_positions:
                 for product_rule in normalized_product_rules:
                     payloads.append({
-                        'position_name': position_name,
+                        'department_service_id': position_entry['department_service_id'],
+                        'department_name': position_entry['department_name'],
+                        'position_name': position_entry['position_name'],
                         'ppeproduct': product_rule['ppeproduct'],
                         'renewal_months': product_rule['renewal_months'],
                     })
@@ -651,9 +715,11 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         payloads = []
-        for position_name in normalized_positions:
+        for position_entry in normalized_positions:
             payload = request.data.copy()
-            payload['position_name'] = position_name
+            payload['department_service_id'] = position_entry['department_service_id']
+            payload['department_name'] = position_entry['department_name']
+            payload['position_name'] = position_entry['position_name']
             payloads.append(payload)
 
         serializer = PositionPPERenewalRuleSerializer(data=payloads, many=True)
@@ -798,7 +864,17 @@ class SettingsPPEDepartmentRuleDetailApiView(APIView):
         if not position_name:
             return Response({'error': 'Выберите должность.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        raw_department_id = request.data.get('department_service_id', rule.department_service_id)
+        try:
+            department_service_id = int(raw_department_id) if raw_department_id not in [None, ''] else None
+        except (TypeError, ValueError):
+            return Response({'error': 'Цех указан некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        department_name = ' '.join(str(request.data.get('department_name', rule.department_name) or '').strip().split())
+
         payload = request.data.copy()
+        payload['department_service_id'] = department_service_id
+        payload['department_name'] = department_name
         payload['position_name'] = position_name
 
         serializer = PositionPPERenewalRuleSerializer(rule, data=payload, partial=True)

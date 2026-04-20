@@ -7,11 +7,12 @@ import { FiAlertTriangle, FiTrash2 } from 'react-icons/fi';
 import axioss from '../../api/axios';
 
 type PositionOption = {
+  selection_key: string;
   position_name: string;
   position_key: string;
   employee_count: number;
-  department_ids: number[];
-  department_names: string[];
+  department_id: number | null;
+  department_name: string;
 };
 
 type DepartmentOption = {
@@ -29,6 +30,8 @@ type PPEProduct = {
 
 type DepartmentPPERule = {
   id: number;
+  department_service_id?: number | null;
+  department_name?: string;
   position_name: string;
   ppeproduct: number;
   ppeproduct_name: string;
@@ -69,7 +72,7 @@ const DepartmentPPERulePage = () => {
   const [positions, setPositions] = useState<PositionOption[]>([]);
   const [products, setProducts] = useState<PPEProduct[]>([]);
   const [rules, setRules] = useState<DepartmentPPERule[]>([]);
-  const [selectedPositionNames, setSelectedPositionNames] = useState<string[]>([]);
+  const [selectedPositionKeys, setSelectedPositionKeys] = useState<string[]>([]);
   const [productId, setProductId] = useState('');
   const [renewalMonths, setRenewalMonths] = useState('');
   const [productMonths, setProductMonths] = useState<Record<number, string>>({});
@@ -81,45 +84,68 @@ const DepartmentPPERulePage = () => {
   const [isTreeDropdownOpen, setIsTreeDropdownOpen] = useState(false);
   const treeDropdownRef = useRef<HTMLDivElement | null>(null);
 
-  const isAllPositionsSelected = positions.length > 0 && selectedPositionNames.length === positions.length;
+  const isAllPositionsSelected = positions.length > 0 && selectedPositionKeys.length === positions.length;
 
-  const departmentTree = useMemo(() => (
-    departments.map((department) => ({
-      ...department,
-      positions: positions
-        .filter((position) => position.department_ids.includes(department.id))
-        .sort((left, right) => left.position_name.localeCompare(right.position_name, 'ru')),
-    }))
-      .filter((department) => department.positions.length > 0)
-  ), [departments, positions]);
+  const selectedPositionEntries = useMemo(
+    () => positions.filter((position) => selectedPositionKeys.includes(position.selection_key)),
+    [positions, selectedPositionKeys],
+  );
+
+  const departmentTree = useMemo(() => {
+    const orderMap = new Map<number, number>();
+    departments.forEach((department, index) => orderMap.set(department.id, index));
+
+    const groupedDepartments = new Map<string, { id: number | null; name: string; positions: PositionOption[] }>();
+    positions.forEach((position) => {
+      const departmentKey = `${position.department_id ?? 'none'}:${position.department_name}`;
+      const existing = groupedDepartments.get(departmentKey);
+      if (existing) {
+        existing.positions.push(position);
+        return;
+      }
+
+      groupedDepartments.set(departmentKey, {
+        id: position.department_id,
+        name: position.department_name || 'Без цеха',
+        positions: [position],
+      });
+    });
+
+    return Array.from(groupedDepartments.values())
+      .map((department) => ({
+        ...department,
+        positions: [...department.positions].sort((left, right) => left.position_name.localeCompare(right.position_name, 'ru')),
+      }))
+      .sort((left, right) => {
+        const leftOrder = left.id !== null ? orderMap.get(left.id) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+        const rightOrder = right.id !== null ? orderMap.get(right.id) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) {
+          return leftOrder - rightOrder;
+        }
+        return left.name.localeCompare(right.name, 'ru');
+      });
+  }, [departments, positions]);
 
   const positionButtonLabel = useMemo(() => {
     if (editingRuleId !== null) {
-      return selectedPositionNames[0] || 'Выберите должность';
+      if (selectedPositionEntries[0]) {
+        const entry = selectedPositionEntries[0];
+        return entry.department_name ? `${entry.position_name} (${entry.department_name})` : entry.position_name;
+      }
+      return 'Выберите должность';
     }
     if (isAllPositionsSelected) {
       return 'Выбраны все должности';
     }
-    if (selectedPositionNames.length === 0) {
+    if (selectedPositionKeys.length === 0) {
       return 'Выберите цех и должность';
     }
-    if (selectedPositionNames.length === 1) {
-      return selectedPositionNames[0] || 'Выбрана 1 должность';
+    if (selectedPositionEntries.length === 1) {
+      const entry = selectedPositionEntries[0];
+      return entry.department_name ? `${entry.position_name} (${entry.department_name})` : entry.position_name;
     }
-    return `Выбрано должностей: ${selectedPositionNames.length}`;
-  }, [editingRuleId, isAllPositionsSelected, selectedPositionNames]);
-
-  const positionDepartmentsMap = useMemo(() => {
-    const map = new Map<string, string[]>();
-
-    positions.forEach((position) => {
-      const existingNames = map.get(position.position_name) || [];
-      const mergedNames = Array.from(new Set([...existingNames, ...position.department_names]));
-      map.set(position.position_name, mergedNames);
-    });
-
-    return map;
-  }, [positions]);
+    return `Выбрано должностей: ${selectedPositionKeys.length}`;
+  }, [editingRuleId, isAllPositionsSelected, selectedPositionEntries, selectedPositionKeys]);
 
   const filteredRules = useMemo(() => {
     const normalizedDepartmentSearch = departmentSearch.trim().toLowerCase();
@@ -127,26 +153,22 @@ const DepartmentPPERulePage = () => {
 
     return rules
       .filter((rule) => {
-        const departmentNames = positionDepartmentsMap.get(rule.position_name) || [];
         const matchesDepartment = !normalizedDepartmentSearch
-          || departmentNames.some((departmentName) => departmentName.toLowerCase().includes(normalizedDepartmentSearch));
+          || String(rule.department_name || '').toLowerCase().includes(normalizedDepartmentSearch);
         const matchesPosition = !normalizedPositionSearch
           || rule.position_name.toLowerCase().includes(normalizedPositionSearch);
 
         return matchesDepartment && matchesPosition;
       })
       .sort((left, right) => {
-        const leftDepartments = (positionDepartmentsMap.get(left.position_name) || []).join(', ');
-        const rightDepartments = (positionDepartmentsMap.get(right.position_name) || []).join(', ');
-
-        const departmentCompare = leftDepartments.localeCompare(rightDepartments, 'ru');
+        const departmentCompare = String(left.department_name || '').localeCompare(String(right.department_name || ''), 'ru');
         if (departmentCompare !== 0) {
           return departmentCompare;
         }
 
         return left.position_name.localeCompare(right.position_name, 'ru');
       });
-  }, [departmentSearch, positionSearch, positionDepartmentsMap, rules]);
+  }, [departmentSearch, positionSearch, rules]);
 
   const productsForBulkEdit = useMemo(
     () => products.filter((product) => product.is_active !== false).sort((left, right) => left.name.localeCompare(right.name, 'ru')),
@@ -195,20 +217,28 @@ const DepartmentPPERulePage = () => {
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (selectedPositionNames.length === 0) {
+    if (selectedPositionKeys.length === 0) {
       toast.warning('Выберите хотя бы одну должность');
       return;
     }
 
     try {
       if (editingRuleId !== null) {
+        const selectedEntry = selectedPositionEntries[0];
+        if (!selectedEntry) {
+          toast.warning('Выберите должность');
+          return;
+        }
+
         if (!productId) {
           toast.warning('Выберите средство защиты');
           return;
         }
 
         const payload = {
-          position_name: selectedPositionNames[0],
+          department_service_id: selectedEntry.department_id,
+          department_name: selectedEntry.department_name,
+          position_name: selectedEntry.position_name,
           ppeproduct: Number(productId),
           renewal_months: Number(renewalMonths || 0),
         };
@@ -229,7 +259,11 @@ const DepartmentPPERulePage = () => {
         }
 
         const payload = {
-          position_names: selectedPositionNames,
+          position_entries: selectedPositionEntries.map((entry) => ({
+            department_service_id: entry.department_id,
+            department_name: entry.department_name,
+            position_name: entry.position_name,
+          })),
           product_rules: productRules,
         };
         const response = await axioss.post('/settings/ppe-department-rules/', payload);
@@ -238,7 +272,7 @@ const DepartmentPPERulePage = () => {
         toast.success(createdRules.length > 1 ? 'Нормы добавлены' : 'Норма добавлена');
       }
 
-      setSelectedPositionNames([]);
+      setSelectedPositionKeys([]);
       setProductId('');
       setRenewalMonths('');
       setProductMonths({});
@@ -250,55 +284,62 @@ const DepartmentPPERulePage = () => {
   };
 
   const handleEdit = (rule: DepartmentPPERule) => {
+    const matchedPosition = positions.find(
+      (position) => position.position_name === rule.position_name && (position.department_id ?? null) === (rule.department_service_id ?? null),
+    );
+
     setEditingRuleId(rule.id);
-    setSelectedPositionNames([rule.position_name]);
+    setSelectedPositionKeys([
+      matchedPosition?.selection_key
+        || `${rule.department_service_id ?? 'none'}:${rule.position_name.toLowerCase().trim().replace(/\s+/g, '-')}`,
+    ]);
     setProductId(String(rule.ppeproduct));
     setRenewalMonths(String(rule.renewal_months));
     setProductMonths({});
     setIsTreeDropdownOpen(false);
   };
 
-  const togglePosition = (positionName: string) => {
-    setSelectedPositionNames((prev) => {
+  const togglePosition = (selectionKey: string) => {
+    setSelectedPositionKeys((prev) => {
       if (editingRuleId !== null) {
-        return prev.includes(positionName) ? [] : [positionName];
+        return prev.includes(selectionKey) ? [] : [selectionKey];
       }
-      return prev.includes(positionName)
-        ? prev.filter((item) => item !== positionName)
-        : [...prev, positionName];
+      return prev.includes(selectionKey)
+        ? prev.filter((item) => item !== selectionKey)
+        : [...prev, selectionKey];
     });
   };
 
-  const getDepartmentPositions = (departmentId: number) => (
-    positions.filter((position) => position.department_ids.includes(departmentId))
+  const getDepartmentPositions = (departmentId: number | null, departmentName: string) => (
+    positions.filter((position) => (position.department_id ?? null) === departmentId && position.department_name === departmentName)
   );
 
-  const isDepartmentChecked = (departmentId: number) => {
-    const departmentPositions = getDepartmentPositions(departmentId);
+  const isDepartmentChecked = (departmentId: number | null, departmentName: string) => {
+    const departmentPositions = getDepartmentPositions(departmentId, departmentName);
     return departmentPositions.length > 0
-      && departmentPositions.every((position) => selectedPositionNames.includes(position.position_name));
+      && departmentPositions.every((position) => selectedPositionKeys.includes(position.selection_key));
   };
 
-  const isDepartmentIndeterminate = (departmentId: number) => {
-    const departmentPositions = getDepartmentPositions(departmentId);
-    const selectedCount = departmentPositions.filter((position) => selectedPositionNames.includes(position.position_name)).length;
+  const isDepartmentIndeterminate = (departmentId: number | null, departmentName: string) => {
+    const departmentPositions = getDepartmentPositions(departmentId, departmentName);
+    const selectedCount = departmentPositions.filter((position) => selectedPositionKeys.includes(position.selection_key)).length;
     return selectedCount > 0 && selectedCount < departmentPositions.length;
   };
 
-  const toggleDepartmentPositions = (departmentId: number) => {
+  const toggleDepartmentPositions = (departmentId: number | null, departmentName: string) => {
     if (editingRuleId !== null) {
       return;
     }
 
-    const departmentPositionNames = getDepartmentPositions(departmentId).map((position) => position.position_name);
-    setSelectedPositionNames((prev) => {
+    const departmentPositionKeys = getDepartmentPositions(departmentId, departmentName).map((position) => position.selection_key);
+    setSelectedPositionKeys((prev) => {
       const current = new Set(prev);
-      const shouldClear = departmentPositionNames.every((positionName) => current.has(positionName));
+      const shouldClear = departmentPositionKeys.every((positionKey) => current.has(positionKey));
 
       if (shouldClear) {
-        departmentPositionNames.forEach((positionName) => current.delete(positionName));
+        departmentPositionKeys.forEach((positionKey) => current.delete(positionKey));
       } else {
-        departmentPositionNames.forEach((positionName) => current.add(positionName));
+        departmentPositionKeys.forEach((positionKey) => current.add(positionKey));
       }
 
       return Array.from(current);
@@ -307,7 +348,7 @@ const DepartmentPPERulePage = () => {
 
   const toggleAllPositions = () => {
     if (editingRuleId !== null) return;
-    setSelectedPositionNames(isAllPositionsSelected ? [] : positions.map((position) => position.position_name));
+    setSelectedPositionKeys(isAllPositionsSelected ? [] : positions.map((position) => position.selection_key));
   };
 
   const confirmDelete = async () => {
@@ -319,7 +360,7 @@ const DepartmentPPERulePage = () => {
       setRules((prev) => prev.filter((item) => item.id !== ruleToDelete.id));
       if (editingRuleId === ruleToDelete.id) {
         setEditingRuleId(null);
-        setSelectedPositionNames([]);
+        setSelectedPositionKeys([]);
         setProductId('');
         setRenewalMonths('');
         setIsTreeDropdownOpen(false);
@@ -335,7 +376,7 @@ const DepartmentPPERulePage = () => {
 
   const handleCancelEdit = () => {
     setEditingRuleId(null);
-    setSelectedPositionNames([]);
+    setSelectedPositionKeys([]);
     setProductId('');
     setRenewalMonths('');
     setProductMonths({});
@@ -416,13 +457,13 @@ const DepartmentPPERulePage = () => {
                           <label className="flex items-start gap-2 text-sm font-semibold text-black dark:text-white">
                             <input
                               type="checkbox"
-                              checked={isDepartmentChecked(department.id)}
+                              checked={isDepartmentChecked(department.id, department.name)}
                               ref={(input) => {
                                 if (input) {
-                                  input.indeterminate = isDepartmentIndeterminate(department.id);
+                                  input.indeterminate = isDepartmentIndeterminate(department.id, department.name);
                                 }
                               }}
-                              onChange={() => toggleDepartmentPositions(department.id)}
+                              onChange={() => toggleDepartmentPositions(department.id, department.name)}
                               className="mt-1"
                               disabled={editingRuleId !== null}
                             />
@@ -431,13 +472,13 @@ const DepartmentPPERulePage = () => {
 
                           <div className="mt-2 space-y-2 pl-6">
                             {department.positions.map((position) => {
-                              const isChecked = selectedPositionNames.includes(position.position_name);
+                              const isChecked = selectedPositionKeys.includes(position.selection_key);
                               return (
-                                <label key={`${department.id}-${position.position_key}`} className="flex items-start gap-2 text-sm text-black dark:text-white">
+                                <label key={position.selection_key} className="flex items-start gap-2 text-sm text-black dark:text-white">
                                   <input
                                     type="checkbox"
                                     checked={isChecked}
-                                    onChange={() => togglePosition(position.position_name)}
+                                    onChange={() => togglePosition(position.selection_key)}
                                     className="mt-1"
                                   />
                                   <span>{position.position_name}</span>
@@ -478,9 +519,9 @@ const DepartmentPPERulePage = () => {
               )}
             </div>
 
-            {selectedPositionNames.length > 0 && (
+            {selectedPositionKeys.length > 0 && (
               <div className="rounded border border-dashed border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
-                Выбрано должностей: {selectedPositionNames.length}
+                Выбрано должностей: {selectedPositionKeys.length}
               </div>
             )}
 
@@ -578,7 +619,7 @@ const DepartmentPPERulePage = () => {
                 <tbody>
                   {filteredRules.map((rule) => (
                     <tr key={rule.id} className="border-t border-stroke dark:border-strokedark">
-                      <td className="px-3 py-2">{(positionDepartmentsMap.get(rule.position_name) || []).join(', ') || '-'}</td>
+                      <td className="px-3 py-2">{rule.department_name || '-'}</td>
                       <td className="px-3 py-2">{rule.position_name}</td>
                       <td className="px-3 py-2">{rule.ppeproduct_name}</td>
                       <td className="px-3 py-2">{rule.ppeproduct_target_gender_display || 'Для всех'}</td>

@@ -422,6 +422,8 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 
 		self.product = PPEProduct.objects.create(name='Спецодежда (мужское)', renewal_months=6, target_gender='M')
 		PositionPPERenewalRule.objects.create(
+			department_service_id=1,
+			department_name='1-Цех',
 			position_name='Operator',
 			ppeproduct=self.product,
 			renewal_months=12,
@@ -529,23 +531,55 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 			8,
 		)
 
+	def test_settings_rules_post_creates_same_position_in_different_departments_separately(self):
+		duplicate_product = PPEProduct.objects.create(name='Сапоги bulk', renewal_months=4, target_gender='ALL')
+
+		response = self.client.post(
+			'/api/v1/settings/ppe-department-rules/',
+			{
+				'position_entries': [
+					{'department_service_id': 1, 'department_name': '1-Цех', 'position_name': 'Economist'},
+					{'department_service_id': 3, 'department_name': '3-Цех', 'position_name': 'Economist'},
+				],
+				'product_rules': [
+					{'ppeproduct': duplicate_product.id, 'renewal_months': 7},
+				],
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		self.assertEqual(len(response.data), 2)
+		self.assertEqual(
+			PositionPPERenewalRule.objects.filter(position_name='Economist', ppeproduct=duplicate_product).count(),
+			2,
+		)
+		self.assertCountEqual(
+			PositionPPERenewalRule.objects.filter(position_name='Economist', ppeproduct=duplicate_product).values_list('department_service_id', flat=True),
+			[1, 3],
+		)
+
 	@patch('base.views.list_employees', return_value=[
 		{
 			'id': 1,
 			'external_id': '1',
-			'position': 'Operator',
+			'position': 'Economist',
+			'department': {'id': 1, 'name': '1-Цех'},
 		},
 		{
 			'id': 2,
 			'external_id': '2',
-			'position': 'Welder',
+			'position': 'Economist',
+			'department': {'id': 3, 'name': '3-Цех'},
 		},
 	])
 	def test_settings_positions_endpoint_returns_distinct_positions(self, _employees_mock):
 		response = self.client.get('/api/v1/settings/employee-positions/')
 
 		self.assertEqual(response.status_code, 200)
-		self.assertEqual([item['position_name'] for item in response.data], ['Operator', 'Welder'])
+		self.assertEqual(len(response.data), 2)
+		self.assertEqual([item['position_name'] for item in response.data], ['Economist', 'Economist'])
+		self.assertCountEqual([item['department_id'] for item in response.data], [1, 3])
 
 	@patch('base.views.list_sections', return_value=[])
 	@patch('base.views.list_departments', return_value=[])
