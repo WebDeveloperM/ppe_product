@@ -358,11 +358,12 @@ def fetch_employees_map_by_slugs(slugs):
         return {}
 
 
-def list_employees_bootstrapped(*, search=None, tabel_number=None, source_system=None, no_pagination=True, page=None, page_size=None):
+def list_employees_bootstrapped(*, search=None, tabel_number=None, department_id=None, source_system=None, no_pagination=True, page=None, page_size=None):
     try:
         payload = list_employees(
             search=search,
             tabel_number=tabel_number,
+            department_id=department_id,
             source_system=source_system,
             no_pagination=no_pagination,
             page=page,
@@ -379,6 +380,8 @@ def list_employees_bootstrapped(*, search=None, tabel_number=None, source_system
     local_employees = Employee.objects.filter(is_deleted=False)
     if tabel_number:
         local_employees = local_employees.filter(tabel_number=tabel_number)
+    if department_id:
+        local_employees = local_employees.filter(department_id=department_id)
     if search:
         local_employees = local_employees.filter(
             Q(first_name__icontains=search)
@@ -401,6 +404,7 @@ def list_employees_bootstrapped(*, search=None, tabel_number=None, source_system
         return list_employees(
             search=search,
             tabel_number=tabel_number,
+            department_id=department_id,
             source_system=source_system,
             no_pagination=no_pagination,
             page=page,
@@ -2723,6 +2727,11 @@ class AllItemsApiView(APIView):
         include_issue_history = request.GET.get('include_issue_history', '').lower() == 'true'
         serializer_context = {'include_issue_history': True} if include_issue_history else {}
 
+        department_id_raw = str(request.GET.get('department_id', '')).strip()
+        try:
+            department_id = int(department_id_raw) if department_id_raw else None
+        except (TypeError, ValueError):
+            department_id = None
         department = str(request.GET.get('department', '')).strip().lower()
         section = str(request.GET.get('section', '')).strip().lower()
         tabel_number = str(request.GET.get('tabel_number', '')).strip().lower()
@@ -2755,6 +2764,11 @@ class AllItemsApiView(APIView):
             attach_employee_snapshots(items)
             rows = ItemSerializer(items, many=True, context=serializer_context).data
 
+            if department_id is not None:
+                rows = [
+                    row for row in rows
+                    if str((((row.get('employee') or {}).get('department') or {}).get('id') or '')).strip() == str(department_id)
+                ]
             if department:
                 rows = [row for row in rows if department in str(((row.get('employee') or {}).get('department') or {}).get('name') or '').lower()]
             if section:
@@ -2810,6 +2824,7 @@ class AllItemsApiView(APIView):
             employees_payload = list_employees_bootstrapped(
                 search=search or None,
                 tabel_number=tabel_number or None,
+                department_id=department_id,
                 no_pagination=False,
                 page=page,
                 page_size=page_size,
@@ -2864,8 +2879,18 @@ class AllItemsApiView(APIView):
                 'results': rows,
             })
 
-        employees_payload = list_employees_bootstrapped(search=search or None, tabel_number=tabel_number or None)
+        employees_payload = list_employees_bootstrapped(
+            search=search or None,
+            tabel_number=tabel_number or None,
+            department_id=department_id,
+        )
         employee_rows = [build_employee_snapshot(employee) for employee in extract_employee_results(employees_payload)]
+
+        if department_id is not None:
+            employee_rows = [
+                employee for employee in employee_rows
+                if str(((employee.get('department') or {}).get('id') or '')).strip() == str(department_id)
+            ]
 
         if department:
             employee_rows = [

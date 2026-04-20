@@ -668,6 +668,48 @@ class EmployeeServiceFaceFallbackTests(APITestCase):
 		detect_local_mock.assert_called_once()
 
 
+class AllItemsDepartmentFilterTests(APITestCase):
+	def setUp(self):
+		self.admin = User.objects.create_superuser(username='all_items_admin', password='test12345')
+		self.client.force_authenticate(user=self.admin)
+
+	@patch('base.views.list_employees_bootstrapped')
+	def test_all_items_forwards_department_id_to_remote_employee_query(self, employees_mock):
+		employees_mock.return_value = {
+			'count': 1,
+			'next': None,
+			'previous': None,
+			'results': [
+				{
+					'id': 101,
+					'external_id': '101',
+					'slug': 'default-101-ali-valiyev',
+					'first_name': 'Ali',
+					'last_name': 'Valiyev',
+					'surname': 'Karimovich',
+					'tabel_number': '101',
+					'position': 'Operator',
+					'department': {'id': 7, 'name': '7-Цех'},
+					'section': {'id': 3, 'name': 'Section A', 'department_id': 7},
+				},
+			],
+		}
+
+		response = self.client.get('/api/v1/all-items/?department_id=7&page=1&page_size=10')
+
+		self.assertEqual(response.status_code, 200)
+		employees_mock.assert_called_once_with(
+			search=None,
+			tabel_number=None,
+			department_id=7,
+			no_pagination=False,
+			page='1',
+			page_size='10',
+		)
+		self.assertEqual(response.data['count'], 1)
+		self.assertEqual(response.data['results'][0]['employee']['department']['id'], 7)
+
+
 class ItemDetailEmployeeSnapshotRefreshTests(APITestCase):
 	def setUp(self):
 		self.admin = User.objects.create_superuser(username='item_detail_admin', password='test12345')

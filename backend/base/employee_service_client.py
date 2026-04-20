@@ -160,7 +160,7 @@ def update_face_id_exemption(slug: str, requires_face_id_checkout: bool):
     )
 
 
-def list_employees(*, search=None, tabel_number=None, external_id=None, external_ids=None, slugs=None, source_system='tb-project', no_pagination=True, page=None, page_size=None):
+def list_employees(*, search=None, tabel_number=None, external_id=None, external_ids=None, slugs=None, department_id=None, source_system='tb-project', no_pagination=True, page=None, page_size=None):
     params = {}
     if source_system:
         params['source_system'] = source_system
@@ -176,6 +176,8 @@ def list_employees(*, search=None, tabel_number=None, external_id=None, external
         params['external_ids'] = _stringify_list(external_ids)
     if slugs:
         params['slugs'] = _stringify_list(slugs)
+    if department_id is not None and str(department_id).strip():
+        params['department_id'] = str(department_id).strip()
     if page is not None:
         params['page'] = str(page)
     if page_size is not None:

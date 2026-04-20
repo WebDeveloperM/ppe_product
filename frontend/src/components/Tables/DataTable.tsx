@@ -223,7 +223,7 @@ export default function ComputerTable({
         debouncedSearch,
         checkedComputer,
         deleteCompData,
-        departmentSearch,
+        selectedDepartmentId,
         sectionSearch,
         tabelNumberSearch,
         userSearch,
@@ -236,8 +236,8 @@ export default function ComputerTable({
     const buildQueryParams = (search: string) => {
         const params = new URLSearchParams();
 
-        if (departmentSearch.trim()) {
-            params.append('department', departmentSearch.trim());
+        if (selectedDepartmentId) {
+            params.append('department_id', String(selectedDepartmentId));
         }
 
         if (sectionSearch.trim()) {
@@ -549,6 +549,7 @@ export default function ComputerTable({
 
     function applyLocalTableFilters(data: Compyuter[]) {
         const departmentValue = departmentSearch.trim().toLowerCase();
+        const departmentIdValue = selectedDepartmentId;
         const sectionValue = sectionSearch.trim().toLowerCase();
         const tabelValue = tabelNumberSearch.trim().toLowerCase();
         const userValue = userSearch.trim().toLowerCase();
@@ -561,6 +562,7 @@ export default function ComputerTable({
 
         return data.filter((computer) => {
             const employee = (computer as any)?.employee;
+            const departmentId = Number(employee?.department?.id || 0);
             const department = String(employee?.department?.name ?? '').toLowerCase();
             const section = String(employee?.section?.name ?? '').toLowerCase();
             const tabelNumber = String(employee?.tabel_number ?? '').toLowerCase();
@@ -590,6 +592,7 @@ export default function ComputerTable({
             ].some((value) => value.includes(globalSearch));
 
                 return ( 
+                (!departmentIdValue || departmentId === departmentIdValue) &&
                 (!departmentValue || department.includes(departmentValue)) &&
                 (!sectionValue || section.includes(sectionValue)) &&
                 (!tabelValue || tabelNumber.includes(tabelValue)) &&
@@ -685,9 +688,10 @@ export default function ComputerTable({
             return source;
         }
         return applyLocalTableFilters(source);
-    }, [isFiltered, computers, checkedComputer, departmentSearch, sectionSearch, tabelNumberSearch, userSearch, positionSearch, issuedAtSearch, changeDateSearch, changeUserSearch, searchText]);
+    }, [isFiltered, computers, checkedComputer, selectedDepartmentId, departmentSearch, sectionSearch, tabelNumberSearch, userSearch, positionSearch, issuedAtSearch, changeDateSearch, changeUserSearch, searchText]);
 
     const hasLocalFilters = isFiltered && Boolean(
+        selectedDepartmentId ||
         departmentSearch.trim() ||
         sectionSearch.trim() ||
         tabelNumberSearch.trim() ||
@@ -720,16 +724,19 @@ export default function ComputerTable({
         <div className="flex flex-col items-center gap-2 px-2 py-1">
             <span>Цехы</span>
             <select
-                value={departmentSearch}
+                value={selectedDepartmentId ? String(selectedDepartmentId) : ''}
                 onChange={(e) => {
-                    setDepartmentSearch(e.target.value);
+                    const nextId = e.target.value ? Number(e.target.value) : null;
+                    const nextDepartment = filterOptions.departments.find((department) => department.id === nextId);
+                    setSelectedDepartmentId(nextId);
+                    setDepartmentSearch(nextDepartment?.name || '');
                     setFirst(0);
                 }}
                 className="w-[160px] h-8 text-xs bg-white px-2.5 py-1 border border-gray-300 rounded-md"
             >
                 <option value="">Все</option>
                 {filterOptions.departments.map((department) => (
-                    <option key={department.id} value={department.name}>
+                    <option key={department.id} value={department.id}>
                         {department.name}
                     </option>
                 ))}

@@ -839,7 +839,7 @@ const DepartmentPPERulePage = () => {
 
           <div className="mb-4 flex items-center justify-between gap-3">
             <div className="text-sm text-slate-600 dark:text-slate-300">
-              Танланган қаторлар: {selectedGroups.length}
+              Выбрано: {selectedGroups.length}
             </div>
             <button
               type="button"
@@ -863,7 +863,6 @@ const DepartmentPPERulePage = () => {
                     <th className="px-3 py-2 text-left font-semibold">Должность</th>
                     <th className="px-3 py-2 text-left font-semibold">СИЗ</th>
                     <th className="px-3 py-2 text-left font-semibold">Для кого</th>
-                    <th className="px-3 py-2 text-left font-semibold">Тип</th>
                     <th className="px-3 py-2 text-left font-semibold">Срок (мес.)</th>
                     <th className="px-3 py-2 text-left font-semibold">Действия</th>
                     <th className="px-3 py-2 text-center font-semibold">
@@ -893,13 +892,6 @@ const DepartmentPPERulePage = () => {
                         <div className="space-y-2">
                           {group.items.map((rule) => (
                             <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_target_gender_display || 'Для всех'}</div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="space-y-2">
-                          {group.items.map((rule) => (
-                            <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_type_product || '-'}</div>
                           ))}
                         </div>
                       </td>
