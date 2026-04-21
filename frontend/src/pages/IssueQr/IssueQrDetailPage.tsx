@@ -148,37 +148,39 @@ export default function IssueQrDetailPage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="min-h-[88px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Таб. №</div>
-                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.tabel_number || '-'}</div>
+                <div className="mt-2 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.tabel_number || '-'}</div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="min-h-[88px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Должность</div>
-                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.position || '-'}</div>
+                <div className="mt-2 break-words text-sm font-semibold leading-5 text-slate-900 sm:text-base">{data.employee.position || '-'}</div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="min-h-[88px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Цех</div>
-                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.department_name || '-'}</div>
+                <div className="mt-2 break-words text-sm font-semibold leading-5 text-slate-900 sm:text-base">{data.employee.department_name || '-'}</div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="min-h-[88px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Отдел</div>
-                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.section_name || '-'}</div>
+                <div className="mt-2 break-words text-sm font-semibold leading-5 text-slate-900 sm:text-base">{data.employee.section_name || '-'}</div>
               </div>
             </div>
 
-            <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 lg:grid-cols-[minmax(0,1fr)_132px] lg:items-center">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Кто выдал</div>
-                  <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{getIssuerDisplayName(data.issue.issued_by_info)}</div>
+            <div className="grid gap-4 rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 lg:grid-cols-[minmax(0,1fr)_220px_132px] lg:items-center lg:p-5">
+              <div className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Кто выдал</div>
+                <div className="mt-2 break-words text-sm font-semibold text-slate-900 sm:text-base">{getIssuerDisplayName(data.issue.issued_by_info)}</div>
+                <div className="mt-1 break-words text-xs text-slate-500">{data.issue.issued_by_info?.position || 'Должность не указана'}</div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Создано</div>
+                  <div className="mt-2 font-medium text-slate-900">{formatDateTime(data.issue.created_at)}</div>
                 </div>
-                <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-2 sm:text-right">
-                  <div>
-                    Создано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.created_at)}</span>
-                  </div>
-                  <div>
-                    Выдано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.issued_at)}</span>
-                  </div>
+                <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Выдано</div>
+                  <div className="mt-2 font-medium text-slate-900">{formatDateTime(data.issue.issued_at)}</div>
                 </div>
               </div>
 
@@ -204,12 +206,12 @@ export default function IssueQrDetailPage() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
           <div className="space-y-4">
             <div className="rounded-[28px] bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-lg font-semibold">Полученные средства защиты</h2>
                 {data.issue.item_slug ? (
                   <Link
                     to={`/item-view/${data.issue.item_slug}`}
-                    className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    className="inline-flex items-center justify-center rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
                   >
                     Открыть карточку
                   </Link>
@@ -217,7 +219,7 @@ export default function IssueQrDetailPage() {
               </div>
 
               <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-[640px] w-full text-sm">
+                <table className="w-full min-w-[640px] text-sm">
                   <thead className="bg-slate-50 text-left text-slate-600">
                     <tr>
                       <th className="px-4 py-3">№</th>
@@ -243,7 +245,7 @@ export default function IssueQrDetailPage() {
             </div>
 
             <div className="rounded-[28px] bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
-              <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-lg font-semibold">Фото подтверждения</h2>
                 <div className="text-xs text-slate-500">Проверочное фото при выдаче</div>
               </div>
@@ -266,40 +268,44 @@ export default function IssueQrDetailPage() {
               <h2 className="text-lg font-semibold">Информация о выдаче</h2>
               <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-1">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  Создано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.created_at)}</span>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Создано</div>
+                  <div className="mt-2 font-medium text-slate-900">{formatDateTime(data.issue.created_at)}</div>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  Выдано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.issued_at)}</span>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Выдано</div>
+                  <div className="mt-2 font-medium text-slate-900">{formatDateTime(data.issue.issued_at)}</div>
                 </div>
               </div>
 
               <div className="mt-5 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_100%)] p-4 sm:p-5">
                 <div className="text-sm font-semibold text-slate-900">Кто выдал</div>
                 <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
-                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                      {data.issue.issued_by_info?.base_avatar ? (
-                        <img
-                          src={resolveEmployeeImageUrl(data.issue.issued_by_info.base_avatar)}
-                          alt="issued_by_avatar"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-xs text-slate-400">Нет фото</div>
-                      )}
+                  <div className="mx-auto h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white sm:mx-0">
+                    {data.issue.issued_by_info?.base_avatar ? (
+                      <img
+                        src={resolveEmployeeImageUrl(data.issue.issued_by_info.base_avatar)}
+                        alt="issued_by_avatar"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-xs text-slate-400">Нет фото</div>
+                    )}
                   </div>
-                  <div className="min-w-0 flex-1 space-y-2 text-sm text-slate-600">
-                    <div className="text-base font-semibold text-slate-900">{getIssuerDisplayName(data.issue.issued_by_info)}</div>
-                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                      <div>
-                        Фамилия: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.last_name || '-'}</span>
+                  <div className="min-w-0 flex-1 space-y-3 text-sm text-slate-600">
+                    <div className="break-words text-base font-semibold text-slate-900">{getIssuerDisplayName(data.issue.issued_by_info)}</div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl bg-white/80 px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Фамилия</div>
+                        <div className="mt-1 break-words font-medium text-slate-900">{data.issue.issued_by_info?.last_name || '-'}</div>
                       </div>
-                      <div>
-                        Имя: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.first_name || '-'}</span>
+                      <div className="rounded-xl bg-white/80 px-3 py-2">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Имя</div>
+                        <div className="mt-1 break-words font-medium text-slate-900">{data.issue.issued_by_info?.first_name || '-'}</div>
                       </div>
-                      <div>
-                        Должность: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.position || '-'}</span>
+                      <div className="rounded-xl bg-white/80 px-3 py-2 sm:col-span-2">
+                        <div className="text-[11px] uppercase tracking-wide text-slate-500">Должность</div>
+                        <div className="mt-1 break-words font-medium text-slate-900">{data.issue.issued_by_info?.position || '-'}</div>
                       </div>
-                      
                     </div>
                   </div>
                 </div>
