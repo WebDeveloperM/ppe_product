@@ -28,6 +28,10 @@ type UserInfo = {
   id?: number | null;
   username?: string;
   full_name?: string;
+  first_name?: string;
+  last_name?: string;
+  position?: string;
+  base_avatar?: string | null;
 };
 
 type IssueQrResponse = {
@@ -144,18 +148,18 @@ export default function IssueQrDetailPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-              {data.qr_code_image ? (
+              {data.employee.base_image_data || data.employee.base_image ? (
                 <img
-                  src={resolveEmployeeImageUrl(data.qr_code_image)}
-                  alt="qr_code"
+                  src={resolveEmployeeImageUrl(data.employee.base_image_data || data.employee.base_image || '')}
+                  alt="employee_base_photo"
                   className="mx-auto h-32 w-32 rounded-lg border border-slate-200 bg-white object-contain"
                 />
               ) : (
                 <div className="flex h-32 w-32 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-400">
-                  QR
+                  Фото
                 </div>
               )}
-              <div className="mt-3 text-xs text-slate-500">Код выдачи: {data.qr_token}</div>
+              <div className="mt-3 text-xs text-slate-500">Таб. №: {data.employee.tabel_number || '-'}</div>
             </div>
           </div>
         </div>
@@ -240,7 +244,36 @@ export default function IssueQrDetailPage() {
               <div className="mt-4 space-y-3 text-sm text-slate-600">
                 <div>Создано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.created_at)}</span></div>
                 <div>Выдано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.issued_at)}</span></div>
-                <div>Кто выдал: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.full_name || data.issue.issued_by_info?.username || '-'}</span></div>
+                <div className="pt-2 text-sm font-semibold text-slate-900">Кто выдал</div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="grid gap-3 sm:grid-cols-[88px_1fr] sm:items-start">
+                    <div className="h-24 w-22 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      {data.issue.issued_by_info?.base_avatar ? (
+                        <img
+                          src={resolveEmployeeImageUrl(data.issue.issued_by_info.base_avatar)}
+                          alt="issued_by_avatar"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-xs text-slate-400">Нет фото</div>
+                      )}
+                    </div>
+                    <div className="space-y-1 text-sm text-slate-600">
+                      <div>
+                        Фамилия: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.last_name || '-'}</span>
+                      </div>
+                      <div>
+                        Имя: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.first_name || '-'}</span>
+                      </div>
+                      <div>
+                        Должность: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.position || '-'}</span>
+                      </div>
+                      <div>
+                        Логин: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.username || '-'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

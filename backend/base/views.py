@@ -4465,10 +4465,26 @@ class IssueQRCodeDetailApiView(APIView):
         )
         issued_by = item.issued_by or pending.created_by
         issued_by_full_name = ''
+        issued_by_position = ''
+        issued_by_avatar = None
         if issued_by:
             issued_by_full_name = ' '.join(
                 part for part in [issued_by.last_name, issued_by.first_name] if part
             ).strip()
+            issued_by_profile = getattr(issued_by, 'role_profile', None)
+            if issued_by_profile and issued_by_profile.role:
+                issued_by_position = issued_by_profile.get_role_display()
+            if issued_by_profile and issued_by_profile.base_avatar:
+                try:
+                    issued_by_avatar = request.build_absolute_uri(issued_by_profile.base_avatar.url)
+                except Exception:
+                    issued_by_avatar = None
+            if issued_by_profile and issued_by_profile.employee_slug and is_employee_service_enabled():
+                try:
+                    issuer_employee_payload = get_employee_by_slug(issued_by_profile.employee_slug)
+                    issued_by_position = str((issuer_employee_payload or {}).get('position', '')).strip() or issued_by_position
+                except EmployeeServiceClientError:
+                    pass
 
         qr_code_image = None
         if pending.qr_code_image:
@@ -4592,6 +4608,10 @@ class IssueQRCodeDetailApiView(APIView):
                         'id': issued_by.id if issued_by else None,
                         'username': issued_by.username if issued_by else '',
                         'full_name': issued_by_full_name or (issued_by.username if issued_by else ''),
+                        'first_name': issued_by.first_name if issued_by else '',
+                        'last_name': issued_by.last_name if issued_by else '',
+                        'position': issued_by_position,
+                        'base_avatar': issued_by_avatar,
                     },
                     'created_by_info': {
                         'id': pending.created_by.id if pending.created_by else None,
