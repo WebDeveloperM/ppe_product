@@ -286,12 +286,20 @@ def calculate_face_similarity_score(base_image, captured_image):
 
 
 def get_faceid_login_candidate_profiles():
-    return UserRole.objects.select_related('user').filter(
+    raw_profiles = UserRole.objects.select_related('user').filter(
         user__is_active=True,
         face_id_required=True,
         employee_slug__isnull=False,
-        base_avatar__isnull=False,
-    ).exclude(employee_slug='').exclude(base_avatar='')
+    ).exclude(employee_slug='')
+
+    candidate_profiles = []
+    for profile in raw_profiles.iterator():
+        if not profile.base_avatar:
+            profile = sync_profile_avatar_from_employee_service(profile.user, profile)
+        if profile and profile.base_avatar:
+            candidate_profiles.append(profile)
+
+    return candidate_profiles
 
 
 def match_user_by_face_capture(face_capture):

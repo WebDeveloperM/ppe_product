@@ -351,6 +351,41 @@ class FaceIdLoginTests(APITestCase):
 		self.assertEqual(response.data['error'], 'Для Face ID входа не найдено ни одного разрешенного сотрудника с базовым аватаром.')
 		similarity_mock.assert_not_called()
 
+	@override_settings(EMPLOYEE_SERVICE_ENABLED=True)
+	@patch('users.views.download_employee_image')
+	@patch('users.views.get_employee_by_slug')
+	@patch('users.views.calculate_face_similarity_score')
+	def test_faceid_login_syncs_missing_base_avatar_from_employee_service(self, similarity_mock, get_employee_mock, download_image_mock):
+		user = User.objects.create_user(username='face_sync_user', password='test12345')
+		profile, _ = UserRole.objects.get_or_create(user=user)
+		profile.role = UserRole.USER
+		profile.employee_slug = 'emp-face-sync'
+		profile.face_id_required = True
+		profile.base_avatar = None
+		profile.save(update_fields=['role', 'employee_slug', 'face_id_required', 'base_avatar'])
+
+		get_employee_mock.return_value = {
+			'slug': 'emp-face-sync',
+			'first_name': 'Face',
+			'last_name': 'Sync',
+			'tabel_number': '7777',
+			'base_image_url': 'http://employee-service:8010/media/employee_base_images/7777.jpg',
+		}
+		download_image_mock.return_value = build_test_image('7777.jpg').read()
+		similarity_mock.return_value = 95.0
+
+		response = self.client.post(
+			'/api/v1/users/faceid/login/',
+			{'face_capture': build_test_image_data_url('captured-face.jpg')},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data['username'], 'face_sync_user')
+		profile.refresh_from_db()
+		self.assertTrue(bool(profile.base_avatar))
+		download_image_mock.assert_called_once_with('http://employee-service:8010/media/employee_base_images/7777.jpg')
+
 
 class SettingsUsersFaceIdRequiredTests(APITestCase):
 	def setUp(self):
