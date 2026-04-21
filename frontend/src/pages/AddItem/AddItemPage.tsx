@@ -50,6 +50,13 @@ type AddItemResponse = {
   employee_sizes?: EmployeeSizes | null;
 };
 
+type PendingConfirmResponse = {
+  pending_issue_id?: number;
+  item_slug?: string;
+  qr_frontend_path?: string;
+  qr_scan_url?: string;
+};
+
 type FaceBox = { x: number; y: number; width: number; height: number };
 
 type StockCheckState = {
@@ -86,6 +93,7 @@ const AddItemPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState<AddItemResponse | null>(null);
   const toIssueDateTime24 = (value?: string | null) => {
@@ -125,6 +133,10 @@ const AddItemPage = () => {
   const employee = data?.item?.employee;
   const employeeBaseImageUrl = resolveImageUrl(employee?.base_image);
   const ppeOptions = data?.ppe_products ?? [];
+  const selectedPpeOptions = useMemo(
+    () => ppeOptions.filter((item) => selectedPpeIds.includes(item.id)),
+    [ppeOptions, selectedPpeIds],
+  );
 
   useEffect(() => {
     if (!slug) return;
@@ -784,20 +796,20 @@ const AddItemPage = () => {
         verified_image: capturedImage,
       })
       .then((response) => {
-        // Check if this is a pending issue response (new flow with signature)
         const pendingIssueId = response.data?.pending_issue_id;
         if (pendingIssueId) {
-          // Redirect to signature page
-          navigate(`/signature/${pendingIssueId}`);
-          return;
+          return axioss.post<PendingConfirmResponse>(`${BASE_URL}/pending-issue/${pendingIssueId}/confirm-direct/`);
         }
 
-        // Fallback for old flow (direct item creation)
-        toast.success('Успешно', {
+        return { data: response.data as PendingConfirmResponse };
+      })
+      .then((response) => {
+        setConfirmModalOpen(false);
+        toast.success('Выдача подтверждена', {
           position: 'top-right',
           autoClose: 2500,
         });
-        const newSlug = response.data?.slug;
+        const newSlug = response.data?.item_slug;
         if (newSlug) {
           navigate(`/item-view/${newSlug}`);
           return;
@@ -822,6 +834,12 @@ const AddItemPage = () => {
         setError(backendError || 'Ошибка при сохранении');
       })
       .finally(() => setSaving(false));
+  };
+
+  const openConfirmModal = () => {
+    if (!slug || !canSubmitWithStock || saving) return;
+    setError('');
+    setConfirmModalOpen(true);
   };
 
   if (!isAuthenticated()) {
@@ -1182,7 +1200,7 @@ const AddItemPage = () => {
 
                     <button
                       type="button"
-                      onClick={handleSubmit}
+                      onClick={openConfirmModal}
                       disabled={!canSubmitWithStock || saving}
                       className="rounded-md bg-meta-3 py-2 px-5 font-medium text-white hover:bg-opacity-90 disabled:opacity-50"
                       title={
@@ -1200,6 +1218,126 @@ const AddItemPage = () => {
                       {saving ? 'Сохранение...' : 'Добавить'}
                     </button>
                   </div>
+
+                  {confirmModalOpen ? (
+                    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/50 px-4 py-6">
+                      <div className="flex h-[70vh] w-[80vw] max-w-[80vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-boxdark">
+                        <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-strokedark">
+                          <div>
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Подтверждение выдачи</h3>
+                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">Проверьте полную информацию перед созданием QR-кода.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => !saving && setConfirmModalOpen(false)}
+                            className="rounded px-3 py-1 text-sm text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-boxdark-2"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div className="grid flex-1 gap-4 overflow-y-auto p-6 lg:grid-cols-[1.1fr_0.9fr]">
+                          <div className="space-y-4">
+                            <div className="rounded-lg border border-stroke p-4 dark:border-strokedark">
+                              <div className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Сотрудник</div>
+                              <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
+                                <div className="h-32 w-28 overflow-hidden rounded border border-stroke bg-slate-50 dark:border-strokedark dark:bg-boxdark-2">
+                                  {employeeBaseImageUrl ? (
+                                    <img src={employeeBaseImageUrl} alt="employee" className="h-full w-full object-cover" />
+                                  ) : (
+                                    <div className="flex h-full items-center justify-center text-xs text-slate-400">Нет фото</div>
+                                  )}
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                  <div className="text-slate-500">Фамилия</div>
+                                  <div className="font-medium text-slate-900 dark:text-white">{employee?.last_name || '-'}</div>
+                                  <div className="text-slate-500">Имя</div>
+                                  <div className="font-medium text-slate-900 dark:text-white">{employee?.first_name || '-'}</div>
+                                  <div className="text-slate-500">Отчество</div>
+                                  <div className="font-medium text-slate-900 dark:text-white">{employee?.surname || '-'}</div>
+                                  <div className="text-slate-500">Табельный номер</div>
+                                  <div className="font-medium text-slate-900 dark:text-white">{employee?.tabel_number || '-'}</div>
+                                  <div className="text-slate-500">Должность</div>
+                                  <div className="font-medium text-slate-900 dark:text-white">{employee?.position || '-'}</div>
+                                  <div className="text-slate-500">Цех</div>
+                                  <div className="font-medium text-slate-900 dark:text-white">{employee?.department?.name || '-'}</div>
+                                  <div className="text-slate-500">Отдел</div>
+                                  <div className="font-medium text-slate-900 dark:text-white">{employee?.section?.name || '-'}</div>
+                                  <div className="text-slate-500">Дата выдачи</div>
+                                  <div className="font-medium text-slate-900 dark:text-white">{issuedAt}</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="rounded-lg border border-stroke p-4 dark:border-strokedark">
+                              <div className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Средства защиты</div>
+                              <div className="overflow-hidden rounded border border-stroke dark:border-strokedark">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-slate-50 text-left dark:bg-boxdark-2">
+                                    <tr>
+                                      <th className="px-3 py-2">№</th>
+                                      <th className="px-3 py-2">Наименование</th>
+                                      <th className="px-3 py-2">Ед. изм.</th>
+                                      <th className="px-3 py-2">Размер</th>
+                                      <th className="px-3 py-2">Срок</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {selectedPpeOptions.map((item, index) => (
+                                      <tr key={item.id} className="border-t border-stroke dark:border-strokedark">
+                                        <td className="px-3 py-2">{index + 1}</td>
+                                        <td className="px-3 py-2 font-medium text-slate-900 dark:text-white">{item.name}</td>
+                                        <td className="px-3 py-2">{item.type_product_display || item.type_product || '-'}</td>
+                                        <td className="px-3 py-2">{(ppeSizes[item.id] || '').trim() || '-'}</td>
+                                        <td className="px-3 py-2">{item.renewal_months} мес.</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-4">
+                            <div className="rounded-lg border border-stroke p-4 dark:border-strokedark">
+                              <div className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Проверка</div>
+                              <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                                <div>Face ID: <span className="font-medium text-slate-900 dark:text-white">{requiresFaceId ? (faceVerified ? 'Подтвержден' : 'Не подтвержден') : 'Не требуется'}</span></div>
+                                <div>Выбрано СИЗ: <span className="font-medium text-slate-900 dark:text-white">{selectedPpeOptions.length}</span></div>
+                                <div>Все размеры указаны: <span className="font-medium text-slate-900 dark:text-white">{hasMissingSize ? 'Нет' : 'Да'}</span></div>
+                                <div>Проверка остатков: <span className="font-medium text-slate-900 dark:text-white">{hasPendingSizeCheck ? 'В процессе' : 'Завершена'}</span></div>
+                              </div>
+                            </div>
+
+                            {capturedImage ? (
+                              <div className="rounded-lg border border-stroke p-4 dark:border-strokedark">
+                                <div className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Фото подтверждения</div>
+                                <img src={capturedImage} alt="captured" className="h-56 w-full rounded border border-stroke object-contain dark:border-strokedark" />
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 border-t border-stroke px-6 py-4 dark:border-strokedark">
+                          <button
+                            type="button"
+                            onClick={() => !saving && setConfirmModalOpen(false)}
+                            className="rounded border border-stroke px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-strokedark dark:text-slate-200 dark:hover:bg-boxdark-2"
+                          >
+                            Отмена
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSubmit}
+                            disabled={!canSubmitWithStock || saving}
+                            className="rounded bg-emerald-600 px-5 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {saving ? 'Сохранение...' : 'Подтвердить'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               )}
             </div>

@@ -25,6 +25,7 @@ urlpatterns = [
     path("item-delete/<slug:slug>", ItemDeleteApiView.as_view()),
     path("pending-issue/<int:pk>/", PendingIssueDetailApiView.as_view()),
     path("pending-issue/<int:pk>/confirm/", PendingIssueConfirmApiView.as_view()),
+    path("pending-issue/<int:pk>/confirm-direct/", PendingIssueDirectConfirmApiView.as_view()),
     path("pending-issue/employee/<int:employee_id>/", PendingIssueForEmployeeApiView.as_view()),
     path("issue-qr/<uuid:token>/", IssueQRCodeDetailApiView.as_view()),
     path("employees/face-id-exemption/", EmployeeFaceIdExemptionApiView.as_view()),

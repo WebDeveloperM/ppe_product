@@ -825,27 +825,6 @@ export default function ViewPO() {
                     </div>
 
                     <div className="p-4 space-y-4">
-                        {pendingIssue ? (
-                            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/20">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="text-sm font-medium text-red-700 dark:text-red-300">
-                                        Подпись ожидается
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-semibold text-red-700 dark:text-red-300">
-                                            {formatCountdown(pendingIssue.timeRemainingSeconds)}
-                                        </span>
-                                        <Link
-                                            to={`/signature/${pendingIssue.id}`}
-                                            className="rounded px-3 py-1 text-xs font-medium text-white bg-red-600 hover:bg-red-700"
-                                        >
-                                            Подписание
-                                        </Link>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : null}
-
                         <div className="rounded-md border border-stroke dark:border-strokedark p-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                             <div className="flex w-full flex-col gap-3 xl:w-1/2 xl:flex-row xl:flex-nowrap">
                                 <div className="w-full xl:flex-1">
@@ -956,20 +935,6 @@ export default function ViewPO() {
                                                     Новая выдача
                                                 </span>
                                             ) : null}
-                                            {index === 0 && pendingIssue && (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-semibold text-emerald-700">
-                                                        {formatCountdown(pendingIssue.timeRemainingSeconds)}
-                                                    </span>
-                                                    
-                                                    <Link
-                                                        to={`/signature/${pendingIssue.id}`}
-                                                        className="rounded  px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 bg-red-600 hover:bg-red-700"
-                                                    >
-                                                        Подписание
-                                                    </Link>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
 

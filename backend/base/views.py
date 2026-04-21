@@ -4849,6 +4849,100 @@ class PendingIssueConfirmApiView(APIView):
         }, status=status.HTTP_200_OK)
 
 
+class PendingIssueDirectConfirmApiView(APIView):
+    """Direct confirmation without signatures, used by temporary modal flow."""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def post(request, *args, **kwargs):
+        pending_id = kwargs.get('pk')
+        if not pending_id:
+            return Response({"error": "ID not found"}, status=status.HTTP_400_BAD_REQUEST)
+
+        permission_error = ensure_can_modify(request)
+        if permission_error:
+            return permission_error
+
+        pending = PendingItemIssue.objects.filter(id=pending_id).first()
+        if not pending:
+            return Response({"error": "Запись не найдена"}, status=status.HTTP_404_NOT_FOUND)
+
+        now = timezone.now()
+        if pending.status == PendingItemIssue.STATUS_PENDING and now > pending.expires_at:
+            pending.status = PendingItemIssue.STATUS_EXPIRED
+            pending.save(update_fields=['status'])
+
+        if pending.status == PendingItemIssue.STATUS_EXPIRED:
+            return Response({"error": "Время истекло. Начните заново.", "expired": True}, status=status.HTTP_400_BAD_REQUEST)
+
+        if pending.status == PendingItemIssue.STATUS_CONFIRMED:
+            return Response({
+                "error": "Уже подтверждено",
+                "confirmed": True,
+                "item_slug": pending.confirmed_item.slug if pending.confirmed_item else None,
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        products = list(PPEProduct.objects.filter(id__in=pending.ppeproduct_ids))
+        if not products:
+            return Response({"error": "Средства защиты не найдены"}, status=status.HTTP_400_BAD_REQUEST)
+
+        item = Item(
+            issued_at=now,
+            issued_by=request.user,
+            addedUser=request.user,
+            updatedUser=request.user,
+            ppe_sizes=pending.ppe_sizes,
+        )
+        item.set_employee_snapshot(pending.employee_snapshot)
+
+        if pending.verified_image:
+            try:
+                item.image.save(
+                    f'item_{pending.employee_service_id}_{now.strftime("%Y%m%d%H%M%S")}.jpg',
+                    pending.verified_image.file,
+                    save=False,
+                )
+            except Exception:
+                pass
+
+        item._history_user = request.user
+        item.save()
+        item.ppeproduct.set(products)
+        update_change_reason(item, f"Подтверждено без подписи {pending.employee}")
+
+        pending.employee_signed_at = now
+        pending.warehouse_signed_at = now
+        try:
+            pending.generate_qr_code(request.build_absolute_uri(pending.get_qr_frontend_path()))
+        except Exception:
+            pass
+
+        pending.status = PendingItemIssue.STATUS_CONFIRMED
+        pending.confirmed_at = now
+        pending.confirmed_item = item
+        pending.save(
+            update_fields=[
+                'employee_signed_at',
+                'warehouse_signed_at',
+                'qr_code_image',
+                'status',
+                'confirmed_at',
+                'confirmed_item',
+            ]
+        )
+
+        return Response({
+            'success': True,
+            'step': 'direct_confirmed',
+            'item_slug': item.slug,
+            'qr_token': str(pending.qr_token),
+            'qr_frontend_path': pending.get_qr_frontend_path(),
+            'qr_scan_url': request.build_absolute_uri(pending.get_qr_frontend_path()),
+            'message': 'Выдача подтверждена',
+        }, status=status.HTTP_200_OK)
+
+
 # class GetDataByIPApiView(APIView):
 #     permission_classes = [AllowAny]
 
