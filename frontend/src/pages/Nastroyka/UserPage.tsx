@@ -95,6 +95,25 @@ const normalizeLoginPart = (value: string | null | undefined): string => {
     .toLowerCase();
 };
 
+const buildLoginFromEmployee = (employee: EmployeeItem | null | undefined): string => {
+  if (!employee) {
+    return '';
+  }
+
+  const fullNameParts = String(employee.full_name || '').split(/\s+/).filter(Boolean);
+  const inferredLastName = fullNameParts[0] || '';
+  const inferredFirstName = fullNameParts[1] || '';
+  const baseLogin = [
+    normalizeLoginPart(inferredFirstName),
+    normalizeLoginPart(inferredLastName),
+  ].filter(Boolean).join('_');
+
+  return baseLogin
+    || normalizeLoginPart(employee.login || '')
+    || normalizeLoginPart(employee.tabel_number || '')
+    || normalizeLoginPart(employee.slug || '');
+};
+
 const LARGE_USER_MODAL_THEME = {
   root: {
     sizes: {
@@ -194,18 +213,7 @@ const UserPage = () => {
   }, [editingUser, employees, userEmployeeSlug, users]);
 
   const pendingLogin = useMemo(() => {
-    if (!selectedEmployee) {
-      return '';
-    }
-    const fullNameParts = String(selectedEmployee.full_name || '').split(/\s+/).filter(Boolean);
-    const inferredLastName = fullNameParts[0] || '';
-    const inferredFirstName = fullNameParts[1] || '';
-    const baseLogin = [
-      normalizeLoginPart(inferredFirstName),
-      normalizeLoginPart(inferredLastName),
-    ].filter(Boolean).join('_');
-
-    return baseLogin || normalizeLoginPart(selectedEmployee.login || '') || normalizeLoginPart(selectedEmployee.tabel_number || '') || normalizeLoginPart(selectedEmployee.slug || '');
+    return buildLoginFromEmployee(selectedEmployee);
   }, [selectedEmployee]);
 
   useEffect(() => {
@@ -644,6 +652,7 @@ const UserPage = () => {
                         className={`cursor-pointer px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 ${emp.slug === userEmployeeSlug ? 'bg-primary/10 font-medium' : ''}`}
                         onClick={() => {
                           setUserEmployeeSlug(emp.slug);
+                          setUserLogin(buildLoginFromEmployee(emp));
                           setEmployeeDropdownOpen(false);
                           setEmployeeSearch('');
                         }}
