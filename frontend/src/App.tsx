@@ -37,6 +37,7 @@ import PersonPage from './pages/Nastroyka/PersonPage';
 import UserPage from './pages/Nastroyka/UserPage';
 import FaceIDPage from './pages/Nastroyka/FaceIDPage';
 import PageAccessPage from './pages/Nastroyka/PageAccessPage';
+import IssueQrDetailPage from './pages/IssueQr/IssueQrDetailPage';
 import 'primeicons/primeicons.css';
 import { isAuthenticated } from './utils/auth';
 import axioss from './api/axios';
@@ -135,6 +136,30 @@ function App() {
 
   return loading || !authResolved ? (
     <Loader />
+  ) : pathname.startsWith('/issue-qr/') ? (
+    <>
+      <Routes>
+        <Route
+          path="/issue-qr/:token"
+          element={
+            <>
+              <PageTitle title="QR выдача СИЗ" />
+              <IssueQrDetailPage />
+            </>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <>
+              <PageTitle title="404 - Страница не найдена" />
+              <NotFoundPage />
+            </>
+          }
+        />
+      </Routes>
+      <ToastContainer />
+    </>
   ) : (
     <DefaultLayout>
       <Routes>

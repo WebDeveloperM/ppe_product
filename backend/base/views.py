@@ -4434,6 +4434,181 @@ class PendingIssueForEmployeeApiView(APIView):
         )
 
 
+class IssueQRCodeDetailApiView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    @staticmethod
+    def get(request, *args, **kwargs):
+        qr_token = kwargs.get('token')
+        if not qr_token:
+            return Response({'error': 'QR token not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        pending = (
+            PendingItemIssue.objects
+            .select_related('created_by', 'confirmed_item__issued_by')
+            .prefetch_related('confirmed_item__ppeproduct')
+            .filter(
+                qr_token=qr_token,
+                status=PendingItemIssue.STATUS_CONFIRMED,
+                confirmed_item__isnull=False,
+            )
+            .first()
+        )
+        if not pending:
+            return Response({'error': 'QR код выдачи не найден'}, status=status.HTTP_404_NOT_FOUND)
+
+        item = pending.confirmed_item
+        employee = item.employee
+        issued_by = item.issued_by or pending.created_by
+        issued_by_full_name = ''
+        if issued_by:
+            issued_by_full_name = ' '.join(
+                part for part in [issued_by.last_name, issued_by.first_name] if part
+            ).strip()
+
+        qr_code_image = None
+        if pending.qr_code_image:
+            try:
+                qr_code_image = pending.qr_code_image.url
+            except Exception:
+                qr_code_image = None
+
+        signature_image = None
+        if pending.signature_image:
+            try:
+                signature_image = pending.signature_image.url
+            except Exception:
+                signature_image = None
+
+        warehouse_signature_image = None
+        if pending.warehouse_signature_image:
+            try:
+                warehouse_signature_image = pending.warehouse_signature_image.url
+            except Exception:
+                warehouse_signature_image = None
+
+        size_map = item.ppe_sizes if isinstance(item.ppe_sizes, dict) else {}
+        products = [
+            {
+                'id': product.id,
+                'name': product.name,
+                'type_product': product.type_product,
+                'type_product_display': product.get_type_product_display() if product.type_product else None,
+                'renewal_months': int(product.renewal_months or 0),
+                'size': size_map.get(str(product.id)) or '',
+            }
+            for product in item.ppeproduct.all()
+        ]
+
+        timeline = [
+            {
+                'key': 'created',
+                'label': 'Заявка на выдачу создана',
+                'timestamp': pending.created_at.isoformat() if pending.created_at else None,
+                'actor': {
+                    'id': pending.created_by.id if pending.created_by else None,
+                    'username': pending.created_by.username if pending.created_by else '',
+                    'full_name': ' '.join(
+                        part for part in [
+                            getattr(pending.created_by, 'last_name', ''),
+                            getattr(pending.created_by, 'first_name', ''),
+                        ] if part
+                    ).strip() or (pending.created_by.username if pending.created_by else ''),
+                },
+                'description': 'Инициирована выдача СИЗ для сотрудника.',
+            },
+            {
+                'key': 'employee_signed',
+                'label': 'Сотрудник подписал выдачу',
+                'timestamp': pending.employee_signed_at.isoformat() if pending.employee_signed_at else None,
+                'actor': {
+                    'id': employee.id,
+                    'username': employee.tabel_number,
+                    'full_name': ' '.join(
+                        part for part in [employee.last_name, employee.first_name, employee.surname] if part
+                    ).strip(),
+                },
+                'description': 'Сотрудник подтвердил получение СИЗ своей подписью.',
+            },
+            {
+                'key': 'warehouse_signed',
+                'label': 'Кладовщик подтвердил выдачу',
+                'timestamp': pending.warehouse_signed_at.isoformat() if pending.warehouse_signed_at else None,
+                'actor': {
+                    'id': issued_by.id if issued_by else None,
+                    'username': issued_by.username if issued_by else '',
+                    'full_name': issued_by_full_name or (issued_by.username if issued_by else ''),
+                },
+                'description': 'Кладовщик завершил оформление и подтвердил выдачу.',
+            },
+            {
+                'key': 'confirmed',
+                'label': 'Выдача проведена в системе',
+                'timestamp': pending.confirmed_at.isoformat() if pending.confirmed_at else None,
+                'actor': {
+                    'id': issued_by.id if issued_by else None,
+                    'username': issued_by.username if issued_by else '',
+                    'full_name': issued_by_full_name or (issued_by.username if issued_by else ''),
+                },
+                'description': 'Запись сохранена как итоговая выдача СИЗ.',
+            },
+        ]
+
+        return Response(
+            {
+                'qr_token': str(pending.qr_token),
+                'qr_frontend_path': pending.get_qr_frontend_path(),
+                'qr_scan_url': request.build_absolute_uri(pending.get_qr_frontend_path()),
+                'qr_code_image': qr_code_image,
+                'employee': {
+                    'id': employee.id,
+                    'slug': employee.slug,
+                    'first_name': employee.first_name,
+                    'last_name': employee.last_name,
+                    'surname': employee.surname,
+                    'full_name': ' '.join(
+                        part for part in [employee.last_name, employee.first_name, employee.surname] if part
+                    ).strip(),
+                    'tabel_number': employee.tabel_number,
+                    'position': employee.position,
+                    'department_name': employee.department.name if getattr(employee, 'department', None) else '',
+                    'section_name': employee.section.name if getattr(employee, 'section', None) else '',
+                },
+                'issue': {
+                    'item_id': item.id,
+                    'item_slug': item.slug,
+                    'issued_at': item.issued_at.isoformat() if item.issued_at else None,
+                    'confirmed_at': pending.confirmed_at.isoformat() if pending.confirmed_at else None,
+                    'employee_signed_at': pending.employee_signed_at.isoformat() if pending.employee_signed_at else None,
+                    'warehouse_signed_at': pending.warehouse_signed_at.isoformat() if pending.warehouse_signed_at else None,
+                    'created_at': pending.created_at.isoformat() if pending.created_at else None,
+                    'issued_by_info': {
+                        'id': issued_by.id if issued_by else None,
+                        'username': issued_by.username if issued_by else '',
+                        'full_name': issued_by_full_name or (issued_by.username if issued_by else ''),
+                    },
+                    'created_by_info': {
+                        'id': pending.created_by.id if pending.created_by else None,
+                        'username': pending.created_by.username if pending.created_by else '',
+                        'full_name': ' '.join(
+                            part for part in [
+                                getattr(pending.created_by, 'last_name', ''),
+                                getattr(pending.created_by, 'first_name', ''),
+                            ] if part
+                        ).strip() or (pending.created_by.username if pending.created_by else ''),
+                    },
+                    'signature_image': signature_image,
+                    'warehouse_signature_image': warehouse_signature_image,
+                    'verified_image': item.image.url if item.image else None,
+                },
+                'products': products,
+                'timeline': timeline,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class EmployeeFaceIdExemptionApiView(APIView):
     """
     Sklad boshlig'i (WAREHOUSE_MANAGER) hodimlarning Face ID talab qilinishi holatini boshqarish uchun API.
@@ -4578,7 +4753,8 @@ class PendingIssueConfirmApiView(APIView):
                     f'signature_employee_{pending.employee_service_id}',
                     now,
                 )
-                pending.save(update_fields=['signature_image'])
+                pending.employee_signed_at = now
+                pending.save(update_fields=['signature_image', 'employee_signed_at'])
             except Exception as e:
                 return Response({"error": f"Ошибка сохранения подписи: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -4641,16 +4817,34 @@ class PendingIssueConfirmApiView(APIView):
         item.ppeproduct.set(products)
         update_change_reason(item, f"Подтверждено с подписью сотрудника {pending.employee}")
 
+        pending.warehouse_signed_at = now
+        try:
+            pending.generate_qr_code(request.build_absolute_uri(pending.get_qr_frontend_path()))
+        except Exception:
+            pass
+
         # Update pending issue
         pending.status = PendingItemIssue.STATUS_CONFIRMED
         pending.confirmed_at = now
         pending.confirmed_item = item
-        pending.save(update_fields=['warehouse_signature_image', 'status', 'confirmed_at', 'confirmed_item'])
+        pending.save(
+            update_fields=[
+                'warehouse_signature_image',
+                'warehouse_signed_at',
+                'qr_code_image',
+                'status',
+                'confirmed_at',
+                'confirmed_item',
+            ]
+        )
 
         return Response({
             'success': True,
             'step': 'warehouse_signed',
             'item_slug': item.slug,
+            'qr_token': str(pending.qr_token),
+            'qr_frontend_path': pending.get_qr_frontend_path(),
+            'qr_scan_url': request.build_absolute_uri(pending.get_qr_frontend_path()),
             'message': 'Выдача подтверждена',
         }, status=status.HTTP_200_OK)
 

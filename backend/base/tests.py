@@ -77,6 +77,9 @@ class PendingIssueTwoStepSignatureTests(APITestCase):
 		)
 
 		self.confirm_url = f'/api/v1/pending-issue/{self.pending.id}/confirm/'
+		manager_profile, _ = UserRole.objects.get_or_create(user=self.created_by)
+		manager_profile.role = UserRole.WAREHOUSE_STAFF
+		manager_profile.save(update_fields=['role'])
 
 	def test_non_warehouse_user_cannot_complete_second_step(self):
 		self.client.force_authenticate(user=self.user)
@@ -100,6 +103,40 @@ class PendingIssueTwoStepSignatureTests(APITestCase):
 		self.assertEqual(self.pending.status, PendingItemIssue.STATUS_PENDING)
 		self.assertIsNotNone(self.pending.signature_image)
 		self.assertFalse(bool(self.pending.warehouse_signature_image))
+
+	def test_second_step_generates_qr_and_public_detail_payload(self):
+		self.client.force_authenticate(user=self.created_by)
+
+		first_response = self.client.post(
+			self.confirm_url,
+			{'signature': self.SIGNATURE_DATA_URL},
+			format='json',
+		)
+		self.assertEqual(first_response.status_code, 200)
+		self.assertEqual(first_response.data.get('step'), 'employee_signed')
+
+		second_response = self.client.post(
+			self.confirm_url,
+			{'signature': self.SIGNATURE_DATA_URL},
+			format='json',
+		)
+		self.assertEqual(second_response.status_code, 200)
+		self.assertEqual(second_response.data.get('step'), 'warehouse_signed')
+		self.assertTrue(second_response.data.get('qr_token'))
+		self.assertTrue(second_response.data.get('qr_frontend_path', '').startswith('/issue-qr/'))
+
+		self.pending.refresh_from_db()
+		self.assertEqual(self.pending.status, PendingItemIssue.STATUS_CONFIRMED)
+		self.assertIsNotNone(self.pending.employee_signed_at)
+		self.assertIsNotNone(self.pending.warehouse_signed_at)
+		self.assertIsNotNone(self.pending.confirmed_at)
+		self.assertTrue(bool(self.pending.qr_code_image))
+
+		public_response = self.client.get(f'/api/v1/issue-qr/{self.pending.qr_token}/')
+		self.assertEqual(public_response.status_code, 200)
+		self.assertEqual(public_response.data['employee']['tabel_number'], self.employee.tabel_number)
+		self.assertEqual(public_response.data['products'][0]['name'], self.product.name)
+		self.assertEqual(public_response.data['timeline'][1]['key'], 'employee_signed')
 
 
 class DueSoonEmployeePPETests(APITestCase):

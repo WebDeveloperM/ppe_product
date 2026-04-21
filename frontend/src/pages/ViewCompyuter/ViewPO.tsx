@@ -74,6 +74,10 @@ type ItemDetail = {
         image?: string | null;
         signature_image?: string | null;
         warehouse_signature_image?: string | null;
+        qr_token?: string | null;
+        qr_code_image?: string | null;
+        qr_frontend_path?: string | null;
+        qr_scan_url?: string | null;
         issued_at?: string | null;
         next_due_date?: string | null;
         is_current?: boolean;
@@ -665,8 +669,7 @@ export default function ViewPO() {
                 <th className="px-4 py-3">Дата выдачи</th>
                 <th className="px-4 py-3">Следующая выдача</th>
                 <th className="px-4 py-3">Face ID</th>
-                <th className="px-4 py-3">Подписано</th>
-                <th className="px-4 py-3">Подтверждено</th>
+                <th className="px-4 py-3">qr_code</th>
             </tr>
         </thead>
     );
@@ -1017,50 +1020,29 @@ export default function ViewPO() {
                                                                     className="px-4 py-3 align-top"
                                                                     rowSpan={Math.max((issue.ppeproduct_info ?? []).length, 1)}
                                                                 >
-                                                                    {issue.signature_image ? (
+                                                                    {issue.qr_frontend_path ? (
                                                                         <div className="flex flex-col items-start gap-1">
-                                                                            <img
-                                                                                src={resolveImageUrl(issue.signature_image)}
-                                                                                alt="signature_photo"
-                                                                                className="h-14 w-28 rounded border object-contain bg-white cursor-pointer"
-                                                                                onClick={() =>
-                                                                                    setPreviewImage({
-                                                                                        imageUrl: resolveImageUrl(issue.signature_image!),
-                                                                                        issuedAt: issue.issued_at,
-                                                                                    })
-                                                                                }
-                                                                            />
-                                                                            <div className="text-[11px] text-slate-500 dark:text-slate-300">
-                                                                                Проверено: {formatDate(issue.issued_at)}
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span className="text-xs text-slate-400">-</span>
-                                                                    )}
-                                                                </td>
-                                                                <td
-                                                                    className="px-4 py-3 align-top"
-                                                                    rowSpan={Math.max((issue.ppeproduct_info ?? []).length, 1)}
-                                                                >
-                                                                    {issue.issued_by_info ? (
-                                                                        <div className="flex flex-col items-start gap-2">
-
-                                                                            {issue.warehouse_signature_image ? (
+                                                                            {issue.qr_code_image ? (
                                                                                 <img
-                                                                                    src={resolveImageUrl(issue.warehouse_signature_image)}
-                                                                                    alt="warehouse_signature"
-                                                                                    className="h-12 w-24 rounded border object-contain bg-white cursor-pointer"
+                                                                                    src={resolveImageUrl(issue.qr_code_image)}
+                                                                                    alt="issue_qr"
+                                                                                    className="h-20 w-20 rounded border object-contain bg-white cursor-pointer"
                                                                                     onClick={() =>
                                                                                         setPreviewImage({
-                                                                                            imageUrl: resolveImageUrl(issue.warehouse_signature_image!),
+                                                                                            imageUrl: resolveImageUrl(issue.qr_code_image!),
                                                                                             issuedAt: issue.issued_at,
                                                                                         })
                                                                                     }
                                                                                 />
                                                                             ) : null}
-                                                                       
+                                                                            <Link
+                                                                                to={issue.qr_frontend_path}
+                                                                                className="rounded border border-stroke px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50 dark:border-strokedark dark:text-slate-200 dark:hover:bg-boxdark-2"
+                                                                            >
+                                                                                Открыть
+                                                                            </Link>
                                                                             <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                                                                                Проверено: {formatDate(issue.issued_at)}
+                                                                                Выдача: {formatDate(issue.issued_at)}
                                                                             </div>
                                                                         </div>
                                                                     ) : (
@@ -1098,6 +1080,10 @@ export default function ViewPO() {
                                                     <td className="px-4 py-3">{row.renewal_months ?? '-'}</td>
                                                     <td className="px-4 py-3">{formatDate(itemDetailData.issued_at)}</td>
                                                     <td className="px-4 py-3">{calculateNextIssueDate(itemDetailData.issued_at, row.renewal_months)}</td>
+                                                    <td className="px-4 py-3 text-slate-400">-</td>
+                                                    <td className="px-4 py-3 text-slate-400">-</td>
+                                                    <td className="px-4 py-3 text-slate-400">-</td>
+                                                    <td className="px-4 py-3 text-slate-400">-</td>
                                                 </tr>
                                             ))}
                                         </tbody>

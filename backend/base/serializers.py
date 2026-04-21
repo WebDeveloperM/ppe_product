@@ -442,6 +442,7 @@ class ItemSerializer(serializers.ModelSerializer):
         )
 
         rows = []
+        request = self.context.get('request')
         for issue in issues:
             issued_by_info = None
             issue_size_map = issue.ppe_sizes or {}
@@ -457,9 +458,19 @@ class ItemSerializer(serializers.ModelSerializer):
             pending_qs = getattr(issue, 'pending_source', None)
             signature_url = None
             warehouse_signature_url = None
+            qr_code_image_url = None
+            qr_frontend_path = None
+            qr_scan_url = None
+            qr_token = None
             if pending_qs is not None:
                 pending_obj = pending_qs.filter(status=PendingItemIssue.STATUS_CONFIRMED).order_by('-confirmed_at').first()
                 if pending_obj:
+                    qr_token = str(pending_obj.qr_token)
+                    qr_frontend_path = pending_obj.get_qr_frontend_path()
+                    if request is not None and qr_frontend_path:
+                        qr_scan_url = request.build_absolute_uri(qr_frontend_path)
+                    else:
+                        qr_scan_url = qr_frontend_path
                     if pending_obj.signature_image:
                         try:
                             signature_url = pending_obj.signature_image.url
@@ -470,6 +481,11 @@ class ItemSerializer(serializers.ModelSerializer):
                             warehouse_signature_url = pending_obj.warehouse_signature_image.url
                         except Exception:
                             warehouse_signature_url = None
+                    if pending_obj.qr_code_image:
+                        try:
+                            qr_code_image_url = pending_obj.qr_code_image.url
+                        except Exception:
+                            qr_code_image_url = None
 
             rows.append({
                 "id": issue.id,
@@ -477,6 +493,10 @@ class ItemSerializer(serializers.ModelSerializer):
                 "image": issue.image.url if issue.image else None,
                 "signature_image": signature_url,
                 "warehouse_signature_image": warehouse_signature_url,
+                "qr_token": qr_token,
+                "qr_code_image": qr_code_image_url,
+                "qr_frontend_path": qr_frontend_path,
+                "qr_scan_url": qr_scan_url,
                 "issued_at": issue.issued_at,
                 "next_due_date": issue.next_due_date,
                 "is_current": issue.pk == obj.pk,

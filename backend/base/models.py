@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 from django.db import models
 from django.db.models import Q
@@ -429,10 +430,14 @@ class PendingItemIssue(models.Model):
     verified_image = models.ImageField(upload_to='pending_verified_images/', null=True, blank=True, verbose_name='Фото верификации')
     signature_image = models.ImageField(upload_to='signatures/', null=True, blank=True, verbose_name='Подпись сотрудника')
     warehouse_signature_image = models.ImageField(upload_to='signatures/', null=True, blank=True, verbose_name='Подпись кладовщика')
+    qr_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False, db_index=True, verbose_name='QR токен выдачи')
+    qr_code_image = models.ImageField(upload_to='issue_qr_codes/', null=True, blank=True, verbose_name='QR код выдачи')
     
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING, verbose_name="Статус")
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    employee_signed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата подписи сотрудника')
+    warehouse_signed_at = models.DateTimeField(null=True, blank=True, verbose_name='Дата подписи кладовщика')
     expires_at = models.DateTimeField(verbose_name="Истекает")
     confirmed_at = models.DateTimeField(null=True, blank=True, verbose_name="Дата подтверждения")
     
@@ -468,6 +473,28 @@ class PendingItemIssue(models.Model):
         if not self.expires_at:
             self.expires_at = timezone.now() + datetime.timedelta(minutes=3)
         super().save(*args, **kwargs)
+
+    def get_qr_frontend_path(self):
+        return f'/issue-qr/{self.qr_token}'
+
+    def generate_qr_code(self, absolute_url: str):
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=10,
+            border=2,
+        )
+        qr.add_data(str(absolute_url or '').strip())
+        qr.make(fit=True)
+
+        image = qr.make_image(fill_color='black', back_color='white')
+        buffer = BytesIO()
+        image.save(buffer, format='PNG')
+        self.qr_code_image.save(
+            f'issue_qr_{self.qr_token}.png',
+            ContentFile(buffer.getvalue()),
+            save=False,
+        )
 
     @property
     def employee(self):
