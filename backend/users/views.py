@@ -14,7 +14,7 @@ from io import BytesIO
 from PIL import Image
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
-from base.employee_service_client import exchange_bnpzid_code, EmployeeServiceClientError, is_employee_service_enabled, list_employees, get_employee_by_slug, get_employees_by_slugs, download_employee_image
+from base.employee_service_client import exchange_bnpzid_code, EmployeeServiceClientError, is_employee_service_enabled, list_employees, get_employee_by_slug, get_employees_by_slugs, download_employee_image, verify_employee_face
 from .authentication import ExpiringTokenAuthentication as TokenAuthentication
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
@@ -322,20 +322,30 @@ def match_user_by_face_capture(face_capture):
     compared_profiles = 0
 
     for profile in candidate_profiles:
-        try:
-            base_image = Image.open(profile.base_avatar).convert('RGB')
-        except Exception:
-            continue
+        similarity = None
 
-        try:
-            similarity = calculate_face_similarity_score(base_image, captured_image)
-        except ValueError:
-            continue
-        except Exception:
-            return None, Response(
-                {'error': 'Ошибка Face ID проверки.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if is_employee_service_enabled() and profile.employee_slug:
+            try:
+                verify_result = verify_employee_face(profile.employee_slug, {'captured_image': face_capture})
+                similarity = float(verify_result.get('similarity', 0.0))
+            except EmployeeServiceClientError:
+                similarity = None
+
+        if similarity is None:
+            try:
+                base_image = Image.open(profile.base_avatar).convert('RGB')
+            except Exception:
+                continue
+
+            try:
+                similarity = calculate_face_similarity_score(base_image, captured_image)
+            except ValueError:
+                continue
+            except Exception:
+                return None, Response(
+                    {'error': 'Ошибка Face ID проверки.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         compared_profiles += 1
         ranked_profiles.append((similarity, profile))
