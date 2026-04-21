@@ -321,7 +321,7 @@ def match_user_by_face_capture(face_capture):
     ranked_profiles = []
     compared_profiles = 0
 
-    for profile in candidate_profiles.iterator():
+    for profile in candidate_profiles:
         try:
             base_image = Image.open(profile.base_avatar).convert('RGB')
         except Exception:
