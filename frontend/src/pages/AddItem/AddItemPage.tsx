@@ -1220,8 +1220,8 @@ const AddItemPage = () => {
                   </div>
 
                   {confirmModalOpen ? (
-                    <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/50 px-4 py-6">
-                      <div className="flex h-[70vh] w-[80vw] max-w-[80vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-boxdark">
+                    <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/50 px-4 py-6">
+                      <div className="relative z-[100001] flex h-[70vh] w-[80vw] max-w-[80vw] flex-col overflow-hidden rounded-xl bg-white shadow-2xl dark:bg-boxdark">
                         <div className="flex items-center justify-between border-b border-stroke px-6 py-4 dark:border-strokedark">
                           <div>
                             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Подтверждение выдачи</h3>
