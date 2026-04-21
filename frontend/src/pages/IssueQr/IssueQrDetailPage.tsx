@@ -56,6 +56,12 @@ type IssueQrResponse = {
   products: ProductInfo[];
 };
 
+const getIssuerDisplayName = (issuer?: UserInfo | null) => {
+  if (!issuer) return '-';
+  const fullName = [issuer.last_name, issuer.first_name].filter(Boolean).join(' ').trim();
+  return fullName || issuer.full_name || issuer.username || '-';
+};
+
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
   const date = new Date(value);
@@ -132,41 +138,54 @@ export default function IssueQrDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#f8fafc_0%,#e2e8f0_100%)] px-4 py-6 text-slate-900 sm:px-6">
-      <div className="mx-auto max-w-5xl space-y-4">
-        <div className="rounded-3xl bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-7">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#ffffff_0%,#eef4fb_45%,#dbe5f1_100%)] px-3 py-4 text-slate-900 sm:px-5 sm:py-6">
+      <div className="mx-auto max-w-6xl space-y-4 sm:space-y-5">
+        <div className="overflow-hidden rounded-[28px] border border-white/70 bg-white/95 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur sm:p-7">
+          <div className="flex flex-col gap-5">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">QR выдача СИЗ</div>
-              <h1 className="mt-2 text-2xl font-bold sm:text-3xl">{data.employee.full_name || 'Сотрудник'}</h1>
-              <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
-                <div>Таб. №: <span className="font-medium text-slate-900">{data.employee.tabel_number || '-'}</span></div>
-                <div>Должность: <span className="font-medium text-slate-900">{data.employee.position || '-'}</span></div>
-                <div>Цех: <span className="font-medium text-slate-900">{data.employee.department_name || '-'}</span></div>
-                <div>Отдел: <span className="font-medium text-slate-900">{data.employee.section_name || '-'}</span></div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">QR выдача СИЗ</div>
+              <h1 className="mt-2 text-xl font-bold leading-tight sm:text-3xl">{data.employee.full_name || 'Сотрудник'}</h1>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Таб. №</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.tabel_number || '-'}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Должность</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.position || '-'}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Цех</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.department_name || '-'}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Отдел</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{data.employee.section_name || '-'}</div>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-center">
-              {data.employee.base_image_data || data.employee.base_image ? (
-                <img
-                  src={resolveEmployeeImageUrl(data.employee.base_image_data || data.employee.base_image || '')}
-                  alt="employee_base_photo"
-                  className="mx-auto h-32 w-32 rounded-lg border border-slate-200 bg-white object-contain"
-                />
-              ) : (
-                <div className="flex h-32 w-32 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-400">
-                  Фото
+            <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">Кто выдал</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900 sm:text-base">{getIssuerDisplayName(data.issue.issued_by_info)}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm text-slate-600 sm:text-right">
+                <div>
+                  Создано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.created_at)}</span>
                 </div>
-              )}
-              <div className="mt-3 text-xs text-slate-500">Таб. №: {data.employee.tabel_number || '-'}</div>
+                <div>
+                  Выдано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.issued_at)}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.9fr)]">
           <div className="space-y-4">
-            <div className="rounded-3xl bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
+            <div className="rounded-[28px] bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold">Полученные средства защиты</h2>
                 {data.issue.item_slug ? (
@@ -179,8 +198,8 @@ export default function IssueQrDetailPage() {
                 ) : null}
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-slate-200">
-                <table className="w-full text-sm">
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                <table className="min-w-[640px] w-full text-sm">
                   <thead className="bg-slate-50 text-left text-slate-600">
                     <tr>
                       <th className="px-4 py-3">№</th>
@@ -205,49 +224,41 @@ export default function IssueQrDetailPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-3xl bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
-                <h2 className="text-lg font-semibold">Базовое фото</h2>
-                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                  {data.employee.base_image_data || data.employee.base_image ? (
-                    <img
-                      src={resolveEmployeeImageUrl(data.employee.base_image_data || data.employee.base_image || '')}
-                      alt="employee_base_avatar"
-                      className="h-72 w-full object-contain bg-white"
-                    />
-                  ) : (
-                    <div className="flex h-72 items-center justify-center text-sm text-slate-400">Фото отсутствует</div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-3xl bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
+            <div className="rounded-[28px] bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
+              <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold">Фото подтверждения</h2>
-                <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                  {data.issue.verified_image ? (
-                    <img
-                      src={resolveEmployeeImageUrl(data.issue.verified_image)}
-                      alt="issue_verified_image"
-                      className="h-72 w-full object-contain bg-white"
-                    />
-                  ) : (
-                    <div className="flex h-72 items-center justify-center text-sm text-slate-400">Фото отсутствует</div>
-                  )}
-                </div>
+                <div className="text-xs text-slate-500">Проверочное фото при выдаче</div>
+              </div>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                {data.issue.verified_image ? (
+                  <img
+                    src={resolveEmployeeImageUrl(data.issue.verified_image)}
+                    alt="issue_verified_image"
+                    className="h-64 w-full bg-white object-contain sm:h-80 xl:h-[420px]"
+                  />
+                ) : (
+                  <div className="flex h-64 items-center justify-center text-sm text-slate-400 sm:h-80 xl:h-[420px]">Фото отсутствует</div>
+                )}
               </div>
             </div>
           </div>
 
           <div className="space-y-4">
-            <div className="rounded-3xl bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
+            <div className="rounded-[28px] bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] sm:p-6">
               <h2 className="text-lg font-semibold">Информация о выдаче</h2>
-              <div className="mt-4 space-y-3 text-sm text-slate-600">
-                <div>Создано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.created_at)}</span></div>
-                <div>Выдано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.issued_at)}</span></div>
-                <div className="pt-2 text-sm font-semibold text-slate-900">Кто выдал</div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="grid gap-3 sm:grid-cols-[88px_1fr] sm:items-start">
-                    <div className="h-24 w-22 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-1">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  Создано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.created_at)}</span>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  Выдано: <span className="font-medium text-slate-900">{formatDateTime(data.issue.issued_at)}</span>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#eef4ff_100%)] p-4 sm:p-5">
+                <div className="text-sm font-semibold text-slate-900">Кто выдал</div>
+                <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
+                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                       {data.issue.issued_by_info?.base_avatar ? (
                         <img
                           src={resolveEmployeeImageUrl(data.issue.issued_by_info.base_avatar)}
@@ -257,8 +268,10 @@ export default function IssueQrDetailPage() {
                       ) : (
                         <div className="flex h-full items-center justify-center text-xs text-slate-400">Нет фото</div>
                       )}
-                    </div>
-                    <div className="space-y-1 text-sm text-slate-600">
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-2 text-sm text-slate-600">
+                    <div className="text-base font-semibold text-slate-900">{getIssuerDisplayName(data.issue.issued_by_info)}</div>
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                       <div>
                         Фамилия: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.last_name || '-'}</span>
                       </div>
@@ -269,7 +282,7 @@ export default function IssueQrDetailPage() {
                         Должность: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.position || '-'}</span>
                       </div>
                       <div>
-                        Логин: <span className="font-medium text-slate-900">{data.issue.issued_by_info?.username || '-'}</span>
+                        Логин: <span className="font-medium text-slate-900 break-all">{data.issue.issued_by_info?.username || '-'}</span>
                       </div>
                     </div>
                   </div>
