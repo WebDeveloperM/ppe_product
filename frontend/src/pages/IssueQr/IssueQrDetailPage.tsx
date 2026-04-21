@@ -56,12 +56,6 @@ type IssueQrResponse = {
   products: ProductInfo[];
 };
 
-const getIssuerDisplayName = (issuer?: UserInfo | null) => {
-  if (!issuer) return '-';
-  const fullName = [issuer.last_name, issuer.first_name].filter(Boolean).join(' ').trim();
-  return fullName || issuer.full_name || issuer.username || '-';
-};
-
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
   const date = new Date(value);
@@ -262,15 +256,7 @@ export default function IssueQrDetailPage() {
               </div>
             </div>
 
-            <div className="grid gap-0 sm:grid-cols-2 xl:grid-cols-6">
-              <div className="border-b border-slate-200 px-5 py-4 xl:border-r xl:border-b-0">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Сотрудник склада</div>
-                <div className="mt-2 break-words text-sm font-semibold text-slate-900">{getIssuerDisplayName(data.issue.issued_by_info)}</div>
-              </div>
-              <div className="border-b border-slate-200 px-5 py-4 sm:border-l xl:border-l-0 xl:border-r xl:border-b-0">
-                <div className="text-xs uppercase tracking-wide text-slate-500">Логин</div>
-                <div className="mt-2 break-words text-sm font-semibold text-slate-900">{data.issue.issued_by_info?.username || '-'}</div>
-              </div>
+            <div className="grid gap-0 sm:grid-cols-2 xl:grid-cols-4">
               <div className="border-b border-slate-200 px-5 py-4 xl:border-r xl:border-b-0">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Фамилия</div>
                 <div className="mt-2 break-words text-sm font-semibold text-slate-900">{data.issue.issued_by_info?.last_name || '-'}</div>
