@@ -13,6 +13,25 @@ import { normalizeFeatureAccess, normalizePageAccess, normalizeRole, storeFeatur
 
 type FaceModalMode = 'password' | 'face-only';
 
+const getRequestErrorMessage = (error: any, fallback: string) => {
+  const status = Number(error?.response?.status || 0);
+  const responseData = error?.response?.data || {};
+
+  if (typeof responseData?.error === 'string' && responseData.error.trim()) {
+    return responseData.error;
+  }
+
+  if (status >= 500) {
+    return `Сервер временно недоступен (HTTP ${status}).`;
+  }
+
+  if (!error?.response) {
+    return 'Не удалось подключиться к серверу.';
+  }
+
+  return fallback;
+};
+
 const SignIn: React.FC = () => {
 
   const [username, setUsername] = useState("");
@@ -113,8 +132,7 @@ const SignIn: React.FC = () => {
       persistLoginData(response);
       navigate('/', { replace: true });
     } catch (err: any) {
-      const responseData = err?.response?.data || {};
-      const message = responseData?.error || 'Не удалось завершить вход через bnpzID';
+      const message = getRequestErrorMessage(err, 'Не удалось завершить вход через bnpzID');
       navigate('/auth/signin', { replace: true });
       toast.error(String(message));
     } finally {
@@ -422,13 +440,15 @@ const SignIn: React.FC = () => {
       }
 
       if (requiresFaceId && withFaceId) {
-        const message = responseData?.error || 'Face ID не подтвержден';
+        const message = getRequestErrorMessage(err, 'Face ID не подтвержден');
         setFaceVerifyError(String(message));
         toast.error(String(message));
         return;
       }
 
-      const message = responseData?.error || "Неправильный логин или пароль";
+      const message = Number(err?.response?.status || 0) === 401
+        ? 'Неправильный логин или пароль'
+        : getRequestErrorMessage(err, 'Ошибка входа в систему');
       if (faceModalOpen) {
         setFaceVerifyError(String(message));
       }
@@ -456,8 +476,7 @@ const SignIn: React.FC = () => {
       closeFaceModal();
       navigate('/');
     } catch (err: any) {
-      const responseData = err?.response?.data || {};
-      const message = responseData?.error || 'Не удалось войти через Face ID';
+      const message = getRequestErrorMessage(err, 'Не удалось войти через Face ID');
       closeFaceModal();
       toast.error(String(message));
       toast.info('Перейдите к входу с логином и паролем.');
