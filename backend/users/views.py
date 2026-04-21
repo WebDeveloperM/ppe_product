@@ -34,9 +34,9 @@ from .models import (
 )
 
 
-FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', 88.0))
-FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
 FACE_ID_VERIFY_THRESHOLD = float(getattr(settings, 'FACE_SIMILARITY_THRESHOLD', 72.0))
+FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', FACE_ID_VERIFY_THRESHOLD))
+FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
 
 
 def build_login_response(user):
