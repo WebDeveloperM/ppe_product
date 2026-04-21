@@ -85,8 +85,22 @@ const normalizeBoolean = (value: unknown, defaultValue = true): boolean => {
   return defaultValue;
 };
 
+const CYRILLIC_TO_LATIN_MAP: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'j', з: 'z', и: 'i', й: 'y',
+  к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f',
+  х: 'x', ц: 's', ч: 'ch', ш: 'sh', щ: 'sh', ъ: '', ы: 'i', ь: '', э: 'e', ю: 'yu', я: 'ya',
+  ў: 'u', ғ: 'g', қ: 'q', ҳ: 'h', ң: 'ng', ә: 'a', і: 'i', ї: 'yi', є: 'ye',
+};
+
+const transliterateToLatin = (value: string | null | undefined): string => {
+  return Array.from(String(value || '')).map((char) => {
+    const lowerChar = char.toLowerCase();
+    return CYRILLIC_TO_LATIN_MAP[lowerChar] ?? char;
+  }).join('');
+};
+
 const normalizeLoginPart = (value: string | null | undefined): string => {
-  return String(value || '')
+  return transliterateToLatin(value)
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]+/g, '_')
@@ -106,6 +120,7 @@ const buildLoginFromEmployee = (employee: EmployeeItem | null | undefined): stri
   const baseLogin = [
     normalizeLoginPart(inferredFirstName),
     normalizeLoginPart(inferredLastName),
+    normalizeLoginPart(employee.tabel_number || ''),
   ].filter(Boolean).join('_');
 
   return baseLogin
