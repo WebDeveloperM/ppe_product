@@ -4460,6 +4460,9 @@ class IssueQRCodeDetailApiView(APIView):
 
         item = pending.confirmed_item
         employee = item.employee
+        employee_payload = build_employee_snapshot(
+            getattr(item, '_employee_snapshot_override', None) or item.employee_snapshot
+        )
         issued_by = item.issued_by or pending.created_by
         issued_by_full_name = ''
         if issued_by:
@@ -4574,6 +4577,8 @@ class IssueQRCodeDetailApiView(APIView):
                     'position': employee.position,
                     'department_name': employee.department.name if getattr(employee, 'department', None) else '',
                     'section_name': employee.section.name if getattr(employee, 'section', None) else '',
+                    'base_image': employee_payload.get('base_image') or employee_payload.get('base_image_url'),
+                    'base_image_data': employee_payload.get('base_image_data'),
                 },
                 'issue': {
                     'item_id': item.id,
