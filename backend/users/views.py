@@ -294,7 +294,7 @@ def get_faceid_login_candidate_profiles():
 
     candidate_profiles = []
     for profile in raw_profiles.iterator():
-        if not profile.base_avatar:
+        if profile.employee_slug:
             profile = sync_profile_avatar_from_employee_service(profile.user, profile)
         if profile and profile.base_avatar:
             candidate_profiles.append(profile)
