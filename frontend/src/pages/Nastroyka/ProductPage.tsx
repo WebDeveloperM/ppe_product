@@ -110,7 +110,7 @@ const ProductPage = () => {
     try {
       if (editingProductId !== null) {
         const currentProduct = products.find((item) => item.id === editingProductId);
-        const response = await axioss.put(`/settings/ppe-products/${editingProductId}/`, {
+        await axioss.put(`/settings/ppe-products/${editingProductId}/`, {
           name: productName.trim(),
           renewal_months: Number(productRenewalMonths || 0),
           low_stock_threshold: Number(productLowStockThreshold || 0),
@@ -118,10 +118,10 @@ const ProductPage = () => {
           target_gender: productGender,
           is_active: currentProduct?.is_active ?? true,
         });
-        setProducts((prev) => prev.map((entry) => (entry.id === editingProductId ? response.data : entry)));
+        await loadProducts();
         toast.success('СИЗ обновлен');
       } else {
-        const response = await axioss.post('/settings/ppe-products/', {
+        await axioss.post('/settings/ppe-products/', {
           name: productName.trim(),
           renewal_months: Number(productRenewalMonths || 0),
           low_stock_threshold: Number(productLowStockThreshold || 0),
@@ -129,7 +129,7 @@ const ProductPage = () => {
           target_gender: productGender,
           is_active: true,
         });
-        setProducts((prev) => [...prev, response.data]);
+        await loadProducts();
         toast.success('Средство индивидуальной защиты добавлено');
       }
       closeProductModal();
@@ -154,7 +154,7 @@ const ProductPage = () => {
 
     try {
       await axioss.delete(`/settings/ppe-products/${item.id}/`);
-      setProducts((prev) => prev.filter((entry) => entry.id !== item.id));
+      await loadProducts();
       if (editingProductId === item.id) {
         closeProductModal();
       }
