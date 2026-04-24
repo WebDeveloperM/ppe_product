@@ -138,6 +138,11 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 50,
 }
 
+TOKEN_SESSION_TTL_SECONDS = int(os.environ.get('TOKEN_SESSION_TTL_SECONDS', '7200'))
+SESSION_COOKIE_AGE = TOKEN_SESSION_TTL_SECONDS
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_SAVE_EVERY_REQUEST = True
+
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 

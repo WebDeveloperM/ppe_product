@@ -45,6 +45,9 @@ def build_login_response(user):
     if not created and token.is_expired():
         token.delete()
         token = CustomToken.objects.create(user=user)
+    else:
+        token.expires_at = now() + CustomToken.get_session_ttl()
+        token.save(update_fields=['expires_at'])
 
     role = get_effective_user_role(user)
     return {

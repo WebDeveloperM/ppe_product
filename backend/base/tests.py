@@ -523,6 +523,15 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		product_names = {item['name'] for item in response.data['ppe_products']}
 		self.assertNotIn('Запрещённая каска', product_names)
 
+	def test_add_item_get_hides_new_product_when_position_has_other_rules_but_no_rule_for_it(self):
+		new_product = PPEProduct.objects.create(name='Новый плащ', renewal_months=5, target_gender='ALL')
+
+		response = self.client.get(f'/api/v1/add-item/{self.employee.slug}')
+
+		self.assertEqual(response.status_code, 200)
+		product_names = {item['name'] for item in response.data['ppe_products']}
+		self.assertNotIn('Новый плащ', product_names)
+
 	def test_add_item_post_rejects_products_disallowed_for_position(self):
 		blocked_product = PPEProduct.objects.create(name='Запрещённые перчатки', renewal_months=1, target_gender='ALL')
 		PositionPPERenewalRule.objects.create(
@@ -645,6 +654,17 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		self.assertEqual(response.status_code, 200)
 		product_names = {product['name'] for product in response.data['ppe_products']}
 		self.assertNotIn('Скрытая обувь', product_names)
+
+	@patch('base.views.list_sections', return_value=[])
+	@patch('base.views.list_departments', return_value=[])
+	def test_item_view_hides_new_product_when_position_has_other_rules_but_no_rule_for_it(self, departments_mock, sections_mock):
+		new_product = PPEProduct.objects.create(name='Новый жилет', renewal_months=9, target_gender='ALL')
+
+		response = self.client.get(f'/api/v1/item-view/{self.employee.slug}')
+
+		self.assertEqual(response.status_code, 200)
+		product_names = {product['name'] for product in response.data['ppe_products']}
+		self.assertNotIn('Новый жилет', product_names)
 
 	def test_settings_rules_post_creates_same_position_in_different_departments_separately(self):
 		duplicate_product = PPEProduct.objects.create(name='Сапоги bulk', renewal_months=4, target_gender='ALL')

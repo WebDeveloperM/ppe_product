@@ -137,6 +137,7 @@ const DepartmentPPERulePage = () => {
   const [productAllowed, setProductAllowed] = useState<Record<number, boolean>>({});
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [positionSearch, setPositionSearch] = useState('');
+  const [pickerDepartmentSearch, setPickerDepartmentSearch] = useState('');
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
   const [editingTableRowKey, setEditingTableRowKey] = useState<string | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<DepartmentPPERuleTableRow | null>(null);
@@ -264,6 +265,15 @@ const DepartmentPPERulePage = () => {
         return left.ppeproduct_name.localeCompare(right.ppeproduct_name, 'ru');
       });
   }, [departmentOrderMap, departmentSearch, positionSearch, rules]);
+
+  const filteredDepartmentTree = useMemo(() => {
+    const normalizedSearch = pickerDepartmentSearch.trim().toLowerCase();
+    if (!normalizedSearch) {
+      return departmentTree;
+    }
+
+    return departmentTree.filter((department: { id: number | null; name: string; positions: PositionOption[] }) => department.name.toLowerCase().includes(normalizedSearch));
+  }, [departmentTree, pickerDepartmentSearch]);
 
   const groupedRules = useMemo<DepartmentPPERuleGroup[]>(() => {
     const groups = new Map<string, DepartmentPPERuleGroup>();
@@ -482,6 +492,16 @@ const DepartmentPPERulePage = () => {
     [products],
   );
 
+  const getProductAllowedValue = (productId: number) => {
+    if (productAllowed[productId] !== undefined) {
+      return productAllowed[productId];
+    }
+    if (editingGroup !== null || editingTableRow !== null) {
+      return false;
+    }
+    return true;
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
@@ -515,6 +535,7 @@ const DepartmentPPERulePage = () => {
     setSelectedPositionKeys([]);
     setProductMonths({});
     setProductAllowed({});
+    setPickerDepartmentSearch('');
     setEditingGroupKey(null);
     setEditingTableRowKey(null);
     setIsPositionPickerOpen(false);
@@ -580,7 +601,7 @@ const DepartmentPPERulePage = () => {
       .map(([key, value]) => ({
         ppeproduct: Number(key),
         renewal_months: Number(String(value).trim()),
-        is_allowed: productAllowed[Number(key)] ?? true,
+        is_allowed: getProductAllowedValue(Number(key)),
       }));
 
     productsForBulkEdit.forEach((product) => {
@@ -589,7 +610,7 @@ const DepartmentPPERulePage = () => {
         return;
       }
 
-      const isAllowed = productAllowed[product.id] ?? true;
+      const isAllowed = getProductAllowedValue(product.id);
       if (!isAllowed) {
         productRules.push({
           ppeproduct: product.id,
@@ -1043,6 +1064,14 @@ const DepartmentPPERulePage = () => {
         {editingGroup !== null ? 'Выберите должность' : 'Выберите цех и одну или несколько должностей'}
       </div>
 
+      <input
+        type="text"
+        value={pickerDepartmentSearch}
+        onChange={(e) => setPickerDepartmentSearch(e.target.value)}
+        placeholder="Поиск по цеху"
+        className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
+      />
+
       {editingGroup === null && positions.length > 0 && (
         <label className="flex items-start gap-2 border-b border-stroke pb-3 text-sm font-medium text-black dark:border-strokedark dark:text-white">
           <input
@@ -1056,7 +1085,7 @@ const DepartmentPPERulePage = () => {
       )}
 
       <div className="max-h-full space-y-3 overflow-y-auto pr-1">
-        {departmentTree.map((department) => (
+        {filteredDepartmentTree.map((department) => (
           <div key={department.id} className="rounded border border-stroke/70 p-2 dark:border-strokedark/70">
             <label className="flex items-start gap-2 text-sm font-semibold text-black dark:text-white">
               <input
@@ -1098,9 +1127,9 @@ const DepartmentPPERulePage = () => {
           </div>
         ))}
 
-        {departmentTree.length === 0 && (
+        {filteredDepartmentTree.length === 0 && (
           <div className="text-sm text-slate-500 dark:text-slate-400">
-            Должности не найдены.
+            Цех не найден.
           </div>
         )}
       </div>
@@ -1117,14 +1146,14 @@ const DepartmentPPERulePage = () => {
             <div key={product.id} className="rounded border border-stroke p-3 dark:border-strokedark">
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div className="text-sm text-black dark:text-white">{product.name}</div>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(productAllowed[product.id] ?? true) ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                  {(productAllowed[product.id] ?? true) ? 'Разрешено' : 'Скрыто'}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${getProductAllowedValue(product.id) ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                  {getProductAllowedValue(product.id) ? 'Разрешено' : 'Скрыто'}
                 </span>
               </div>
               <label className="mb-3 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
                 <input
                   type="checkbox"
-                  checked={productAllowed[product.id] ?? true}
+                  checked={getProductAllowedValue(product.id)}
                   onChange={(e) => {
                     const nextAllowed = e.target.checked;
                     setProductAllowed((prev) => ({ ...prev, [product.id]: nextAllowed }));

@@ -177,6 +177,27 @@ def get_effective_position_ppe_rule(product, employee_payload):
     )
 
 
+def position_has_configured_ppe_rules(employee_payload):
+    department_service_id = get_employee_department_service_id(employee_payload)
+    position_key = get_employee_position_key(employee_payload)
+    if not position_key:
+        return False
+
+    department_rules_exist = False
+    if department_service_id is not None:
+        department_rules_exist = PositionPPERenewalRule.objects.filter(
+            department_service_id=department_service_id,
+            position_key=position_key,
+        ).exists()
+
+    global_rules_exist = PositionPPERenewalRule.objects.filter(
+        department_service_id__isnull=True,
+        position_key=position_key,
+    ).exists()
+
+    return department_rules_exist or global_rules_exist
+
+
 def get_effective_product_renewal_months(product, employee_payload):
     rule = get_effective_position_ppe_rule(product, employee_payload)
     if rule is not None:
@@ -188,6 +209,8 @@ def is_product_allowed_for_employee(product, employee_payload):
     rule = get_effective_position_ppe_rule(product, employee_payload)
     if rule is not None:
         return bool(rule.is_allowed)
+    if position_has_configured_ppe_rules(employee_payload):
+        return False
     return True
 
 

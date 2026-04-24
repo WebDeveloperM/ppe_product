@@ -11,7 +11,8 @@ class CustomToken(Token):
 
     @staticmethod
     def get_session_ttl():
-        return timedelta(hours=2)
+        ttl_seconds = int(getattr(settings, 'TOKEN_SESSION_TTL_SECONDS', 7200) or 7200)
+        return timedelta(seconds=ttl_seconds)
 
     def save(self, *args, **kwargs):
         if not self.expires_at:

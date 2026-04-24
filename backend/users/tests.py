@@ -1,15 +1,17 @@
 import base64
+from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.test import override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils.timezone import now
 from rest_framework import status
 from rest_framework.test import APITestCase
 from unittest.mock import patch
 from io import BytesIO
 from PIL import Image
 
-from .models import RolePageAccess, UserRole
+from .models import CustomToken, RolePageAccess, UserRole
 
 
 def build_test_image(name='face.jpg'):
@@ -117,6 +119,29 @@ class RolePageAccessSettingsTests(APITestCase):
 				'ppe_arrival_intake': True,
 			},
 		)
+
+	@override_settings(TOKEN_SESSION_TTL_SECONDS=7200)
+	def test_password_login_refreshes_token_expiry_to_two_hours(self):
+		user = User.objects.create_user(username='session_user', password='test12345')
+		token = CustomToken.objects.create(user=user)
+		old_expiry = now() + timedelta(minutes=10)
+		CustomToken.objects.filter(pk=token.pk).update(expires_at=old_expiry)
+
+		response = self.client.post(
+			'/api/v1/users/login/',
+			{
+				'username': 'session_user',
+				'password': 'test12345',
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		token.refresh_from_db()
+		remaining_seconds = (token.expires_at - now()).total_seconds()
+		self.assertGreater(remaining_seconds, 7100)
+		self.assertLess(remaining_seconds, 7205)
+		self.assertEqual(response.data['token'], token.key)
 
 	@override_settings(EMPLOYEE_SERVICE_ENABLED=True, EMPLOYEE_SERVICE_BASE_URL='http://employee-service:8010')
 	@patch('users.views.download_employee_image')
