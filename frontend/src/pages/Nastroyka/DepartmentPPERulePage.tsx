@@ -1178,7 +1178,7 @@ const DepartmentPPERulePage = () => {
     <>
       <Breadcrumb pageName="Нормы выдачи по должностям" />
 
-      <div className="space-y-6">
+      <div className="flex min-h-[calc(100vh-10rem)] flex-col gap-6">
         <div className="flex items-center justify-between gap-4">
           <button
             onClick={() => navigate(isCreatePage ? '/nastroyka/ppe-norms' : '/nastroyka')}
@@ -1221,7 +1221,7 @@ const DepartmentPPERulePage = () => {
           </div>
         ) : (
           <>
-            <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
+            <div className="flex min-h-0 flex-1 flex-col rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
               <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <input
                   type="text"
@@ -1253,7 +1253,7 @@ const DepartmentPPERulePage = () => {
                 </button>
               </div>
 
-              <div className="max-h-96 overflow-auto">
+              <div className="min-h-0 flex-1 overflow-auto">
                 {tableRows.length === 0 ? (
                   <p className="text-center text-gray-500">Нет данных</p>
                 ) : (
