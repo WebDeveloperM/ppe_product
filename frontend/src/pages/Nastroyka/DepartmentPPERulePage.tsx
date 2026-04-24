@@ -50,6 +50,18 @@ type DepartmentPPERuleGroup = {
   items: DepartmentPPERule[];
 };
 
+type DepartmentPPERuleTableRow = {
+  key: string;
+  department_service_id: number | null;
+  department_name: string;
+  position_name: string;
+  position_names: string[];
+  ppeproduct_name: string;
+  ppeproduct_target_gender_display: string;
+  renewal_months_display: string;
+  items: DepartmentPPERule[];
+};
+
 const normalizeRole = (rawRole: string | null): 'admin' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
   const value = String(rawRole || '').trim().toLowerCase();
   if (value === 'admin' || value === 'админ') return 'admin';
@@ -124,7 +136,7 @@ const DepartmentPPERulePage = () => {
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [positionSearch, setPositionSearch] = useState('');
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
-  const [groupToDelete, setGroupToDelete] = useState<DepartmentPPERuleGroup | null>(null);
+  const [groupToDelete, setGroupToDelete] = useState<DepartmentPPERuleTableRow | null>(null);
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
@@ -280,10 +292,82 @@ const DepartmentPPERulePage = () => {
     [editingGroupKey, groupedRules],
   );
 
+  const tableRows = useMemo<DepartmentPPERuleTableRow[]>(() => {
+    const rowMap = new Map<string, DepartmentPPERuleTableRow>();
+
+    filteredRules.forEach((rule) => {
+      const departmentName = getRuleDepartmentName(rule);
+      const departmentId = rule.department_service_id ?? null;
+      const rowKey = `${departmentId ?? 'none'}:${departmentName}:${rule.ppeproduct}`;
+      const existingRow = rowMap.get(rowKey);
+
+      if (existingRow) {
+        existingRow.items.push(rule);
+        if (!existingRow.position_names.includes(rule.position_name)) {
+          existingRow.position_names.push(rule.position_name);
+          existingRow.position_names.sort((left, right) => left.localeCompare(right, 'ru'));
+          existingRow.position_name = existingRow.position_names.join(', ');
+        }
+
+        const renewalMonthValues = Array.from(new Set(existingRow.items.map((item) => String(item.renewal_months))));
+        existingRow.renewal_months_display = renewalMonthValues.join(', ');
+        return;
+      }
+
+      rowMap.set(rowKey, {
+        key: rowKey,
+        department_service_id: departmentId,
+        department_name: departmentName,
+        position_name: rule.position_name,
+        position_names: [rule.position_name],
+        ppeproduct_name: rule.ppeproduct_name,
+        ppeproduct_target_gender_display: rule.ppeproduct_target_gender_display || 'Для всех',
+        renewal_months_display: String(rule.renewal_months),
+        items: [rule],
+      });
+    });
+
+    return Array.from(rowMap.values()).sort((left, right) => {
+      const leftHasDepartmentId = left.department_service_id !== null && left.department_service_id !== undefined;
+      const rightHasDepartmentId = right.department_service_id !== null && right.department_service_id !== undefined;
+
+      if (leftHasDepartmentId !== rightHasDepartmentId) {
+        return leftHasDepartmentId ? -1 : 1;
+      }
+
+      const leftDepartmentOrder = leftHasDepartmentId
+        ? departmentOrderMap.get(left.department_service_id as number) ?? Number.MAX_SAFE_INTEGER
+        : Number.MAX_SAFE_INTEGER;
+      const rightDepartmentOrder = rightHasDepartmentId
+        ? departmentOrderMap.get(right.department_service_id as number) ?? Number.MAX_SAFE_INTEGER
+        : Number.MAX_SAFE_INTEGER;
+
+      if (leftDepartmentOrder !== rightDepartmentOrder) {
+        return leftDepartmentOrder - rightDepartmentOrder;
+      }
+
+      const departmentCompare = left.department_name.localeCompare(right.department_name, 'ru');
+      if (departmentCompare !== 0) {
+        return departmentCompare;
+      }
+
+      return left.ppeproduct_name.localeCompare(right.ppeproduct_name, 'ru');
+    });
+  }, [departmentOrderMap, filteredRules]);
+
   const selectedGroups = useMemo(
-    () => groupedRules.filter((group) => selectedGroupKeys.includes(group.key)),
-    [groupedRules, selectedGroupKeys],
+    () => tableRows.filter((group) => selectedGroupKeys.includes(group.key)),
+    [selectedGroupKeys, tableRows],
   );
+
+  const getEditableGroupForRow = (row: DepartmentPPERuleTableRow) => {
+    const firstRuleId = row.items[0]?.id;
+    if (!firstRuleId) {
+      return null;
+    }
+
+    return groupedRules.find((group) => group.items.some((item) => item.id === firstRuleId)) ?? null;
+  };
 
   const isPositionOccupied = (position: PositionOption) => {
     return rules.some((rule) => {
@@ -312,7 +396,7 @@ const DepartmentPPERulePage = () => {
   const isAllPositionsSelected = selectablePositionKeys.length > 0
     && selectablePositionKeys.every((selectionKey) => selectedPositionKeys.includes(selectionKey));
 
-  const isAllVisibleGroupsSelected = groupedRules.length > 0 && groupedRules.every((group) => selectedGroupKeys.includes(group.key));
+  const isAllVisibleGroupsSelected = tableRows.length > 0 && tableRows.every((group) => selectedGroupKeys.includes(group.key));
 
   const positionButtonLabel = useMemo(() => {
     if (editingGroup !== null) {
@@ -434,11 +518,11 @@ const DepartmentPPERulePage = () => {
 
   const toggleSelectAllVisibleGroups = () => {
     setSelectedGroupKeys((prev) => {
-      if (groupedRules.length === 0) {
+      if (tableRows.length === 0) {
         return prev;
       }
 
-      const visibleKeys = groupedRules.map((group) => group.key);
+      const visibleKeys = tableRows.map((group) => group.key);
       const allSelected = visibleKeys.every((key) => prev.includes(key));
       if (allSelected) {
         return prev.filter((key) => !visibleKeys.includes(key));
@@ -1027,7 +1111,7 @@ const DepartmentPPERulePage = () => {
               </div>
 
               <div className="max-h-96 overflow-auto">
-                {groupedRules.length === 0 ? (
+                {tableRows.length === 0 ? (
                   <p className="text-center text-gray-500">Нет данных</p>
                 ) : (
                   <table className="min-w-full text-sm">
@@ -1052,25 +1136,13 @@ const DepartmentPPERulePage = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {groupedRules.map((group, index) => (
+                      {tableRows.map((group, index) => (
                         <tr key={group.key} className="border-t border-stroke align-top dark:border-strokedark">
                           <td className="px-3 py-2">{index + 1}</td>
                           <td className="px-3 py-2">{group.department_name || '-'}</td>
                           <td className="px-3 py-2">{group.position_name}</td>
-                          <td className="px-3 py-2">
-                            <div className="space-y-2">
-                              {group.items.map((rule) => (
-                                <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_name}</div>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="space-y-2">
-                              {group.items.map((rule) => (
-                                <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_target_gender_display || 'Для всех'}</div>
-                              ))}
-                            </div>
-                          </td>
+                          <td className="px-3 py-2">{group.ppeproduct_name}</td>
+                          <td className="px-3 py-2">{group.ppeproduct_target_gender_display}</td>
                           <td className="px-3 py-2">
                             {group.items.some((rule) => rule.is_allowed) ? (
                               <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
@@ -1080,18 +1152,19 @@ const DepartmentPPERulePage = () => {
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
-                          <td className="px-3 py-2">
-                            <div className="space-y-2">
-                              {group.items.map((rule) => (
-                                <div key={rule.id} className="min-h-[28px]">{rule.renewal_months}</div>
-                              ))}
-                            </div>
-                          </td>
+                          <td className="px-3 py-2">{group.renewal_months_display}</td>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => handleGroupEdit(group)}
-                                className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark"
+                                onClick={() => {
+                                  const editableGroup = getEditableGroupForRow(group);
+                                  if (editableGroup) {
+                                    handleGroupEdit(editableGroup);
+                                  }
+                                }}
+                                className={`rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark ${group.position_names.length > 1 ? 'cursor-not-allowed opacity-50' : ''}`}
+                                disabled={group.position_names.length > 1}
+                                title={group.position_names.length > 1 ? 'Редактирование объединенной строки недоступно' : 'Изменить'}
                               >
                                 Изменить
                               </button>
@@ -1163,7 +1236,7 @@ const DepartmentPPERulePage = () => {
             </div>
             <p className="text-center text-base text-slate-600 dark:text-slate-300">
               {groupToDelete
-                ? `Удалить все нормы для должности "${groupToDelete.position_name}" в цехе "${groupToDelete.department_name || '-'}"?`
+                ? `Удалить все нормы для СИЗ "${groupToDelete.ppeproduct_name}" по должностям "${groupToDelete.position_name}" в цехе "${groupToDelete.department_name || '-'}"?`
                 : 'Удалить выбранную группу норм?'}
             </p>
           </div>
