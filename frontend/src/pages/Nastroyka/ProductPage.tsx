@@ -110,7 +110,7 @@ const ProductPage = () => {
     try {
       if (editingProductId !== null) {
         const currentProduct = products.find((item) => item.id === editingProductId);
-        await axioss.put(`/settings/ppe-products/${editingProductId}/`, {
+        const response = await axioss.put(`/settings/ppe-products/${editingProductId}/`, {
           name: productName.trim(),
           renewal_months: Number(productRenewalMonths || 0),
           low_stock_threshold: Number(productLowStockThreshold || 0),
@@ -118,10 +118,13 @@ const ProductPage = () => {
           target_gender: productGender,
           is_active: currentProduct?.is_active ?? true,
         });
-        await loadProducts();
+        const updatedProduct = response.data as PPEProduct;
+        setProducts((prev) => prev
+          .map((item) => (item.id === updatedProduct.id ? updatedProduct : item))
+          .sort((left, right) => left.name.localeCompare(right.name, 'ru')));
         toast.success('СИЗ обновлен');
       } else {
-        await axioss.post('/settings/ppe-products/', {
+        const response = await axioss.post('/settings/ppe-products/', {
           name: productName.trim(),
           renewal_months: Number(productRenewalMonths || 0),
           low_stock_threshold: Number(productLowStockThreshold || 0),
@@ -129,7 +132,8 @@ const ProductPage = () => {
           target_gender: productGender,
           is_active: true,
         });
-        await loadProducts();
+        const createdProduct = response.data as PPEProduct;
+        setProducts((prev) => [...prev, createdProduct].sort((left, right) => left.name.localeCompare(right.name, 'ru')));
         toast.success('Средство индивидуальной защиты добавлено');
       }
       closeProductModal();
@@ -154,7 +158,7 @@ const ProductPage = () => {
 
     try {
       await axioss.delete(`/settings/ppe-products/${item.id}/`);
-      await loadProducts();
+      setProducts((prev) => prev.filter((product) => product.id !== item.id));
       if (editingProductId === item.id) {
         closeProductModal();
       }
