@@ -38,6 +38,7 @@ type DepartmentPPERule = {
   ppeproduct_type_product?: string | null;
   ppeproduct_target_gender?: 'ALL' | 'M' | 'F';
   ppeproduct_target_gender_display?: string;
+  is_allowed: boolean;
   renewal_months: number;
 };
 
@@ -119,6 +120,7 @@ const DepartmentPPERulePage = () => {
   const [rules, setRules] = useState<DepartmentPPERule[]>([]);
   const [selectedPositionKeys, setSelectedPositionKeys] = useState<string[]>([]);
   const [productMonths, setProductMonths] = useState<Record<number, string>>({});
+  const [productAllowed, setProductAllowed] = useState<Record<number, boolean>>({});
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [positionSearch, setPositionSearch] = useState('');
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
@@ -373,6 +375,7 @@ const DepartmentPPERulePage = () => {
   const resetForm = () => {
     setSelectedPositionKeys([]);
     setProductMonths({});
+    setProductAllowed({});
     setEditingGroupKey(null);
     setIsPositionPickerOpen(false);
   };
@@ -433,24 +436,44 @@ const DepartmentPPERulePage = () => {
       return;
     }
 
-    const productRules = Object.entries(productMonths)
+    const productRules: Array<{ ppeproduct: number; renewal_months: number; is_allowed: boolean }> = Object.entries(productMonths)
       .map(([key, value]) => ({
         ppeproduct: Number(key),
         renewal_months: Number(String(value).trim()),
-      }))
-      .filter((item) => Number.isFinite(item.renewal_months));
+        is_allowed: productAllowed[Number(key)] ?? true,
+      }));
 
-    if (productRules.length === 0) {
-      toast.warning('Укажите срок выдачи хотя бы для одного СИЗ');
+    productsForBulkEdit.forEach((product) => {
+      const hasExistingEntry = productRules.some((item) => item.ppeproduct === product.id);
+      if (hasExistingEntry) {
+        return;
+      }
+
+      const isAllowed = productAllowed[product.id] ?? true;
+      if (!isAllowed) {
+        productRules.push({
+          ppeproduct: product.id,
+          renewal_months: 0,
+          is_allowed: false,
+        });
+      }
+    });
+
+    const normalizedProductRules = productRules.filter((item) => Number.isFinite(item.renewal_months));
+
+    if (normalizedProductRules.length === 0) {
+      toast.warning('Укажите срок выдачи хотя бы для одного СИЗ или снимите разрешение для ненужных позиций');
       return;
     }
 
     try {
       if (editingGroup !== null) {
-        const existingRulesByProduct = new Map(editingGroup.items.map((rule) => [rule.ppeproduct, rule]));
-        const nextProductIds = new Set(productRules.map((item) => item.ppeproduct));
+        const existingRulesByProduct = new Map<number, DepartmentPPERule>(
+          editingGroup.items.map((rule) => [rule.ppeproduct, rule]),
+        );
+        const nextProductIds = new Set(normalizedProductRules.map((item) => item.ppeproduct));
 
-        const updateRequests = productRules
+        const updateRequests = normalizedProductRules
           .filter((item) => existingRulesByProduct.has(item.ppeproduct))
           .map((item) => {
             const existingRule = existingRulesByProduct.get(item.ppeproduct)!;
@@ -459,14 +482,16 @@ const DepartmentPPERulePage = () => {
               department_name: selectedEntry.department_name,
               position_name: selectedEntry.position_name,
               ppeproduct: item.ppeproduct,
+              is_allowed: item.is_allowed,
               renewal_months: item.renewal_months,
             });
           });
 
-        const createPayload = productRules
+        const createPayload = normalizedProductRules
           .filter((item) => !existingRulesByProduct.has(item.ppeproduct))
           .map((item) => ({
             ppeproduct: item.ppeproduct,
+            is_allowed: item.is_allowed,
             renewal_months: item.renewal_months,
           }));
 
@@ -509,9 +534,9 @@ const DepartmentPPERulePage = () => {
         const createRequests: Promise<any>[] = [];
 
         selectedPositionEntries.forEach((entry) => {
-          const missingProductRules: Array<{ ppeproduct: number; renewal_months: number }> = [];
+          const missingProductRules: Array<{ ppeproduct: number; renewal_months: number; is_allowed: boolean }> = [];
 
-          productRules.forEach((productRule) => {
+          normalizedProductRules.forEach((productRule) => {
             const existingRule = findExistingRule(entry.department_id ?? null, entry.position_name, productRule.ppeproduct);
             if (existingRule) {
               updateRequests.push(
@@ -520,6 +545,7 @@ const DepartmentPPERulePage = () => {
                   department_name: entry.department_name,
                   position_name: entry.position_name,
                   ppeproduct: productRule.ppeproduct,
+                  is_allowed: productRule.is_allowed,
                   renewal_months: productRule.renewal_months,
                 }),
               );
@@ -592,6 +618,12 @@ const DepartmentPPERulePage = () => {
     setProductMonths(
       group.items.reduce<Record<number, string>>((accumulator, item) => {
         accumulator[item.ppeproduct] = String(item.renewal_months);
+        return accumulator;
+      }, {}),
+    );
+    setProductAllowed(
+      group.items.reduce<Record<number, boolean>>((accumulator, item) => {
+        accumulator[item.ppeproduct] = item.is_allowed;
         return accumulator;
       }, {}),
     );
@@ -800,8 +832,24 @@ const DepartmentPPERulePage = () => {
         <div className="mb-3 text-sm font-medium text-black dark:text-white">Срок выдачи по СИЗ</div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {productsForBulkEdit.map((product) => (
-            <label key={product.id} className="rounded border border-stroke p-3 dark:border-strokedark">
-              <div className="mb-2 text-sm text-black dark:text-white">{product.name}</div>
+            <div key={product.id} className="rounded border border-stroke p-3 dark:border-strokedark">
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div className="text-sm text-black dark:text-white">{product.name}</div>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${(productAllowed[product.id] ?? true) ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                  {(productAllowed[product.id] ?? true) ? 'Разрешено' : 'Скрыто'}
+                </span>
+              </div>
+              <label className="mb-3 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                <input
+                  type="checkbox"
+                  checked={productAllowed[product.id] ?? true}
+                  onChange={(e) => {
+                    const nextAllowed = e.target.checked;
+                    setProductAllowed((prev) => ({ ...prev, [product.id]: nextAllowed }));
+                  }}
+                />
+                <span>Показывать для выбранной должности</span>
+              </label>
               <input
                 type="number"
                 min={0}
@@ -820,7 +868,7 @@ const DepartmentPPERulePage = () => {
                 placeholder="Срок выдачи (мес.)"
                 className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
               />
-            </label>
+            </div>
           ))}
         </div>
       </div>
@@ -954,6 +1002,7 @@ const DepartmentPPERulePage = () => {
                         <th className="px-3 py-2 text-left font-semibold">Должность</th>
                         <th className="px-3 py-2 text-left font-semibold">СИЗ</th>
                         <th className="px-3 py-2 text-left font-semibold">Для кого</th>
+                        <th className="px-3 py-2 text-left font-semibold">Доступ</th>
                         <th className="px-3 py-2 text-left font-semibold">Срок (мес.)</th>
                         <th className="px-3 py-2 text-left font-semibold">Действия</th>
                         <th className="px-3 py-2 text-center font-semibold">
@@ -983,6 +1032,17 @@ const DepartmentPPERulePage = () => {
                             <div className="space-y-2">
                               {group.items.map((rule) => (
                                 <div key={rule.id} className="min-h-[28px]">{rule.ppeproduct_target_gender_display || 'Для всех'}</div>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="space-y-2">
+                              {group.items.map((rule) => (
+                                <div key={rule.id} className="min-h-[28px]">
+                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${rule.is_allowed ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    {rule.is_allowed ? 'Разрешено' : 'Скрыто'}
+                                  </span>
+                                </div>
                               ))}
                             </div>
                           </td>

@@ -103,6 +103,7 @@ class PositionPPERenewalRuleSerializer(serializers.ModelSerializer):
             'ppeproduct_type_product',
             'ppeproduct_target_gender',
             'ppeproduct_target_gender_display',
+            'is_allowed',
             'renewal_months',
             'updatedAt',
         ]

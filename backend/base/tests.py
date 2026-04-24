@@ -506,6 +506,44 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 		product_payload = next(item for item in response.data['ppe_products'] if item['id'] == self.product.id)
 		self.assertEqual(product_payload['renewal_months'], 12)
 
+	def test_add_item_get_hides_products_disallowed_for_position(self):
+		blocked_product = PPEProduct.objects.create(name='Запрещённая каска', renewal_months=5, target_gender='ALL')
+		PositionPPERenewalRule.objects.create(
+			department_service_id=1,
+			department_name='1-Цех',
+			position_name='Operator',
+			ppeproduct=blocked_product,
+			is_allowed=False,
+			renewal_months=0,
+		)
+
+		response = self.client.get(f'/api/v1/add-item/{self.employee.slug}')
+
+		self.assertEqual(response.status_code, 200)
+		product_names = {item['name'] for item in response.data['ppe_products']}
+		self.assertNotIn('Запрещённая каска', product_names)
+
+	def test_add_item_post_rejects_products_disallowed_for_position(self):
+		blocked_product = PPEProduct.objects.create(name='Запрещённые перчатки', renewal_months=1, target_gender='ALL')
+		PositionPPERenewalRule.objects.create(
+			department_service_id=1,
+			department_name='1-Цех',
+			position_name='Operator',
+			ppeproduct=blocked_product,
+			is_allowed=False,
+			renewal_months=0,
+		)
+
+		response = self.client.post(
+			f'/api/v1/add-item/{self.employee.slug}',
+			{'ppeproduct': [blocked_product.id], 'ppe_sizes': {}},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 400)
+		self.assertEqual(response.data['error_code'], 'ppe_not_allowed')
+		self.assertIn('Запрещённые перчатки', response.data['error'])
+
 	def test_add_item_post_blocks_until_position_override_period_expires(self):
 		response = self.client.post(
 			f'/api/v1/add-item/{self.employee.slug}',
@@ -567,6 +605,46 @@ class DepartmentPPERenewalRuleTests(APITestCase):
 			PositionPPERenewalRule.objects.filter(position_name='Welder', ppeproduct=bulk_product_2).get().renewal_months,
 			8,
 		)
+
+	def test_settings_rules_post_persists_product_allowed_flag(self):
+		blocked_product = PPEProduct.objects.create(name='Сапоги blocked', renewal_months=4, target_gender='ALL')
+
+		response = self.client.post(
+			'/api/v1/settings/ppe-department-rules/',
+			{
+				'position_entries': [
+					{'department_service_id': 1, 'department_name': '1-Цех', 'position_name': 'Operator'},
+				],
+				'product_rules': [
+					{'ppeproduct': blocked_product.id, 'renewal_months': 0, 'is_allowed': False},
+				],
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 201)
+		rule = PositionPPERenewalRule.objects.get(position_name='Operator', ppeproduct=blocked_product)
+		self.assertFalse(rule.is_allowed)
+		self.assertFalse(response.data[0]['is_allowed'])
+
+	@patch('base.views.list_sections', return_value=[])
+	@patch('base.views.list_departments', return_value=[])
+	def test_item_view_hides_products_disallowed_for_position(self, departments_mock, sections_mock):
+		blocked_product = PPEProduct.objects.create(name='Скрытая обувь', renewal_months=7, target_gender='ALL')
+		PositionPPERenewalRule.objects.create(
+			department_service_id=1,
+			department_name='1-Цех',
+			position_name='Operator',
+			ppeproduct=blocked_product,
+			is_allowed=False,
+			renewal_months=0,
+		)
+
+		response = self.client.get(f'/api/v1/item-view/{self.employee.slug}')
+
+		self.assertEqual(response.status_code, 200)
+		product_names = {product['name'] for product in response.data['ppe_products']}
+		self.assertNotIn('Скрытая обувь', product_names)
 
 	def test_settings_rules_post_creates_same_position_in_different_departments_separately(self):
 		duplicate_product = PPEProduct.objects.create(name='Сапоги bulk', renewal_months=4, target_gender='ALL')

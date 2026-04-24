@@ -232,6 +232,7 @@ class PositionPPERenewalRule(models.Model):
         related_name='position_renewal_rules',
         verbose_name='Средство индивидуальной защиты',
     )
+    is_allowed = models.BooleanField(default=True, verbose_name='Разрешено для должности')
     renewal_months = models.PositiveIntegerField(default=0, verbose_name='Срок выдачи (в месяцах)')
     updatedAt = models.DateTimeField(auto_now=True, verbose_name='Дата изменения', null=True, blank=True)
 

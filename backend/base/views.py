@@ -153,29 +153,57 @@ def filter_ppe_products_for_employee_gender(products_queryset, employee_payload)
     )
 
 
-def get_effective_product_renewal_months(product, employee_payload):
+def get_effective_position_ppe_rule(product, employee_payload):
     department_service_id = get_employee_department_service_id(employee_payload)
     position_key = get_employee_position_key(employee_payload)
-    if position_key:
-        if department_service_id is not None:
-            rule = (
-                PositionPPERenewalRule.objects
-                .filter(department_service_id=department_service_id, position_key=position_key, ppeproduct_id=product.id)
-                .only('renewal_months')
-                .first()
-            )
-            if rule is not None:
-                return int(rule.renewal_months or 0)
+    if not position_key:
+        return None
 
+    if department_service_id is not None:
         rule = (
             PositionPPERenewalRule.objects
-            .filter(department_service_id__isnull=True, position_key=position_key, ppeproduct_id=product.id)
-            .only('renewal_months')
+            .filter(department_service_id=department_service_id, position_key=position_key, ppeproduct_id=product.id)
+            .only('renewal_months', 'is_allowed')
             .first()
         )
         if rule is not None:
-            return int(rule.renewal_months or 0)
+            return rule
+
+    return (
+        PositionPPERenewalRule.objects
+        .filter(department_service_id__isnull=True, position_key=position_key, ppeproduct_id=product.id)
+        .only('renewal_months', 'is_allowed')
+        .first()
+    )
+
+
+def get_effective_product_renewal_months(product, employee_payload):
+    rule = get_effective_position_ppe_rule(product, employee_payload)
+    if rule is not None:
+        return int(rule.renewal_months or 0)
     return int(product.renewal_months or 0)
+
+
+def is_product_allowed_for_employee(product, employee_payload):
+    rule = get_effective_position_ppe_rule(product, employee_payload)
+    if rule is not None:
+        return bool(rule.is_allowed)
+    return True
+
+
+def coerce_request_boolean(value, default=True):
+    if value in [None, '']:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    if normalized in {'true', '1', 'yes', 'y', 'on'}:
+        return True
+    if normalized in {'false', '0', 'no', 'n', 'off'}:
+        return False
+    raise ValueError('Булево значение указано некорректно.')
 
 
 def get_available_employee_positions():
@@ -744,8 +772,14 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
                     return Response({'error': 'Срок выдачи не может быть отрицательным.'}, status=status.HTTP_400_BAD_REQUEST)
 
                 seen_products.add(product_id)
+                try:
+                    is_allowed = coerce_request_boolean(raw_rule.get('is_allowed', True), default=True)
+                except ValueError:
+                    return Response({'error': 'Флаг разрешения СИЗ указан некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
+
                 normalized_product_rules.append({
                     'ppeproduct': product_id,
+                    'is_allowed': is_allowed,
                     'renewal_months': renewal_months,
                 })
 
@@ -760,6 +794,7 @@ class SettingsPPEDepartmentRuleListCreateApiView(APIView):
                         'department_name': position_entry['department_name'],
                         'position_name': position_entry['position_name'],
                         'ppeproduct': product_rule['ppeproduct'],
+                        'is_allowed': product_rule['is_allowed'],
                         'renewal_months': product_rule['renewal_months'],
                     })
 
@@ -3042,7 +3077,21 @@ class ItemDetailApiView(APIView):
         except EmployeeServiceClientError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         responsible_persons = ResponsiblePerson.objects.all().order_by('id')
-        ppe_products = PPEProduct.objects.all().order_by('name')
+        employee_payload = payload.get('employee') or {}
+        ppe_products = filter_ppe_products_for_employee_gender(
+            PPEProduct.objects.filter(is_active=True).order_by('name'),
+            employee_payload,
+        )
+        ppe_products_payload = []
+        for product in ppe_products:
+            if not is_product_allowed_for_employee(product, employee_payload):
+                continue
+            ppe_products_payload.append({
+                "id": product.id,
+                "name": product.name,
+                "type_product": product.type_product,
+                "renewal_months": get_effective_product_renewal_months(product, employee_payload),
+            })
 
         return Response({
             **payload,
@@ -3063,15 +3112,7 @@ class ItemDetailApiView(APIView):
                 }
                 for person in responsible_persons
             ],
-            "ppe_products": [
-                {
-                    "id": product.id,
-                    "name": product.name,
-                    "type_product": product.type_product,
-                    "renewal_months": product.renewal_months,
-                }
-                for product in ppe_products
-            ],
+            "ppe_products": ppe_products_payload,
         })
 
 
@@ -3742,7 +3783,11 @@ class ItemAddApiView(APIView):
 
         ppe_products_payload = []
         for product in ppe_products:
-            renewal_months = get_effective_product_renewal_months(product, source_employee)
+            rule = get_effective_position_ppe_rule(product, source_employee)
+            if rule is not None and not rule.is_allowed:
+                continue
+
+            renewal_months = int(rule.renewal_months or 0) if rule is not None else int(product.renewal_months or 0)
             last_issue_dt = latest_issue_dates_by_product.get(product.id)
             next_due_dt = (
                 add_calendar_months(last_issue_dt, renewal_months - 1)
@@ -3839,11 +3884,26 @@ class ItemAddApiView(APIView):
 
         employee_gender = get_employee_gender_code(source_employee)
         incompatible_products = []
+        disallowed_products = []
         if employee_gender:
             for product in products:
                 target_gender = str(product.target_gender or PPEProduct.TARGET_GENDER_ALL).strip().upper()
                 if target_gender not in {PPEProduct.TARGET_GENDER_ALL, employee_gender}:
                     incompatible_products.append(product.name)
+
+        for product in products:
+            if not is_product_allowed_for_employee(product, source_employee):
+                disallowed_products.append(product.name)
+
+        if disallowed_products:
+            return Response(
+                {
+                    "error": "Выбраны СИЗ, не разрешённые для должности сотрудника: " + ", ".join(disallowed_products),
+                    "error_code": "ppe_not_allowed",
+                    "products": disallowed_products,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         if incompatible_products:
             return Response(
