@@ -10,7 +10,7 @@ type PPEProduct = {
   name: string;
   renewal_months: number;
   low_stock_threshold: number;
-  type_product: 'Комплект' | 'Пора' | 'ШТ' | '';
+  type_product: 'Комплект' | 'Пара' | 'ШТ' | '';
   target_gender: 'ALL' | 'M' | 'F';
   is_active: boolean;
 };
@@ -56,7 +56,7 @@ const ProductPage = () => {
   const [productName, setProductName] = useState('');
   const [productRenewalMonths, setProductRenewalMonths] = useState<string>('');
   const [productLowStockThreshold, setProductLowStockThreshold] = useState<string>('');
-  const [productType, setProductType] = useState<'Комплект' | 'Пора' | 'ШТ'>('ШТ');
+  const [productType, setProductType] = useState<'Комплект' | 'Пара' | 'ШТ'>('ШТ');
   const [productGender, setProductGender] = useState<'ALL' | 'M' | 'F'>('ALL');
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
@@ -143,7 +143,7 @@ const ProductPage = () => {
     setProductName(item.name || '');
     setProductRenewalMonths(String(item.renewal_months ?? ''));
     setProductLowStockThreshold(String(item.low_stock_threshold ?? ''));
-    setProductType((item.type_product || 'ШТ') as 'Комплект' | 'Пора' | 'ШТ');
+    setProductType((item.type_product || 'ШТ') as 'Комплект' | 'Пара' | 'ШТ');
     setProductGender((item.target_gender || 'ALL') as 'ALL' | 'M' | 'F');
     setIsProductModalOpen(true);
   };
@@ -278,12 +278,12 @@ const ProductPage = () => {
               />
               <select
                 value={productType}
-                onChange={(e) => setProductType(e.target.value as 'Комплект' | 'Пора' | 'ШТ')}
+                onChange={(e) => setProductType(e.target.value as 'Комплект' | 'Пара' | 'ШТ')}
                 className="w-full rounded border border-stroke bg-transparent px-3 py-2 dark:border-strokedark dark:bg-transparent"
               >
                 <option value="ШТ">ШТ</option>
                 <option value="Комплект">Комплект</option>
-                <option value="Пора">Пора</option>
+                <option value="Пара">Пара</option>
               </select>
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

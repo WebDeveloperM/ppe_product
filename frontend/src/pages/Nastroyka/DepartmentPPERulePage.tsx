@@ -136,6 +136,7 @@ const DepartmentPPERulePage = () => {
   const [departmentSearch, setDepartmentSearch] = useState('');
   const [positionSearch, setPositionSearch] = useState('');
   const [editingGroupKey, setEditingGroupKey] = useState<string | null>(null);
+  const [editingTableRowKey, setEditingTableRowKey] = useState<string | null>(null);
   const [groupToDelete, setGroupToDelete] = useState<DepartmentPPERuleTableRow | null>(null);
   const [selectedGroupKeys, setSelectedGroupKeys] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
@@ -360,14 +361,10 @@ const DepartmentPPERulePage = () => {
     [selectedGroupKeys, tableRows],
   );
 
-  const getEditableGroupForRow = (row: DepartmentPPERuleTableRow) => {
-    const firstRuleId = row.items[0]?.id;
-    if (!firstRuleId) {
-      return null;
-    }
-
-    return groupedRules.find((group) => group.items.some((item) => item.id === firstRuleId)) ?? null;
-  };
+  const editingTableRow = useMemo(
+    () => tableRows.find((row) => row.key === editingTableRowKey) ?? null,
+    [editingTableRowKey, tableRows],
+  );
 
   const isPositionOccupied = (position: PositionOption) => {
     return rules.some((rule) => {
@@ -376,6 +373,13 @@ const DepartmentPPERulePage = () => {
 
       if (!isSameScope) {
         return false;
+      }
+
+      if (editingTableRow !== null) {
+        return !editingTableRow.items.some((editingRule) => (
+          (editingRule.department_service_id ?? null) === (position.department_id ?? null)
+          && editingRule.position_name.trim().toLowerCase() === position.position_name.trim().toLowerCase()
+        ));
       }
 
       if (editingGroup !== null) {
@@ -390,7 +394,7 @@ const DepartmentPPERulePage = () => {
     () => positions
       .filter((position) => !isPositionOccupied(position))
       .map((position) => position.selection_key),
-    [editingGroup, positions, rules],
+    [editingGroup, editingTableRow, positions, rules],
   );
 
   const isAllPositionsSelected = selectablePositionKeys.length > 0
@@ -399,6 +403,9 @@ const DepartmentPPERulePage = () => {
   const isAllVisibleGroupsSelected = tableRows.length > 0 && tableRows.every((group) => selectedGroupKeys.includes(group.key));
 
   const positionButtonLabel = useMemo(() => {
+    if (editingTableRow !== null) {
+      return `Выбрано должностей: ${selectedPositionEntries.length}`;
+    }
     if (editingGroup !== null) {
       if (selectedPositionEntries[0]) {
         const entry = selectedPositionEntries[0];
@@ -417,7 +424,7 @@ const DepartmentPPERulePage = () => {
       return entry.department_name ? `${entry.position_name} (${entry.department_name})` : entry.position_name;
     }
     return `Выбрано должностей: ${selectedPositionKeys.length}`;
-  }, [editingGroup, isAllPositionsSelected, selectedPositionEntries, selectedPositionKeys]);
+  }, [editingGroup, editingTableRow, isAllPositionsSelected, selectedPositionEntries, selectedPositionKeys]);
 
   const selectedPositionsByDepartment = useMemo(() => {
     const groupedDepartments = new Map<string, { departmentName: string; positions: string[] }>();
@@ -486,6 +493,7 @@ const DepartmentPPERulePage = () => {
     setProductMonths({});
     setProductAllowed({});
     setEditingGroupKey(null);
+    setEditingTableRowKey(null);
     setIsPositionPickerOpen(false);
   };
 
@@ -576,7 +584,30 @@ const DepartmentPPERulePage = () => {
     }
 
     try {
-      if (editingGroup !== null) {
+      if (editingTableRow !== null) {
+        const rowProduct = editingTableRow.items[0];
+        const rowProductRule = normalizedProductRules.find((item) => item.ppeproduct === rowProduct?.ppeproduct);
+
+        if (!rowProduct || !rowProductRule) {
+          toast.warning('Укажите параметры для выбранного СИЗ');
+          return;
+        }
+
+        const updatedResponses = await Promise.all(
+          editingTableRow.items.map((rule) => axioss.put(`/settings/ppe-department-rules/${rule.id}/`, {
+            department_service_id: rule.department_service_id,
+            department_name: rule.department_name,
+            position_name: rule.position_name,
+            ppeproduct: rule.ppeproduct,
+            is_allowed: rowProductRule.is_allowed,
+            renewal_months: rowProductRule.renewal_months,
+          })),
+        );
+
+        const updatedRules = updatedResponses.map((response) => response.data as DepartmentPPERule);
+        setRules((prev) => prev.map((item) => updatedRules.find((updatedItem) => updatedItem.id === item.id) ?? item));
+        toast.success('Нормы обновлены');
+      } else if (editingGroup !== null) {
         const existingRulesByProduct = new Map<number, DepartmentPPERule>(
           editingGroup.items.map((rule) => [rule.ppeproduct, rule]),
         );
@@ -705,8 +736,33 @@ const DepartmentPPERulePage = () => {
         closeRuleModal();
       }
     } catch (error) {
-      toast.error(getBackendError(error, editingGroup !== null ? 'Ошибка при обновлении норм' : 'Ошибка при добавлении нормы'));
+      toast.error(getBackendError(error, editingGroup !== null || editingTableRow !== null ? 'Ошибка при обновлении норм' : 'Ошибка при добавлении нормы'));
     }
+  };
+
+  const handleTableRowEdit = (row: DepartmentPPERuleTableRow) => {
+    const firstRule = row.items[0];
+    if (!firstRule) {
+      return;
+    }
+
+    const matchedSelectionKeys = row.items
+      .map((rule) => positions.find((position) => (
+        position.position_name === rule.position_name
+        && (position.department_id ?? null) === (rule.department_service_id ?? null)
+      ))?.selection_key)
+      .filter((selectionKey): selectionKey is string => Boolean(selectionKey));
+
+    setEditingGroupKey(null);
+    setEditingTableRowKey(row.key);
+    setSelectedPositionKeys(Array.from(new Set(matchedSelectionKeys)));
+    setProductMonths({
+      [firstRule.ppeproduct]: String(firstRule.renewal_months),
+    });
+    setProductAllowed({
+      [firstRule.ppeproduct]: firstRule.is_allowed,
+    });
+    setIsRuleModalOpen(true);
   };
 
   const handleGroupEdit = (group: DepartmentPPERuleGroup) => {
@@ -720,6 +776,7 @@ const DepartmentPPERulePage = () => {
     );
 
     setEditingGroupKey(group.key);
+    setEditingTableRowKey(null);
     setSelectedPositionKeys([
       matchedPosition?.selection_key
         || `${firstRule.department_service_id ?? 'none'}:${firstRule.position_name.toLowerCase().trim().replace(/\s+/g, '-')}`,
@@ -743,6 +800,11 @@ const DepartmentPPERulePage = () => {
     setSelectedPositionKeys((prev) => {
       if (editingGroup !== null) {
         return prev.includes(selectionKey) ? [] : [selectionKey];
+      }
+      if (editingTableRow !== null) {
+        return prev.includes(selectionKey)
+          ? prev.filter((item) => item !== selectionKey)
+          : [...prev, selectionKey];
       }
       return prev.includes(selectionKey)
         ? prev.filter((item) => item !== selectionKey)
@@ -773,7 +835,7 @@ const DepartmentPPERulePage = () => {
   };
 
   const toggleDepartmentPositions = (departmentId: number | null, departmentName: string) => {
-    if (editingGroup !== null) {
+    if (editingGroup !== null || editingTableRow !== null) {
       return;
     }
 
@@ -793,7 +855,7 @@ const DepartmentPPERulePage = () => {
   };
 
   const toggleAllPositions = () => {
-    if (editingGroup !== null) return;
+    if (editingGroup !== null || editingTableRow !== null) return;
     setSelectedPositionKeys(isAllPositionsSelected ? [] : selectablePositionKeys);
   };
 
@@ -807,7 +869,7 @@ const DepartmentPPERulePage = () => {
       const deletedIds = new Set(groupToDelete.items.map((rule) => rule.id));
       setRules((prev) => prev.filter((item) => !deletedIds.has(item.id)));
 
-      if (editingGroupKey !== null && editingGroupKey === groupToDelete.key) {
+      if ((editingGroupKey !== null && editingGroupKey === groupToDelete.key) || (editingTableRowKey !== null && editingTableRowKey === groupToDelete.key)) {
         closeRuleModal();
       }
 
@@ -838,7 +900,7 @@ const DepartmentPPERulePage = () => {
       setRules((prev) => prev.filter((item) => !deletedIds.has(item.id)));
       setSelectedGroupKeys((prev) => prev.filter((key) => !deletedGroupKeys.has(key)));
 
-      if (editingGroupKey !== null && deletedGroupKeys.has(editingGroupKey)) {
+      if ((editingGroupKey !== null && deletedGroupKeys.has(editingGroupKey)) || (editingTableRowKey !== null && deletedGroupKeys.has(editingTableRowKey))) {
         closeRuleModal();
       }
 
@@ -1156,15 +1218,9 @@ const DepartmentPPERulePage = () => {
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => {
-                                  const editableGroup = getEditableGroupForRow(group);
-                                  if (editableGroup) {
-                                    handleGroupEdit(editableGroup);
-                                  }
-                                }}
-                                className={`rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark ${group.position_names.length > 1 ? 'cursor-not-allowed opacity-50' : ''}`}
-                                disabled={group.position_names.length > 1}
-                                title={group.position_names.length > 1 ? 'Редактирование объединенной строки недоступно' : 'Изменить'}
+                                onClick={() => handleTableRowEdit(group)}
+                                className="rounded border border-stroke px-2 py-1 text-xs dark:border-strokedark"
+                                title="Изменить"
                               >
                                 Изменить
                               </button>
