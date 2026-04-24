@@ -1036,15 +1036,13 @@ const DepartmentPPERulePage = () => {
                             </div>
                           </td>
                           <td className="px-3 py-2">
-                            <div className="space-y-2">
-                              {group.items.map((rule) => (
-                                <div key={rule.id} className="min-h-[28px]">
-                                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${rule.is_allowed ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                                    {rule.is_allowed ? 'Разрешено' : 'Скрыто'}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
+                            {group.items.some((rule) => rule.is_allowed) ? (
+                              <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                                Разрешено
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
                           </td>
                           <td className="px-3 py-2">
                             <div className="space-y-2">
