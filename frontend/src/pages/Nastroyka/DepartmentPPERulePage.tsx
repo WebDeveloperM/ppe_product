@@ -1183,9 +1183,7 @@ const DepartmentPPERulePage = () => {
                         <th className="px-3 py-2 text-left font-semibold">№</th>
                         <th className="px-3 py-2 text-left font-semibold">Цех</th>
                         <th className="px-3 py-2 text-left font-semibold">Должность</th>
-                        <th className="px-3 py-2 text-left font-semibold">СИЗ</th>
                         <th className="px-3 py-2 text-left font-semibold">Для кого</th>
-                        <th className="px-3 py-2 text-left font-semibold">Доступ</th>
                         <th className="px-3 py-2 text-left font-semibold">Срок (мес.)</th>
                         <th className="px-3 py-2 text-left font-semibold">Действия</th>
                         <th className="px-3 py-2 text-center font-semibold">
@@ -1204,17 +1202,7 @@ const DepartmentPPERulePage = () => {
                           <td className="px-3 py-2">{index + 1}</td>
                           <td className="px-3 py-2">{group.department_name || '-'}</td>
                           <td className="px-3 py-2">{group.position_name}</td>
-                          <td className="px-3 py-2">{group.ppeproduct_name}</td>
                           <td className="px-3 py-2">{group.ppeproduct_target_gender_display}</td>
-                          <td className="px-3 py-2">
-                            {group.items.some((rule) => rule.is_allowed) ? (
-                              <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                                Разрешено
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">-</span>
-                            )}
-                          </td>
                           <td className="px-3 py-2">{group.renewal_months_display}</td>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
