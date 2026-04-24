@@ -594,19 +594,82 @@ const DepartmentPPERulePage = () => {
           return;
         }
 
-        const updatedResponses = await Promise.all(
-          editingTableRow.items.map((rule) => axioss.put(`/settings/ppe-department-rules/${rule.id}/`, {
-            department_service_id: rule.department_service_id,
-            department_name: rule.department_name,
-            position_name: rule.position_name,
-            ppeproduct: rule.ppeproduct,
-            is_allowed: rowProductRule.is_allowed,
-            renewal_months: rowProductRule.renewal_months,
-          })),
+        const positionScopeKey = (departmentId: number | null, positionName: string) => (
+          `${departmentId ?? 'none'}:${positionName.trim().toLowerCase()}`
         );
 
+        const existingRulesByScope = new Map<string, DepartmentPPERule>(
+          editingTableRow.items.map((rule) => [
+            positionScopeKey(rule.department_service_id ?? null, rule.position_name),
+            rule,
+          ]),
+        );
+
+        const selectedEntriesByScope = new Map<string, PositionOption>(
+          selectedPositionEntries.map((entry) => [
+            positionScopeKey(entry.department_id ?? null, entry.position_name),
+            entry,
+          ]),
+        );
+
+        const updateRequests = Array.from(selectedEntriesByScope.entries())
+          .filter(([scopeKey]) => existingRulesByScope.has(scopeKey))
+          .map(([scopeKey, entry]) => {
+            const existingRule = existingRulesByScope.get(scopeKey)!;
+            return axioss.put(`/settings/ppe-department-rules/${existingRule.id}/`, {
+              department_service_id: entry.department_id,
+              department_name: entry.department_name,
+              position_name: entry.position_name,
+              ppeproduct: existingRule.ppeproduct,
+              is_allowed: rowProductRule.is_allowed,
+              renewal_months: rowProductRule.renewal_months,
+            });
+          });
+
+        const createEntries = Array.from(selectedEntriesByScope.entries())
+          .filter(([scopeKey]) => !existingRulesByScope.has(scopeKey))
+          .map(([, entry]) => ({
+            department_service_id: entry.department_id,
+            department_name: entry.department_name,
+            position_name: entry.position_name,
+          }));
+
+        const deleteRequests = Array.from(existingRulesByScope.entries())
+          .filter(([scopeKey]) => !selectedEntriesByScope.has(scopeKey))
+          .map(([, rule]) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`));
+
+        const [updatedResponses, createdResponse] = await Promise.all([
+          Promise.all(updateRequests),
+          createEntries.length > 0
+            ? axioss.post('/settings/ppe-department-rules/', {
+              position_entries: createEntries,
+              product_rules: [{
+                ppeproduct: rowProduct.ppeproduct,
+                is_allowed: rowProductRule.is_allowed,
+                renewal_months: rowProductRule.renewal_months,
+              }],
+            })
+            : Promise.resolve(null),
+        ]);
+
+        await Promise.all(deleteRequests);
+
         const updatedRules = updatedResponses.map((response) => response.data as DepartmentPPERule);
-        setRules((prev) => prev.map((item) => updatedRules.find((updatedItem) => updatedItem.id === item.id) ?? item));
+        const createdRules = createdResponse
+          ? ((Array.isArray(createdResponse.data) ? createdResponse.data : [createdResponse.data]) as DepartmentPPERule[])
+          : [];
+        const deletedRuleIds = new Set(
+          Array.from(existingRulesByScope.entries())
+            .filter(([scopeKey]) => !selectedEntriesByScope.has(scopeKey))
+            .map(([, rule]) => rule.id),
+        );
+
+        setRules((prev) => {
+          const remaining = prev.filter((item) => !deletedRuleIds.has(item.id));
+          const merged = remaining.map((item) => updatedRules.find((updatedItem) => updatedItem.id === item.id) ?? item);
+          const existingIds = new Set(merged.map((item) => item.id));
+          return [...merged, ...createdRules.filter((item) => !existingIds.has(item.id))];
+        });
         toast.success('Нормы обновлены');
       } else if (editingGroup !== null) {
         const existingRulesByProduct = new Map<number, DepartmentPPERule>(
