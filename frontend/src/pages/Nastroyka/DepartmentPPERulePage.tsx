@@ -131,8 +131,6 @@ const DepartmentPPERulePage = () => {
   const [isPositionPickerOpen, setIsPositionPickerOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const isAllPositionsSelected = positions.length > 0 && selectedPositionKeys.length === positions.length;
-
   const selectedPositionEntries = useMemo(
     () => positions.filter((position) => selectedPositionKeys.includes(position.selection_key)),
     [positions, selectedPositionKeys],
@@ -286,6 +284,33 @@ const DepartmentPPERulePage = () => {
     () => groupedRules.filter((group) => selectedGroupKeys.includes(group.key)),
     [groupedRules, selectedGroupKeys],
   );
+
+  const isPositionOccupied = (position: PositionOption) => {
+    return rules.some((rule) => {
+      const isSameScope = (rule.department_service_id ?? null) === (position.department_id ?? null)
+        && rule.position_name.trim().toLowerCase() === position.position_name.trim().toLowerCase();
+
+      if (!isSameScope) {
+        return false;
+      }
+
+      if (editingGroup !== null) {
+        return !editingGroup.items.some((editingRule) => editingRule.id === rule.id);
+      }
+
+      return true;
+    });
+  };
+
+  const selectablePositionKeys = useMemo(
+    () => positions
+      .filter((position) => !isPositionOccupied(position))
+      .map((position) => position.selection_key),
+    [editingGroup, positions, rules],
+  );
+
+  const isAllPositionsSelected = selectablePositionKeys.length > 0
+    && selectablePositionKeys.every((selectionKey) => selectedPositionKeys.includes(selectionKey));
 
   const isAllVisibleGroupsSelected = groupedRules.length > 0 && groupedRules.every((group) => selectedGroupKeys.includes(group.key));
 
@@ -642,8 +667,14 @@ const DepartmentPPERulePage = () => {
   };
 
   const getDepartmentPositions = (departmentId: number | null, departmentName: string) => (
-    positions.filter((position) => (position.department_id ?? null) === departmentId && position.department_name === departmentName)
+    positions.filter((position) => (
+      (position.department_id ?? null) === departmentId
+      && position.department_name === departmentName
+      && !isPositionOccupied(position)
+    ))
   );
+
+  const isPositionDisabled = (position: PositionOption) => isPositionOccupied(position);
 
   const isDepartmentChecked = (departmentId: number | null, departmentName: string) => {
     const departmentPositions = getDepartmentPositions(departmentId, departmentName);
@@ -679,7 +710,7 @@ const DepartmentPPERulePage = () => {
 
   const toggleAllPositions = () => {
     if (editingGroup !== null) return;
-    setSelectedPositionKeys(isAllPositionsSelected ? [] : positions.map((position) => position.selection_key));
+    setSelectedPositionKeys(isAllPositionsSelected ? [] : selectablePositionKeys);
   };
 
   const confirmGroupDelete = async () => {
@@ -800,13 +831,18 @@ const DepartmentPPERulePage = () => {
             <div className="mt-2 space-y-2 pl-6">
               {department.positions.map((position) => {
                 const isChecked = selectedPositionKeys.includes(position.selection_key);
+                const isDisabled = isPositionDisabled(position);
                 return (
-                  <label key={position.selection_key} className="flex items-start gap-2 text-sm text-black dark:text-white">
+                  <label
+                    key={position.selection_key}
+                    className={`flex items-start gap-2 text-sm ${isDisabled ? 'cursor-not-allowed text-slate-400 dark:text-slate-500' : 'text-black dark:text-white'}`}
+                  >
                     <input
                       type="checkbox"
                       checked={isChecked}
                       onChange={() => togglePosition(position.selection_key)}
                       className="mt-1"
+                      disabled={isDisabled}
                     />
                     <span>{position.position_name}</span>
                   </label>
