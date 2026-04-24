@@ -117,6 +117,8 @@ const POSITION_PICKER_MODAL_THEME = {
   },
 };
 
+const TABLE_ROWS_PER_PAGE = 10;
+
 const DepartmentPPERulePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -143,6 +145,7 @@ const DepartmentPPERulePage = () => {
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [isPositionPickerOpen, setIsPositionPickerOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const selectedPositionEntries = useMemo(
     () => positions.filter((position) => selectedPositionKeys.includes(position.selection_key)),
@@ -365,6 +368,21 @@ const DepartmentPPERulePage = () => {
     [selectedGroupKeys, tableRows],
   );
 
+  const totalPages = Math.max(1, Math.ceil(tableRows.length / TABLE_ROWS_PER_PAGE));
+
+  const paginatedTableRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * TABLE_ROWS_PER_PAGE;
+    return tableRows.slice(startIndex, startIndex + TABLE_ROWS_PER_PAGE);
+  }, [currentPage, tableRows]);
+
+  useEffect(() => {
+    setCurrentPage((prev: number) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [departmentSearch, positionSearch]);
+
   const editingTableRow = useMemo(
     () => tableRows.find((row) => row.key === editingTableRowKey) ?? null,
     [editingTableRowKey, tableRows],
@@ -404,8 +422,8 @@ const DepartmentPPERulePage = () => {
   const isAllPositionsSelected = selectablePositionKeys.length > 0
     && selectablePositionKeys.every((selectionKey) => selectedPositionKeys.includes(selectionKey));
 
-  const isAllVisibleGroupsSelected = tableRows.length > 0
-    && tableRows.every((group) => selectedGroupKeys.includes(group.key));
+  const isAllVisibleGroupsSelected = paginatedTableRows.length > 0
+    && paginatedTableRows.every((group) => selectedGroupKeys.includes(group.key));
 
   const positionButtonLabel = useMemo(() => {
     if (editingTableRow !== null) {
@@ -531,11 +549,11 @@ const DepartmentPPERulePage = () => {
 
   const toggleSelectAllVisibleGroups = () => {
     setSelectedGroupKeys((prev) => {
-      if (tableRows.length === 0) {
+      if (paginatedTableRows.length === 0) {
         return prev;
       }
 
-      const visibleKeys = tableRows.map((group) => group.key);
+      const visibleKeys = paginatedTableRows.map((group) => group.key);
       const allSelected = visibleKeys.every((key) => prev.includes(key));
       if (allSelected) {
         return prev.filter((key) => !visibleKeys.includes(key));
@@ -1241,7 +1259,7 @@ const DepartmentPPERulePage = () => {
 
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="text-sm text-slate-600 dark:text-slate-300">
-                  Выбрано: {selectedGroups.length}
+                  Выбрано: {selectedGroups.length} {tableRows.length > 0 ? `• Страница ${currentPage} из ${totalPages}` : ''}
                 </div>
                 <button
                   type="button"
@@ -1275,9 +1293,9 @@ const DepartmentPPERulePage = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {tableRows.map((group, index) => (
+                      {paginatedTableRows.map((group, index) => (
                         <tr key={group.key} className="border-t border-stroke align-top dark:border-strokedark">
-                          <td className="px-3 py-2">{index + 1}</td>
+                          <td className="px-3 py-2">{(currentPage - 1) * TABLE_ROWS_PER_PAGE + index + 1}</td>
                           <td className="px-3 py-2">{group.department_name || '-'}</td>
                           <td className="px-3 py-2">{group.position_name}</td>
                           <td className="px-3 py-2">
@@ -1313,6 +1331,35 @@ const DepartmentPPERulePage = () => {
                   </table>
                 )}
               </div>
+
+              {tableRows.length > TABLE_ROWS_PER_PAGE && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stroke pt-4 text-sm dark:border-strokedark">
+                  <div className="text-slate-600 dark:text-slate-300">
+                    Показано {(currentPage - 1) * TABLE_ROWS_PER_PAGE + 1}-{Math.min(currentPage * TABLE_ROWS_PER_PAGE, tableRows.length)} из {tableRows.length}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((prev: number) => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className={`rounded border px-3 py-1.5 ${currentPage === 1 ? 'cursor-not-allowed border-slate-200 text-slate-400 dark:border-strokedark dark:text-slate-500' : 'border-stroke text-black hover:bg-gray-100 dark:border-strokedark dark:text-white dark:hover:bg-gray-700'}`}
+                    >
+                      Назад
+                    </button>
+                    <div className="rounded border border-stroke px-3 py-1.5 dark:border-strokedark">
+                      {currentPage} / {totalPages}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentPage((prev: number) => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className={`rounded border px-3 py-1.5 ${currentPage === totalPages ? 'cursor-not-allowed border-slate-200 text-slate-400 dark:border-strokedark dark:text-slate-500' : 'border-stroke text-black hover:bg-gray-100 dark:border-strokedark dark:text-white dark:hover:bg-gray-700'}`}
+                    >
+                      Вперёд
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <Modal show={isRuleModalOpen} onClose={closeRuleModal} size="7xl" theme={LARGE_RULE_MODAL_THEME}>
