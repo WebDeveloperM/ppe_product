@@ -193,7 +193,7 @@ const ProductPage = () => {
     <>
       <Breadcrumb pageName="Средство инд. защиты" />
 
-      <div className="space-y-6">
+      <div className="flex min-h-[calc(100vh-10rem)] flex-col gap-6">
         <div className="flex items-center justify-between gap-4">
           <button
             onClick={() => navigate('/nastroyka')}
@@ -218,8 +218,11 @@ const ProductPage = () => {
           </div>
         )}
 
-        <div className="rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
-          <div className="max-h-96 overflow-auto">
+        <div className="flex min-h-0 flex-1 flex-col rounded-sm border border-stroke bg-white p-6 shadow-default dark:border-strokedark dark:bg-boxdark">
+          <div className="mb-4 text-sm text-slate-600 dark:text-slate-300">
+            Всего СИЗ: {products.length}
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
             {products.length === 0 ? (
               <p className="text-center text-gray-500">Нет данных</p>
             ) : (

@@ -628,11 +628,11 @@ const DepartmentPPERulePage = () => {
         );
 
         const updateRequests: Promise<any>[] = [];
-        const createEntries: Array<{ department_service_id: number | null; department_name: string; position_name: string }> = [];
-        const createScopeKeys = new Set<string>();
+        const createRequests: Promise<any>[] = [];
 
         selectedPositionEntries.forEach((entry) => {
           const scopeKey = `${entry.department_id ?? 'none'}:${entry.position_name.trim().toLowerCase()}`;
+          const missingProductRules: Array<{ ppeproduct: number; renewal_months: number; is_allowed: boolean }> = [];
 
           normalizedProductRules.forEach((productRule) => {
             const existingRule = existingRulesByScopeAndProduct.get(`${scopeKey}:${productRule.ppeproduct}`);
@@ -650,15 +650,21 @@ const DepartmentPPERulePage = () => {
               return;
             }
 
-            if (!createScopeKeys.has(scopeKey)) {
-              createScopeKeys.add(scopeKey);
-              createEntries.push({
-                department_service_id: entry.department_id,
-                department_name: entry.department_name,
-                position_name: entry.position_name,
-              });
-            }
+            missingProductRules.push(productRule);
           });
+
+          if (missingProductRules.length > 0) {
+            createRequests.push(
+              axioss.post('/settings/ppe-department-rules/', {
+                position_entries: [{
+                  department_service_id: entry.department_id,
+                  department_name: entry.department_name,
+                  position_name: entry.position_name,
+                }],
+                product_rules: missingProductRules,
+              }),
+            );
+          }
         });
 
         const normalizedProductIds = new Set(normalizedProductRules.map((item) => item.ppeproduct));
@@ -669,22 +675,17 @@ const DepartmentPPERulePage = () => {
           })
           .map((rule) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`));
 
-        const [updatedResponses, createdResponse] = await Promise.all([
+        const [updatedResponses, createdResponses] = await Promise.all([
           Promise.all(updateRequests),
-          createEntries.length > 0
-            ? axioss.post('/settings/ppe-department-rules/', {
-              position_entries: createEntries,
-              product_rules: normalizedProductRules,
-            })
-            : Promise.resolve(null),
+          Promise.all(createRequests),
         ]);
 
         await Promise.all(deleteRequests);
 
         const updatedRules = updatedResponses.map((response) => response.data as DepartmentPPERule);
-        const createdRules = createdResponse
-          ? ((Array.isArray(createdResponse.data) ? createdResponse.data : [createdResponse.data]) as DepartmentPPERule[])
-          : [];
+        const createdRules = createdResponses.flatMap((response) => (
+          Array.isArray(response.data) ? response.data : [response.data]
+        )) as DepartmentPPERule[];
         const deletedRuleIds = new Set(
           editingTableRow.items
             .filter((rule) => {
