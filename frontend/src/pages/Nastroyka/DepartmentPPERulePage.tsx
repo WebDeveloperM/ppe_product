@@ -296,16 +296,20 @@ const DepartmentPPERulePage = () => {
   const tableRows = useMemo<DepartmentPPERuleTableRow[]>(() => {
     const rowMap = new Map<string, DepartmentPPERuleTableRow>();
 
-    filteredRules.forEach((rule) => {
-      const departmentName = getRuleDepartmentName(rule);
-      const departmentId = rule.department_service_id ?? null;
-      const rowKey = `${departmentId ?? 'none'}:${departmentName}:${rule.ppeproduct}`;
+    groupedRules.forEach((group) => {
+      const departmentName = group.department_name;
+      const departmentId = group.department_service_id ?? null;
+      const rulesSignature = [...group.items]
+        .sort((left, right) => left.ppeproduct - right.ppeproduct)
+        .map((rule) => `${rule.ppeproduct}:${rule.is_allowed ? '1' : '0'}:${rule.renewal_months}`)
+        .join('|');
+      const rowKey = `${departmentId ?? 'none'}:${departmentName}:${rulesSignature}`;
       const existingRow = rowMap.get(rowKey);
 
       if (existingRow) {
-        existingRow.items.push(rule);
-        if (!existingRow.position_names.includes(rule.position_name)) {
-          existingRow.position_names.push(rule.position_name);
+        existingRow.items.push(...group.items);
+        if (!existingRow.position_names.includes(group.position_name)) {
+          existingRow.position_names.push(group.position_name);
           existingRow.position_names.sort((left, right) => left.localeCompare(right, 'ru'));
           existingRow.position_name = existingRow.position_names.join(', ');
         }
@@ -319,12 +323,12 @@ const DepartmentPPERulePage = () => {
         key: rowKey,
         department_service_id: departmentId,
         department_name: departmentName,
-        position_name: rule.position_name,
-        position_names: [rule.position_name],
-        ppeproduct_name: rule.ppeproduct_name,
-        ppeproduct_target_gender_display: rule.ppeproduct_target_gender_display || 'Для всех',
-        renewal_months_display: String(rule.renewal_months),
-        items: [rule],
+        position_name: group.position_name,
+        position_names: [group.position_name],
+        ppeproduct_name: group.items.map((item) => item.ppeproduct_name).join(', '),
+        ppeproduct_target_gender_display: group.items.map((item) => item.ppeproduct_target_gender_display || 'Для всех').join(', '),
+        renewal_months_display: Array.from(new Set(group.items.map((item) => String(item.renewal_months)))).join(', '),
+        items: [...group.items],
       });
     });
 
@@ -354,7 +358,7 @@ const DepartmentPPERulePage = () => {
 
       return left.ppeproduct_name.localeCompare(right.ppeproduct_name, 'ru');
     });
-  }, [departmentOrderMap, filteredRules]);
+  }, [departmentOrderMap, groupedRules]);
 
   const selectedGroups = useMemo(
     () => tableRows.filter((group) => selectedGroupKeys.includes(group.key)),
@@ -586,68 +590,73 @@ const DepartmentPPERulePage = () => {
 
     try {
       if (editingTableRow !== null) {
-        const rowProduct = editingTableRow.items[0];
-        const rowProductRule = normalizedProductRules.find((item) => item.ppeproduct === rowProduct?.ppeproduct);
-
-        if (!rowProduct || !rowProductRule) {
-          toast.warning('Укажите параметры для выбранного СИЗ');
-          return;
-        }
-
-        const positionScopeKey = (departmentId: number | null, positionName: string) => (
-          `${departmentId ?? 'none'}:${positionName.trim().toLowerCase()}`
-        );
-
-        const existingRulesByScope = new Map<string, DepartmentPPERule>(
+        const existingRulesByScopeAndProduct = new Map<string, DepartmentPPERule>(
           editingTableRow.items.map((rule) => [
-            positionScopeKey(rule.department_service_id ?? null, rule.position_name),
+            `${rule.department_service_id ?? 'none'}:${rule.position_name.trim().toLowerCase()}:${rule.ppeproduct}`,
             rule,
           ]),
         );
 
+        if (normalizedProductRules.length === 0) {
+          toast.warning('Укажите параметры хотя бы для одного СИЗ');
+          return;
+        }
+
         const selectedEntriesByScope = new Map<string, PositionOption>(
           selectedPositionEntries.map((entry) => [
-            positionScopeKey(entry.department_id ?? null, entry.position_name),
+            `${entry.department_id ?? 'none'}:${entry.position_name.trim().toLowerCase()}`,
             entry,
           ]),
         );
 
-        const updateRequests = Array.from(selectedEntriesByScope.entries())
-          .filter(([scopeKey]) => existingRulesByScope.has(scopeKey))
-          .map(([scopeKey, entry]) => {
-            const existingRule = existingRulesByScope.get(scopeKey)!;
-            return axioss.put(`/settings/ppe-department-rules/${existingRule.id}/`, {
-              department_service_id: entry.department_id,
-              department_name: entry.department_name,
-              position_name: entry.position_name,
-              ppeproduct: existingRule.ppeproduct,
-              is_allowed: rowProductRule.is_allowed,
-              renewal_months: rowProductRule.renewal_months,
-            });
+        const updateRequests: Promise<any>[] = [];
+        const createEntries: Array<{ department_service_id: number | null; department_name: string; position_name: string }> = [];
+        const createScopeKeys = new Set<string>();
+
+        selectedPositionEntries.forEach((entry) => {
+          const scopeKey = `${entry.department_id ?? 'none'}:${entry.position_name.trim().toLowerCase()}`;
+
+          normalizedProductRules.forEach((productRule) => {
+            const existingRule = existingRulesByScopeAndProduct.get(`${scopeKey}:${productRule.ppeproduct}`);
+            if (existingRule) {
+              updateRequests.push(
+                axioss.put(`/settings/ppe-department-rules/${existingRule.id}/`, {
+                  department_service_id: entry.department_id,
+                  department_name: entry.department_name,
+                  position_name: entry.position_name,
+                  ppeproduct: productRule.ppeproduct,
+                  is_allowed: productRule.is_allowed,
+                  renewal_months: productRule.renewal_months,
+                }),
+              );
+              return;
+            }
+
+            if (!createScopeKeys.has(scopeKey)) {
+              createScopeKeys.add(scopeKey);
+              createEntries.push({
+                department_service_id: entry.department_id,
+                department_name: entry.department_name,
+                position_name: entry.position_name,
+              });
+            }
           });
+        });
 
-        const createEntries = Array.from(selectedEntriesByScope.entries())
-          .filter(([scopeKey]) => !existingRulesByScope.has(scopeKey))
-          .map(([, entry]) => ({
-            department_service_id: entry.department_id,
-            department_name: entry.department_name,
-            position_name: entry.position_name,
-          }));
-
-        const deleteRequests = Array.from(existingRulesByScope.entries())
-          .filter(([scopeKey]) => !selectedEntriesByScope.has(scopeKey))
-          .map(([, rule]) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`));
+        const normalizedProductIds = new Set(normalizedProductRules.map((item) => item.ppeproduct));
+        const deleteRequests = editingTableRow.items
+          .filter((rule) => {
+            const scopeKey = `${rule.department_service_id ?? 'none'}:${rule.position_name.trim().toLowerCase()}`;
+            return !selectedEntriesByScope.has(scopeKey) || !normalizedProductIds.has(rule.ppeproduct);
+          })
+          .map((rule) => axioss.delete(`/settings/ppe-department-rules/${rule.id}/`));
 
         const [updatedResponses, createdResponse] = await Promise.all([
           Promise.all(updateRequests),
           createEntries.length > 0
             ? axioss.post('/settings/ppe-department-rules/', {
               position_entries: createEntries,
-              product_rules: [{
-                ppeproduct: rowProduct.ppeproduct,
-                is_allowed: rowProductRule.is_allowed,
-                renewal_months: rowProductRule.renewal_months,
-              }],
+              product_rules: normalizedProductRules,
             })
             : Promise.resolve(null),
         ]);
@@ -659,9 +668,12 @@ const DepartmentPPERulePage = () => {
           ? ((Array.isArray(createdResponse.data) ? createdResponse.data : [createdResponse.data]) as DepartmentPPERule[])
           : [];
         const deletedRuleIds = new Set(
-          Array.from(existingRulesByScope.entries())
-            .filter(([scopeKey]) => !selectedEntriesByScope.has(scopeKey))
-            .map(([, rule]) => rule.id),
+          editingTableRow.items
+            .filter((rule) => {
+              const scopeKey = `${rule.department_service_id ?? 'none'}:${rule.position_name.trim().toLowerCase()}`;
+              return !selectedEntriesByScope.has(scopeKey) || !normalizedProductIds.has(rule.ppeproduct);
+            })
+            .map((rule) => rule.id),
         );
 
         setRules((prev) => {
@@ -805,8 +817,7 @@ const DepartmentPPERulePage = () => {
   };
 
   const handleTableRowEdit = (row: DepartmentPPERuleTableRow) => {
-    const firstRule = row.items[0];
-    if (!firstRule) {
+    if (row.items.length === 0) {
       return;
     }
 
@@ -820,12 +831,18 @@ const DepartmentPPERulePage = () => {
     setEditingGroupKey(null);
     setEditingTableRowKey(row.key);
     setSelectedPositionKeys(Array.from(new Set(matchedSelectionKeys)));
-    setProductMonths({
-      [firstRule.ppeproduct]: String(firstRule.renewal_months),
-    });
-    setProductAllowed({
-      [firstRule.ppeproduct]: firstRule.is_allowed,
-    });
+    setProductMonths(
+      row.items.reduce<Record<number, string>>((accumulator, item) => {
+        accumulator[item.ppeproduct] = String(item.renewal_months);
+        return accumulator;
+      }, {}),
+    );
+    setProductAllowed(
+      row.items.reduce<Record<number, boolean>>((accumulator, item) => {
+        accumulator[item.ppeproduct] = item.is_allowed;
+        return accumulator;
+      }, {}),
+    );
     setIsRuleModalOpen(true);
   };
 
