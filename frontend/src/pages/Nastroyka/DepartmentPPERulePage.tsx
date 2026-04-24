@@ -356,14 +356,19 @@ const DepartmentPPERulePage = () => {
     });
   }, [departmentOrderMap, filteredRules]);
 
+  const visibleTableRows = useMemo(
+    () => tableRows.filter((row) => !row.items.some((rule) => rule.is_allowed)),
+    [tableRows],
+  );
+
   const selectedGroups = useMemo(
-    () => tableRows.filter((group) => selectedGroupKeys.includes(group.key)),
-    [selectedGroupKeys, tableRows],
+    () => visibleTableRows.filter((group) => selectedGroupKeys.includes(group.key)),
+    [selectedGroupKeys, visibleTableRows],
   );
 
   const editingTableRow = useMemo(
-    () => tableRows.find((row) => row.key === editingTableRowKey) ?? null,
-    [editingTableRowKey, tableRows],
+    () => visibleTableRows.find((row) => row.key === editingTableRowKey) ?? null,
+    [editingTableRowKey, visibleTableRows],
   );
 
   const isPositionOccupied = (position: PositionOption) => {
@@ -400,7 +405,8 @@ const DepartmentPPERulePage = () => {
   const isAllPositionsSelected = selectablePositionKeys.length > 0
     && selectablePositionKeys.every((selectionKey) => selectedPositionKeys.includes(selectionKey));
 
-  const isAllVisibleGroupsSelected = tableRows.length > 0 && tableRows.every((group) => selectedGroupKeys.includes(group.key));
+  const isAllVisibleGroupsSelected = visibleTableRows.length > 0
+    && visibleTableRows.every((group) => selectedGroupKeys.includes(group.key));
 
   const positionButtonLabel = useMemo(() => {
     if (editingTableRow !== null) {
@@ -526,11 +532,11 @@ const DepartmentPPERulePage = () => {
 
   const toggleSelectAllVisibleGroups = () => {
     setSelectedGroupKeys((prev) => {
-      if (tableRows.length === 0) {
+      if (visibleTableRows.length === 0) {
         return prev;
       }
 
-      const visibleKeys = tableRows.map((group) => group.key);
+      const visibleKeys = visibleTableRows.map((group) => group.key);
       const allSelected = visibleKeys.every((key) => prev.includes(key));
       if (allSelected) {
         return prev.filter((key) => !visibleKeys.includes(key));
@@ -1173,7 +1179,7 @@ const DepartmentPPERulePage = () => {
               </div>
 
               <div className="max-h-96 overflow-auto">
-                {tableRows.length === 0 ? (
+                {visibleTableRows.length === 0 ? (
                   <p className="text-center text-gray-500">Нет данных</p>
                 ) : (
                   <table className="min-w-full text-sm">
@@ -1198,7 +1204,7 @@ const DepartmentPPERulePage = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {tableRows.map((group, index) => (
+                      {visibleTableRows.map((group, index) => (
                         <tr key={group.key} className="border-t border-stroke align-top dark:border-strokedark">
                           <td className="px-3 py-2">{index + 1}</td>
                           <td className="px-3 py-2">{group.department_name || '-'}</td>
