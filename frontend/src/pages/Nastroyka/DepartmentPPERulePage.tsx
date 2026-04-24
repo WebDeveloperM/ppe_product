@@ -1183,8 +1183,6 @@ const DepartmentPPERulePage = () => {
                         <th className="px-3 py-2 text-left font-semibold">№</th>
                         <th className="px-3 py-2 text-left font-semibold">Цех</th>
                         <th className="px-3 py-2 text-left font-semibold">Должность</th>
-                        <th className="px-3 py-2 text-left font-semibold">Для кого</th>
-                        <th className="px-3 py-2 text-left font-semibold">Срок (мес.)</th>
                         <th className="px-3 py-2 text-left font-semibold">Действия</th>
                         <th className="px-3 py-2 text-center font-semibold">
                           <input
@@ -1202,8 +1200,6 @@ const DepartmentPPERulePage = () => {
                           <td className="px-3 py-2">{index + 1}</td>
                           <td className="px-3 py-2">{group.department_name || '-'}</td>
                           <td className="px-3 py-2">{group.position_name}</td>
-                          <td className="px-3 py-2">{group.ppeproduct_target_gender_display}</td>
-                          <td className="px-3 py-2">{group.renewal_months_display}</td>
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-2">
                               <button
