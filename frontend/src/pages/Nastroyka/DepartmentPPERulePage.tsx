@@ -23,6 +23,7 @@ type DepartmentOption = {
 type PPEProduct = {
   id: number;
   name: string;
+  renewal_months: number;
   type_product: string | null;
   target_gender: 'ALL' | 'M' | 'F';
   is_active?: boolean;
@@ -117,7 +118,7 @@ const POSITION_PICKER_MODAL_THEME = {
   },
 };
 
-const TABLE_ROWS_PER_PAGE = 10;
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;
 
 const DepartmentPPERulePage = () => {
   const navigate = useNavigate();
@@ -147,6 +148,7 @@ const DepartmentPPERulePage = () => {
   const [isPositionPickerOpen, setIsPositionPickerOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [tableRowsPerPage, setTableRowsPerPage] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(10);
 
   const selectedPositionEntries = useMemo(
     () => positions.filter((position) => selectedPositionKeys.includes(position.selection_key)),
@@ -378,12 +380,12 @@ const DepartmentPPERulePage = () => {
     [selectedGroupKeys, tableRows],
   );
 
-  const totalPages = Math.max(1, Math.ceil(tableRows.length / TABLE_ROWS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(tableRows.length / tableRowsPerPage));
 
   const paginatedTableRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * TABLE_ROWS_PER_PAGE;
-    return tableRows.slice(startIndex, startIndex + TABLE_ROWS_PER_PAGE);
-  }, [currentPage, tableRows]);
+    const startIndex = (currentPage - 1) * tableRowsPerPage;
+    return tableRows.slice(startIndex, startIndex + tableRowsPerPage);
+  }, [currentPage, tableRows, tableRowsPerPage]);
 
   useEffect(() => {
     setCurrentPage((prev: number) => Math.min(prev, totalPages));
@@ -391,7 +393,7 @@ const DepartmentPPERulePage = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [departmentSearch, positionSearch]);
+  }, [departmentSearch, positionSearch, tableRowsPerPage]);
 
   const editingTableRow = useMemo(
     () => tableRows.find((row) => row.key === editingTableRowKey) ?? null,
@@ -597,27 +599,18 @@ const DepartmentPPERulePage = () => {
       return;
     }
 
-    const productRules: Array<{ ppeproduct: number; renewal_months: number; is_allowed: boolean }> = Object.entries(productMonths)
-      .map(([key, value]) => ({
-        ppeproduct: Number(key),
-        renewal_months: Number(String(value).trim()),
-        is_allowed: getProductAllowedValue(Number(key)),
-      }));
-
-    productsForBulkEdit.forEach((product) => {
-      const hasExistingEntry = productRules.some((item) => item.ppeproduct === product.id);
-      if (hasExistingEntry) {
-        return;
-      }
-
+    const productRules: Array<{ ppeproduct: number; renewal_months: number; is_allowed: boolean }> = productsForBulkEdit.map((product) => {
+      const rawValue = productMonths[product.id];
+      const hasExplicitValue = rawValue !== undefined && String(rawValue).trim() !== '';
       const isAllowed = getProductAllowedValue(product.id);
-      if (!isAllowed) {
-        productRules.push({
-          ppeproduct: product.id,
-          renewal_months: 0,
-          is_allowed: false,
-        });
-      }
+
+      return {
+        ppeproduct: product.id,
+        renewal_months: hasExplicitValue
+          ? Number(String(rawValue).trim())
+          : (isAllowed ? Number(product.renewal_months ?? 0) : 0),
+        is_allowed: isAllowed,
+      };
     });
 
     const normalizedProductRules = productRules.filter((item) => Number.isFinite(item.renewal_months));
@@ -1167,6 +1160,9 @@ const DepartmentPPERulePage = () => {
                 value={productMonths[product.id] || ''}
                 onChange={(e) => {
                   const nextValue = e.target.value;
+                  if (nextValue !== '') {
+                    setProductAllowed((prev) => ({ ...prev, [product.id]: true }));
+                  }
                   setProductMonths((prev) => {
                     if (nextValue === '') {
                       const nextState = { ...prev };
@@ -1288,8 +1284,24 @@ const DepartmentPPERulePage = () => {
               </div>
 
               <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="text-sm text-slate-600 dark:text-slate-300">
-                  Выбрано: {selectedGroups.length} {tableRows.length > 0 ? `• Страница ${currentPage} из ${totalPages}` : ''}
+                <div className="flex items-center gap-4 text-sm text-slate-600 dark:text-slate-300">
+                  <div>
+                    Выбрано: {selectedGroups.length} {tableRows.length > 0 ? `• Страница ${currentPage} из ${totalPages}` : ''}
+                  </div>
+                  <label className="flex items-center gap-2">
+                    <span>Размер страницы</span>
+                    <select
+                      value={tableRowsPerPage}
+                      onChange={(e) => setTableRowsPerPage(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number])}
+                      className="rounded border border-stroke bg-transparent px-2 py-1 dark:border-strokedark dark:bg-transparent"
+                    >
+                      {PAGE_SIZE_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <button
                   type="button"
@@ -1325,7 +1337,7 @@ const DepartmentPPERulePage = () => {
                     <tbody>
                       {paginatedTableRows.map((group, index) => (
                         <tr key={group.key} className="border-t border-stroke align-top dark:border-strokedark">
-                          <td className="px-3 py-2">{(currentPage - 1) * TABLE_ROWS_PER_PAGE + index + 1}</td>
+                          <td className="px-3 py-2">{(currentPage - 1) * tableRowsPerPage + index + 1}</td>
                           <td className="px-3 py-2">{group.department_name || '-'}</td>
                           <td className="px-3 py-2">{group.position_name}</td>
                           <td className="px-3 py-2">
@@ -1362,10 +1374,10 @@ const DepartmentPPERulePage = () => {
                 )}
               </div>
 
-              {tableRows.length > TABLE_ROWS_PER_PAGE && (
+              {tableRows.length > tableRowsPerPage && (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stroke pt-4 text-sm dark:border-strokedark">
                   <div className="text-slate-600 dark:text-slate-300">
-                    Показано {(currentPage - 1) * TABLE_ROWS_PER_PAGE + 1}-{Math.min(currentPage * TABLE_ROWS_PER_PAGE, tableRows.length)} из {tableRows.length}
+                    Показано {(currentPage - 1) * tableRowsPerPage + 1}-{Math.min(currentPage * tableRowsPerPage, tableRows.length)} из {tableRows.length}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
