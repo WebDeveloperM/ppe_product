@@ -185,9 +185,9 @@ class RolePageAccessSettingsTests(APITestCase):
 		self.assertLess(remaining_seconds, 7205)
 		self.assertEqual(response.data['token'], token.key)
 
-	@patch('users.views.calculate_face_turn_score')
+	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
-	def test_password_login_requires_live_face_challenge(self, similarity_mock, turn_score_mock):
+	def test_password_login_rejects_static_phone_like_face_burst(self, similarity_mock, liveness_mock):
 		user = User.objects.create_user(username='face_session_user', password='test12345')
 		profile, _ = UserRole.objects.get_or_create(user=user)
 		profile.role = UserRole.USER
@@ -195,8 +195,12 @@ class RolePageAccessSettingsTests(APITestCase):
 		profile.base_avatar = build_test_image('avatar.jpg')
 		profile.save(update_fields=['role', 'face_id_required', 'base_avatar'])
 
-		similarity_mock.side_effect = [95.0, 92.0]
-		turn_score_mock.side_effect = [0.01, 0.03]
+		similarity_mock.return_value = 95.0
+		liveness_mock.return_value = {
+			'motion_score': 0.42,
+			'pixel_difference': 0.12,
+			'box_shift': 0.31,
+		}
 
 		response = self.client.post(
 			'/api/v1/users/login/',
@@ -204,18 +208,22 @@ class RolePageAccessSettingsTests(APITestCase):
 				'username': 'face_session_user',
 				'password': 'test12345',
 				'face_capture': build_test_image_data_url('captured-face.jpg'),
-				'face_challenge_capture': build_test_image_data_url('captured-side-face.jpg'),
+				'face_capture_frames': [
+					build_test_image_data_url('captured-face-1.jpg'),
+					build_test_image_data_url('captured-face-2.jpg'),
+					build_test_image_data_url('captured-face-3.jpg'),
+				],
 			},
 			format='json',
 		)
 
 		self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 		self.assertEqual(response.data['verified'], False)
-		self.assertIn('поверните голову в сторону', response.data['error'])
+		self.assertIn('похожее на фото с экрана телефона', response.data['error'])
 
-	@patch('users.views.calculate_face_turn_score')
+	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
-	def test_password_login_succeeds_with_live_face_challenge(self, similarity_mock, turn_score_mock):
+	def test_password_login_succeeds_with_live_face_burst(self, similarity_mock, liveness_mock):
 		user = User.objects.create_user(username='face_live_user', password='test12345')
 		profile, _ = UserRole.objects.get_or_create(user=user)
 		profile.role = UserRole.USER
@@ -223,8 +231,12 @@ class RolePageAccessSettingsTests(APITestCase):
 		profile.base_avatar = build_test_image('avatar-live.jpg')
 		profile.save(update_fields=['role', 'face_id_required', 'base_avatar'])
 
-		similarity_mock.side_effect = [95.0, 90.0]
-		turn_score_mock.side_effect = [0.01, 0.22]
+		similarity_mock.return_value = 95.0
+		liveness_mock.return_value = {
+			'motion_score': 2.34,
+			'pixel_difference': 1.41,
+			'box_shift': 1.87,
+		}
 
 		response = self.client.post(
 			'/api/v1/users/login/',
@@ -232,7 +244,11 @@ class RolePageAccessSettingsTests(APITestCase):
 				'username': 'face_live_user',
 				'password': 'test12345',
 				'face_capture': build_test_image_data_url('captured-front.jpg'),
-				'face_challenge_capture': build_test_image_data_url('captured-turn.jpg'),
+				'face_capture_frames': [
+					build_test_image_data_url('captured-front.jpg'),
+					build_test_image_data_url('captured-middle.jpg'),
+					build_test_image_data_url('captured-end.jpg'),
+				],
 			},
 			format='json',
 		)

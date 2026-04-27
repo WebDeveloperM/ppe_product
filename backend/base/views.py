@@ -1672,38 +1672,69 @@ def detect_face_boxes(image: Image.Image):
     ]
 
 
-def estimate_face_turn_score(image: Image.Image) -> float:
-    cv2 = _load_cv2_module()
-    detector, _, _ = _get_sface_engines()
-    if cv2 is None or detector is None:
-        raise ValueError('Сервис распознавания лиц пока не запущен (детектор)')
+def estimate_face_burst_liveness(images: list[Image.Image]) -> dict:
+    normalized_images = [image for image in images if image is not None]
+    if len(normalized_images) < 3:
+        raise ValueError('Для Face ID проверки нужно минимум 3 кадра.')
 
-    rgb_np = np.asarray(image.convert('RGB'))
-    if rgb_np.size == 0:
-        raise ValueError('Face ID изображение пустое.')
+    face_crops = []
+    face_boxes = []
 
-    try:
-        bgr = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2BGR)
-        height, width = bgr.shape[:2]
-        detector.setInputSize((width, height))
-        _, faces = detector.detect(bgr)
-    except Exception as exc:
-        raise ValueError('Не удалось обработать изображение лица.') from exc
+    for image in normalized_images:
+        boxes = detect_face_boxes(image)
+        if not boxes:
+            raise ValueError('Лицо не обнаружено')
 
-    if faces is None or len(faces) == 0:
-        raise ValueError('Лицо не обнаружено')
+        best_box = max(boxes, key=lambda box: int(box['width']) * int(box['height']))
+        face_crop = extract_primary_face(image)
+        if face_crop is None:
+            raise ValueError('Не удалось выделить лицо для Face ID проверки.')
 
-    best_face = max(faces, key=lambda face: float(face[2]) * float(face[3]))
-    if len(best_face) < 14:
-        raise ValueError('Недостаточно данных для проверки положения головы.')
+        face_boxes.append(best_box)
+        face_crops.append(face_crop.astype(np.float32))
 
-    landmarks = np.asarray(best_face[4:14], dtype=np.float32).reshape(5, 2)
-    eyes = sorted(landmarks[:2], key=lambda point: float(point[0]))
-    left_eye, right_eye = eyes[0], eyes[1]
-    nose = landmarks[2]
-    eye_distance = max(float(right_eye[0] - left_eye[0]), 1.0)
-    eye_center_x = float((left_eye[0] + right_eye[0]) / 2.0)
-    return float((float(nose[0]) - eye_center_x) / eye_distance)
+    pixel_differences = []
+    box_shifts = []
+    scale_changes = []
+
+    for previous_crop, current_crop, previous_box, current_box in zip(
+        face_crops,
+        face_crops[1:],
+        face_boxes,
+        face_boxes[1:],
+    ):
+        pixel_difference = float(np.mean(np.abs(current_crop - previous_crop)) / 255.0 * 100.0)
+        pixel_differences.append(pixel_difference)
+
+        previous_center_x = float(previous_box['x']) + float(previous_box['width']) / 2.0
+        previous_center_y = float(previous_box['y']) + float(previous_box['height']) / 2.0
+        current_center_x = float(current_box['x']) + float(current_box['width']) / 2.0
+        current_center_y = float(current_box['y']) + float(current_box['height']) / 2.0
+        previous_diagonal = max(
+            float((previous_box['width'] ** 2 + previous_box['height'] ** 2) ** 0.5),
+            1.0,
+        )
+        center_shift = float(
+            ((current_center_x - previous_center_x) ** 2 + (current_center_y - previous_center_y) ** 2) ** 0.5
+        )
+        box_shifts.append((center_shift / previous_diagonal) * 100.0)
+
+        previous_area = max(float(previous_box['width'] * previous_box['height']), 1.0)
+        current_area = float(current_box['width'] * current_box['height'])
+        scale_changes.append(abs(current_area - previous_area) / previous_area * 100.0)
+
+    average_pixel_difference = float(np.mean(pixel_differences)) if pixel_differences else 0.0
+    average_box_shift = float(np.mean(box_shifts)) if box_shifts else 0.0
+    average_scale_change = float(np.mean(scale_changes)) if scale_changes else 0.0
+    motion_score = average_pixel_difference + (average_box_shift * 0.35) + (average_scale_change * 0.15)
+
+    return {
+        'motion_score': motion_score,
+        'pixel_difference': average_pixel_difference,
+        'box_shift': average_box_shift,
+        'scale_change': average_scale_change,
+        'frame_count': len(normalized_images),
+    }
 
 
 def _orb_similarity(face_a: np.ndarray, face_b: np.ndarray) -> float:

@@ -30,11 +30,13 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
 };
 
 const SignIn: React.FC = () => {
+  const FACE_BURST_FRAME_COUNT = 3;
+  const FACE_BURST_FRAME_DELAY_MS = 220;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [faceCapture, setFaceCapture] = useState("");
-  const [faceChallengeCapture, setFaceChallengeCapture] = useState("");
+  const [faceCaptureFrames, setFaceCaptureFrames] = useState<string[]>([]);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
   const [faceTargetUser, setFaceTargetUser] = useState('');
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -42,7 +44,7 @@ const SignIn: React.FC = () => {
   const [cameraError, setCameraError] = useState('');
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [faceVerifyError, setFaceVerifyError] = useState('');
-  const [faceChallengeStep, setFaceChallengeStep] = useState<'front' | 'turn'>('front');
+  const [faceBurstStatus, setFaceBurstStatus] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [_, setResData] = useState("");
   const [error, setError] = useState<any>(null);
@@ -200,9 +202,9 @@ const SignIn: React.FC = () => {
   useEffect(() => {
     if (faceModalOpen) {
       setFaceCapture('');
-      setFaceChallengeCapture('');
+      setFaceCaptureFrames([]);
       setFaceVerifyError('');
-      setFaceChallengeStep('front');
+      setFaceBurstStatus('');
       startCamera();
       return;
     }
@@ -344,37 +346,58 @@ const SignIn: React.FC = () => {
     }
   };
 
-  const captureFace = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+  const wait = (milliseconds: number) => new Promise<void>((resolve) => {
+    window.setTimeout(resolve, milliseconds);
+  });
+
+  const captureCurrentFrame = () => {
+    if (!videoRef.current || !canvasRef.current) return '';
     const video = videoRef.current;
     const canvas = canvasRef.current;
 
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     const context = canvas.getContext('2d');
-    if (!context) return;
+    if (!context) return '';
 
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-    setFaceVerifyError('');
+    return canvas.toDataURL('image/jpeg', 0.92);
+  };
 
-    if (faceChallengeStep === 'front') {
-      setFaceCapture(dataUrl);
-      setFaceChallengeCapture('');
-      setFaceChallengeStep('turn');
-      toast.info('Теперь поверните голову в сторону и снимите второй кадр.');
+  const captureFace = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    setFaceVerifyError('');
+    setFaceBurstStatus('Снимаем короткую серию кадров...');
+
+    const frames: string[] = [];
+    for (let index = 0; index < FACE_BURST_FRAME_COUNT; index += 1) {
+      const frame = captureCurrentFrame();
+      if (!frame) {
+        setFaceBurstStatus('');
+        return;
+      }
+      frames.push(frame);
+      if (index < FACE_BURST_FRAME_COUNT - 1) {
+        await wait(FACE_BURST_FRAME_DELAY_MS);
+      }
+    }
+
+    if (!frames.length) {
+      setFaceBurstStatus('');
       return;
     }
 
-    setFaceChallengeCapture(dataUrl);
-    await performLogin(true, faceCapture, dataUrl);
+    setFaceCapture(frames[0]);
+    setFaceCaptureFrames(frames);
+    setFaceBurstStatus('Кадры сняты, выполняется проверка...');
+    await performLogin(true, frames[0], frames);
   };
 
   const closeFaceModal = () => {
     setFaceModalOpen(false);
     setFaceCapture('');
-    setFaceChallengeCapture('');
-    setFaceChallengeStep('front');
+    setFaceCaptureFrames([]);
+    setFaceBurstStatus('');
     setFaceTargetUser('');
     setCameraError('');
     setFaceVerifyError('');
@@ -401,8 +424,8 @@ const SignIn: React.FC = () => {
     localStorage.setItem("isLogin", "true")
   };
 
-  const performLogin = async (withFaceId: boolean, capturedFace?: string, capturedChallengeFace?: string) => {
-    const payload: Record<string, string> = {
+  const performLogin = async (withFaceId: boolean, capturedFace?: string, capturedFrames?: string[]) => {
+    const payload: Record<string, string | string[]> = {
       username,
       password,
     };
@@ -411,9 +434,9 @@ const SignIn: React.FC = () => {
     if (withFaceId && facePayload) {
       payload.face_capture = facePayload;
     }
-    const faceChallengePayload = capturedChallengeFace || faceChallengeCapture;
-    if (withFaceId && faceChallengePayload) {
-      payload.face_challenge_capture = faceChallengePayload;
+    const framePayload = capturedFrames || faceCaptureFrames;
+    if (withFaceId && framePayload.length) {
+      payload.face_capture_frames = framePayload;
     }
 
     setSubmitting(true);
@@ -434,6 +457,7 @@ const SignIn: React.FC = () => {
 
         setFaceTargetUser(fullName || responseData?.username || username);
         setFaceVerifyError('');
+        setFaceBurstStatus('');
         setFaceModalOpen(true);
         toast.info('Для этой роли требуется Face ID подтверждение');
         return;
@@ -442,6 +466,7 @@ const SignIn: React.FC = () => {
       if (requiresFaceId && withFaceId) {
         const message = getRequestErrorMessage(err, 'Face ID не подтвержден');
         setFaceVerifyError(String(message));
+        setFaceBurstStatus('');
         toast.error(String(message));
         return;
       }
@@ -455,6 +480,9 @@ const SignIn: React.FC = () => {
       toast.error(String(message));
       setError(err)
     } finally {
+      if (!faceModalOpen) {
+        setFaceBurstStatus('');
+      }
       setSubmitting(false);
     }
   };
@@ -709,9 +737,7 @@ const SignIn: React.FC = () => {
               <p className="mb-2 text-sm font-medium text-black dark:text-white">Пользователь: {faceTargetUser}</p>
             ) : null}
             <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-              {faceChallengeStep === 'front'
-                ? 'Шаг 1 из 2: смотрите прямо в камеру и снимите первый кадр.'
-                : 'Шаг 2 из 2: поверните голову в сторону и снимите второй кадр. Статичная фотография не пройдет проверку.'}
+              Нажмите кнопку один раз. Система автоматически снимет несколько кадров подряд и отклонит слишком статичное изображение с экрана телефона.
             </p>
 
             {!cameraOpen ? (
@@ -737,7 +763,7 @@ const SignIn: React.FC = () => {
                     disabled={!cameraLive || submitting}
                     className="rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
                   >
-                    {submitting ? 'Проверка...' : faceChallengeStep === 'front' ? 'Снять первый кадр' : 'Снять второй кадр и войти'}
+                    {submitting ? 'Проверка...' : 'Проверить Face ID'}
                   </button>
                 </div>
               </div>
@@ -745,8 +771,8 @@ const SignIn: React.FC = () => {
 
             {cameraError ? <p className="mt-2 text-xs text-red-600">{cameraError}</p> : null}
             {faceVerifyError ? <p className="mt-2 text-xs text-red-600">{faceVerifyError}</p> : null}
-            {faceCapture ? <p className="mt-2 text-xs text-green-600">Первый кадр готов</p> : null}
-            {faceChallengeCapture ? <p className="mt-2 text-xs text-green-600">Второй кадр готов</p> : null}
+            {faceBurstStatus ? <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{faceBurstStatus}</p> : null}
+            {faceCapture ? <p className="mt-2 text-xs text-green-600">Кадры для Face ID подготовлены</p> : null}
             <canvas ref={canvasRef} className="hidden" />
 
             <div className="mt-4 flex gap-2">
