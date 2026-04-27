@@ -71,6 +71,7 @@ export default function ComputerTable({
     const [departmentSearch, setDepartmentSearch] = useState('');
     const [sectionSearch, setSectionSearch] = useState('');
     const [userSearch, setUserSearch] = useState('');
+    const [debouncedUserSearch] = useDebounce(userSearch, 300);
     const [positionSearch, setPositionSearch] = useState('');
     const [issuedAtSearch, setIssuedAtSearch] = useState<Date | null>(null);
     const [changeDateSearch, setChangeDateSearch] = useState<Date | null>(null);
@@ -203,7 +204,7 @@ export default function ComputerTable({
             return;
         }
         setLoading(true);
-        const params = buildQueryParams(debouncedSearch);
+        const params = buildQueryParams(debouncedSearch, debouncedUserSearch);
         axioss.get(`${BASE_URL}/all-items/?${params}`)
             .then(res => {
                 if (res.data.results && res.data.results.length > 0) {
@@ -231,14 +232,14 @@ export default function ComputerTable({
         selectedDepartmentId,
         sectionSearch,
         tabelNumberSearch,
-        userSearch,
+        debouncedUserSearch,
         positionSearch,
         issuedAtSearch,
         changeDateSearch,
         changeUserSearch,
     ]);
 
-    const buildQueryParams = (search: string) => {
+    const buildQueryParams = (search: string, userValue: string) => {
         const params = new URLSearchParams();
 
         if (selectedDepartmentId) {
@@ -256,8 +257,8 @@ export default function ComputerTable({
             params.append('tabel_number', tabelNumberSearch.trim());
         }
 
-        if (userSearch.trim()) {
-            params.append('user', userSearch.trim());
+        if (userValue.trim()) {
+            params.append('user', userValue.trim());
         }
 
         if (positionSearch.trim()) {
@@ -393,7 +394,7 @@ export default function ComputerTable({
             const filename = isFiltered ? 'filter_items' : 'all_items';
 
             if (!isFiltered) {
-                const params = new URLSearchParams(buildQueryParams(searchText.trim()));
+                const params = new URLSearchParams(buildQueryParams(searchText.trim(), userSearch.trim()));
                 params.delete('page');
                 params.delete('page_size');
 

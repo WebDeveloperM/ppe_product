@@ -844,6 +844,42 @@ class AllItemsDepartmentFilterTests(APITestCase):
 		self.assertEqual(response.data['count'], 1)
 		self.assertEqual(response.data['results'][0]['employee']['department']['id'], 7)
 
+	@patch('base.views.list_employees_bootstrapped')
+	def test_all_items_forwards_user_name_filter_to_remote_employee_query(self, employees_mock):
+		employees_mock.return_value = {
+			'count': 1,
+			'next': None,
+			'previous': None,
+			'results': [
+				{
+					'id': 102,
+					'external_id': '102',
+					'slug': 'default-102-ali-valiyev',
+					'first_name': 'Ali',
+					'last_name': 'Valiyev',
+					'surname': 'Karimovich',
+					'tabel_number': '102',
+					'position': 'Operator',
+					'department': {'id': 7, 'name': '7-Цех'},
+					'section': {'id': 3, 'name': 'Section A', 'department_id': 7},
+				},
+			],
+		}
+
+		response = self.client.get('/api/v1/all-items/?user=ali&page=1&page_size=10')
+
+		self.assertEqual(response.status_code, 200)
+		employees_mock.assert_called_once_with(
+			search='ali',
+			tabel_number=None,
+			department_id=None,
+			no_pagination=False,
+			page='1',
+			page_size='10',
+		)
+		self.assertEqual(response.data['count'], 1)
+		self.assertEqual(response.data['results'][0]['employee']['first_name'], 'Ali')
+
 
 class PPEStatisticsIssuedDetailsTests(APITestCase):
 	def setUp(self):

@@ -2886,11 +2886,12 @@ class AllItemsApiView(APIView):
         no_pagination = request.GET.get('no_pagination', '').lower() == 'true'
         page = request.GET.get('page')
         page_size = request.GET.get('page_size')
+        user_name_only_search = bool(user) and not any([search, department, section, position, history_date, history_user, issued_at])
         remote_only_filters = not any([department, section, user, position, history_date, history_user, issued_at])
 
-        if remote_only_filters and not no_pagination:
+        if (remote_only_filters or user_name_only_search) and not no_pagination:
             employees_payload = list_employees_bootstrapped(
-                search=search or None,
+            search=user if user_name_only_search else (search or None),
                 tabel_number=tabel_number or None,
                 department_id=department_id,
                 no_pagination=False,
