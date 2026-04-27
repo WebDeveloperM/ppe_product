@@ -2,6 +2,7 @@ import base64
 from datetime import timedelta
 
 from django.contrib.auth.models import User
+from django.core import signing
 from django.test import override_settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils.timezone import now
@@ -25,6 +26,10 @@ def build_test_image_data_url(name='face.jpg'):
 	image_file = build_test_image(name)
 	encoded = base64.b64encode(image_file.read()).decode('ascii')
 	return f'data:image/jpeg;base64,{encoded}'
+
+
+def build_test_face_challenge_token(direction='left'):
+	return signing.dumps({'direction': direction}, salt='tb-face-id-challenge')
 
 
 class RolePageAccessSettingsTests(APITestCase):
@@ -208,6 +213,7 @@ class RolePageAccessSettingsTests(APITestCase):
 				'username': 'face_session_user',
 				'password': 'test12345',
 				'face_capture': build_test_image_data_url('captured-face.jpg'),
+				'face_challenge_token': build_test_face_challenge_token('left'),
 				'face_capture_frames': [
 					build_test_image_data_url('captured-face-1.jpg'),
 					build_test_image_data_url('captured-face-2.jpg'),
@@ -222,9 +228,53 @@ class RolePageAccessSettingsTests(APITestCase):
 		self.assertEqual(response.data['verified'], False)
 		self.assertIn('похожее на фото с экрана телефона', response.data['error'])
 
+	@patch('users.views.calculate_face_challenge_result')
 	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
-	def test_password_login_succeeds_with_live_face_burst(self, similarity_mock, liveness_mock):
+	def test_password_login_rejects_when_live_challenge_not_completed(self, similarity_mock, liveness_mock, challenge_mock):
+		user = User.objects.create_user(username='face_fail_user', password='test12345')
+		profile, _ = UserRole.objects.get_or_create(user=user)
+		profile.role = UserRole.USER
+		profile.face_id_required = True
+		profile.base_avatar = build_test_image('avatar-fail.jpg')
+		profile.save(update_fields=['role', 'face_id_required', 'base_avatar'])
+
+		similarity_mock.return_value = 95.0
+		liveness_mock.return_value = {
+			'motion_score': 3.4,
+			'pixel_difference': 1.9,
+			'box_shift': 2.3,
+		}
+		challenge_mock.return_value = {
+			'challenge_completed': False,
+			'lateral_shift': 2.2,
+			'turn_delta': 0.01,
+		}
+
+		response = self.client.post(
+			'/api/v1/users/login/',
+			{
+				'username': 'face_fail_user',
+				'password': 'test12345',
+				'face_capture': build_test_image_data_url('captured-front.jpg'),
+				'face_challenge_token': build_test_face_challenge_token('right'),
+				'face_capture_frames': [
+					build_test_image_data_url('captured-front.jpg'),
+					build_test_image_data_url('captured-middle.jpg'),
+					build_test_image_data_url('captured-end.jpg'),
+					build_test_image_data_url('captured-last.jpg'),
+				],
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+		self.assertIn('Выполните живое действие', response.data['error'])
+
+	@patch('users.views.calculate_face_challenge_result')
+	@patch('users.views.calculate_face_burst_liveness')
+	@patch('users.views.calculate_face_similarity_score')
+	def test_password_login_succeeds_with_live_face_burst(self, similarity_mock, liveness_mock, challenge_mock):
 		user = User.objects.create_user(username='face_live_user', password='test12345')
 		profile, _ = UserRole.objects.get_or_create(user=user)
 		profile.role = UserRole.USER
@@ -238,6 +288,11 @@ class RolePageAccessSettingsTests(APITestCase):
 			'pixel_difference': 1.41,
 			'box_shift': 1.87,
 		}
+		challenge_mock.return_value = {
+			'challenge_completed': True,
+			'lateral_shift': 18.0,
+			'turn_delta': 0.14,
+		}
 
 		response = self.client.post(
 			'/api/v1/users/login/',
@@ -245,6 +300,7 @@ class RolePageAccessSettingsTests(APITestCase):
 				'username': 'face_live_user',
 				'password': 'test12345',
 				'face_capture': build_test_image_data_url('captured-front.jpg'),
+				'face_challenge_token': build_test_face_challenge_token('right'),
 				'face_capture_frames': [
 					build_test_image_data_url('captured-front.jpg'),
 					build_test_image_data_url('captured-middle.jpg'),

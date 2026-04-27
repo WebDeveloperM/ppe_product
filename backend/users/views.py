@@ -3,6 +3,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.core.files.base import ContentFile
+from django.core import signing
 from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
 import base64
@@ -39,6 +40,14 @@ FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', FAC
 FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
 FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURST_MOTION_THRESHOLD', 2.2))
 FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 4))
+FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD', 0.08))
+FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD', 10.0))
+FACE_ID_CHALLENGE_TOKEN_MAX_AGE_SECONDS = int(getattr(settings, 'FACE_ID_CHALLENGE_TOKEN_MAX_AGE_SECONDS', 120))
+
+FACE_ID_CHALLENGE_DIRECTIONS = {
+    'left': 'Смотрите прямо в камеру, затем во время проверки сместите лицо влево и слегка поверните голову.',
+    'right': 'Смотрите прямо в камеру, затем во время проверки сместите лицо вправо и слегка поверните голову.',
+}
 
 
 def build_login_response(user):
@@ -296,6 +305,78 @@ def calculate_face_burst_liveness(images):
     return estimate_face_burst_liveness(images)
 
 
+def calculate_face_challenge_result(images, direction):
+    from base.views import detect_face_boxes, estimate_face_turn_score
+
+    if direction not in FACE_ID_CHALLENGE_DIRECTIONS:
+        raise ValueError('Face ID challenge direction is invalid.')
+
+    centers_x = []
+    widths = []
+    turn_scores = []
+
+    for image in images:
+        boxes = detect_face_boxes(image)
+        if not boxes:
+            raise ValueError('Лицо не обнаружено')
+
+        best_box = max(boxes, key=lambda box: int(box['width']) * int(box['height']))
+        centers_x.append(float(best_box['x']) + float(best_box['width']) / 2.0)
+        widths.append(max(float(best_box['width']), 1.0))
+        turn_scores.append(float(estimate_face_turn_score(image)))
+
+    sample_size = min(2, len(centers_x))
+    start_center_x = sum(centers_x[:sample_size]) / sample_size
+    end_center_x = sum(centers_x[-sample_size:]) / sample_size
+    average_face_width = max(sum(widths) / len(widths), 1.0)
+    lateral_shift = ((end_center_x - start_center_x) / average_face_width) * 100.0
+
+    start_turn = sum(turn_scores[:sample_size]) / sample_size
+    end_turn = sum(turn_scores[-sample_size:]) / sample_size
+    turn_delta = end_turn - start_turn
+
+    expected_shift = -lateral_shift if direction == 'left' else lateral_shift
+    challenge_completed = expected_shift >= FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD and abs(turn_delta) >= FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD
+
+    return {
+        'challenge_completed': challenge_completed,
+        'lateral_shift': lateral_shift,
+        'turn_delta': turn_delta,
+        'expected_direction': direction,
+    }
+
+
+def issue_face_id_challenge():
+    direction = secrets.choice(tuple(FACE_ID_CHALLENGE_DIRECTIONS.keys()))
+    token = signing.dumps({'direction': direction}, salt='tb-face-id-challenge')
+    return {
+        'face_challenge_direction': direction,
+        'face_challenge_instruction': FACE_ID_CHALLENGE_DIRECTIONS[direction],
+        'face_challenge_token': token,
+    }
+
+
+def load_face_id_challenge(face_challenge_token):
+    if not face_challenge_token:
+        raise ValueError('Face ID challenge token is missing.')
+
+    try:
+        payload = signing.loads(
+            face_challenge_token,
+            salt='tb-face-id-challenge',
+            max_age=FACE_ID_CHALLENGE_TOKEN_MAX_AGE_SECONDS,
+        )
+    except signing.SignatureExpired as exc:
+        raise ValueError('Face ID challenge истек. Повторите проверку.') from exc
+    except signing.BadSignature as exc:
+        raise ValueError('Face ID challenge поврежден. Повторите проверку.') from exc
+
+    direction = str(payload.get('direction', '')).strip().lower()
+    if direction not in FACE_ID_CHALLENGE_DIRECTIONS:
+        raise ValueError('Face ID challenge direction is invalid.')
+    return direction
+
+
 def normalize_face_capture_frames(face_capture, face_capture_frames):
     normalized_frames = []
 
@@ -412,7 +493,7 @@ def match_user_by_face_capture(face_capture):
     return best_profile.user, None
 
 
-def verify_login_face_id(user, profile, face_capture, face_capture_frames):
+def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_challenge_token):
     user_face_id_required = bool(profile.face_id_required) if profile else True
     if not user_face_id_required:
         return None
@@ -425,12 +506,14 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames):
     }
 
     capture_frames = normalize_face_capture_frames(face_capture, face_capture_frames)
+    challenge_payload = issue_face_id_challenge()
 
     if not capture_frames:
         return Response(
             {
                 'error': 'Для этой роли требуется Face ID подтверждение.',
                 **face_id_context,
+                **challenge_payload,
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
@@ -440,6 +523,19 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames):
             {
                 'error': 'Для Face ID подтверждения нужно короткое живое видео из нескольких кадров. Удерживайте лицо перед камерой до конца проверки.',
                 **face_id_context,
+                **challenge_payload,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        challenge_direction = load_face_id_challenge(face_challenge_token)
+    except ValueError as exc:
+        return Response(
+            {
+                'error': str(exc),
+                **face_id_context,
+                **challenge_payload,
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
@@ -543,11 +639,49 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames):
             {
                 'error': 'Face ID не подтвержден. Обнаружено слишком статичное изображение, похожее на фото с экрана телефона.',
                 **face_id_context,
+                **challenge_payload,
                 'verified': False,
                 'motion_score': round(motion_score, 3),
                 'motion_threshold': FACE_ID_LIVE_BURST_MOTION_THRESHOLD,
                 'pixel_difference': round(float(liveness_result.get('pixel_difference', 0.0)), 3),
                 'box_shift': round(float(liveness_result.get('box_shift', 0.0)), 3),
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        challenge_result = calculate_face_challenge_result(burst_images, challenge_direction)
+    except ValueError as exc:
+        return Response(
+            {
+                'error': str(exc),
+                **face_id_context,
+                **challenge_payload,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception:
+        return Response(
+            {
+                'error': 'Ошибка проверки Face ID challenge.',
+                **face_id_context,
+                **challenge_payload,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not bool(challenge_result.get('challenge_completed')):
+        return Response(
+            {
+                'error': 'Face ID не подтвержден. Выполните живое действие из подсказки, а не показывайте фото.',
+                **face_id_context,
+                **challenge_payload,
+                'verified': False,
+                'challenge_direction': challenge_direction,
+                'lateral_shift': round(float(challenge_result.get('lateral_shift', 0.0)), 3),
+                'turn_delta': round(float(challenge_result.get('turn_delta', 0.0)), 3),
+                'position_threshold': FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD,
+                'turn_threshold': FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD,
             },
             status=status.HTTP_403_FORBIDDEN,
         )
@@ -564,6 +698,7 @@ class LoginAPIView(APIView):
         password = request.data.get('password')
         face_capture = request.data.get('face_capture')
         face_capture_frames = request.data.get('face_capture_frames')
+        face_challenge_token = request.data.get('face_challenge_token')
 
         user = authenticate(username=username, password=password)
 
@@ -571,7 +706,7 @@ class LoginAPIView(APIView):
             role = get_effective_user_role(user)
 
             profile = getattr(user, 'role_profile', None)
-            face_verification_response = verify_login_face_id(user, profile, face_capture, face_capture_frames)
+            face_verification_response = verify_login_face_id(user, profile, face_capture, face_capture_frames, face_challenge_token)
             if face_verification_response is not None:
                 return face_verification_response
 

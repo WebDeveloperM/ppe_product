@@ -30,8 +30,8 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
 };
 
 const SignIn: React.FC = () => {
-  const FACE_BURST_FRAME_COUNT = 4;
-  const FACE_BURST_FRAME_DELAY_MS = 260;
+  const FACE_BURST_FRAME_COUNT = 6;
+  const FACE_BURST_FRAME_DELAY_MS = 240;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -39,6 +39,8 @@ const SignIn: React.FC = () => {
   const [faceCaptureFrames, setFaceCaptureFrames] = useState<string[]>([]);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
   const [faceTargetUser, setFaceTargetUser] = useState('');
+  const [faceChallengeInstruction, setFaceChallengeInstruction] = useState('');
+  const [faceChallengeToken, setFaceChallengeToken] = useState('');
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraLive, setCameraLive] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -366,6 +368,11 @@ const SignIn: React.FC = () => {
 
   const captureFace = async () => {
     if (!videoRef.current || !canvasRef.current) return;
+    if (!faceChallengeToken) {
+      setFaceVerifyError('Face ID challenge не подготовлен. Повторите вход.');
+      return;
+    }
+
     setFaceVerifyError('');
     setFaceBurstStatus('Снимаем короткую серию кадров...');
 
@@ -398,6 +405,8 @@ const SignIn: React.FC = () => {
     setFaceCapture('');
     setFaceCaptureFrames([]);
     setFaceBurstStatus('');
+    setFaceChallengeInstruction('');
+    setFaceChallengeToken('');
     setFaceTargetUser('');
     setCameraError('');
     setFaceVerifyError('');
@@ -438,6 +447,9 @@ const SignIn: React.FC = () => {
     if (withFaceId && framePayload.length) {
       payload.face_capture_frames = framePayload;
     }
+    if (withFaceId && faceChallengeToken) {
+      payload.face_challenge_token = faceChallengeToken;
+    }
 
     setSubmitting(true);
     try {
@@ -456,6 +468,8 @@ const SignIn: React.FC = () => {
           .trim();
 
         setFaceTargetUser(fullName || responseData?.username || username);
+        setFaceChallengeInstruction(String(responseData?.face_challenge_instruction || 'Смотрите прямо в камеру, затем выполните движение из подсказки во время проверки.'));
+        setFaceChallengeToken(String(responseData?.face_challenge_token || ''));
         setFaceVerifyError('');
         setFaceBurstStatus('');
         setFaceModalOpen(true);
@@ -465,6 +479,8 @@ const SignIn: React.FC = () => {
 
       if (requiresFaceId && withFaceId) {
         const message = getRequestErrorMessage(err, 'Face ID не подтвержден');
+        setFaceChallengeInstruction(String(responseData?.face_challenge_instruction || faceChallengeInstruction));
+        setFaceChallengeToken(String(responseData?.face_challenge_token || faceChallengeToken));
         setFaceVerifyError(String(message));
         setFaceBurstStatus('');
         toast.error(String(message));
@@ -737,7 +753,7 @@ const SignIn: React.FC = () => {
               <p className="mb-2 text-sm font-medium text-black dark:text-white">Пользователь: {faceTargetUser}</p>
             ) : null}
             <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-              Нажмите кнопку один раз. Система автоматически снимет несколько кадров подряд и отклонит слишком статичное изображение с экрана телефона.
+              {faceChallengeInstruction || 'Смотрите прямо в камеру, затем выполните движение из подсказки во время проверки. Система отклонит фото с экрана телефона.'}
             </p>
 
             {!cameraOpen ? (
