@@ -31,7 +31,8 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
 
 const SignIn: React.FC = () => {
   const FACE_BURST_FRAME_COUNT = 6;
-  const FACE_BURST_FRAME_DELAY_MS = 240;
+  const FACE_BURST_FRAME_DELAY_MS = 280;
+  const FACE_BURST_PREPARE_DELAY_MS = 900;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -374,7 +375,15 @@ const SignIn: React.FC = () => {
     }
 
     setFaceVerifyError('');
-    setFaceBurstStatus('Снимаем короткую серию кадров...');
+    setFaceBurstStatus('Приготовьтесь. Съемка начнется через секунду, затем выполните подсказку.');
+    await wait(FACE_BURST_PREPARE_DELAY_MS);
+
+    if (!videoRef.current || !canvasRef.current) {
+      setFaceBurstStatus('');
+      return;
+    }
+
+    setFaceBurstStatus('Съемка началась. Медленно выполните движение из подсказки.');
 
     const frames: string[] = [];
     for (let index = 0; index < FACE_BURST_FRAME_COUNT; index += 1) {
