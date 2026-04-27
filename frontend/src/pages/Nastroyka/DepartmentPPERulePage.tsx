@@ -1303,14 +1303,16 @@ const DepartmentPPERulePage = () => {
                     </select>
                   </label>
                 </div>
-                <button
-                  type="button"
-                  onClick={openBulkDeleteModal}
-                  disabled={!isAdmin || selectedGroups.length === 0 || deleteLoading}
-                  className={`rounded px-4 py-2 text-sm ${isAdmin && selectedGroups.length > 0 && !deleteLoading ? 'bg-red-600 text-white' : 'cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
-                >
-                  {deleteLoading ? 'Удаление...' : 'Удалить выбранные'}
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={openBulkDeleteModal}
+                    disabled={selectedGroups.length === 0 || deleteLoading}
+                    className={`rounded px-4 py-2 text-sm ${selectedGroups.length > 0 && !deleteLoading ? 'bg-red-600 text-white' : 'cursor-not-allowed bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}
+                  >
+                    {deleteLoading ? 'Удаление...' : 'Удалить выбранные'}
+                  </button>
+                )}
               </div>
 
               <div className="min-h-0 flex-1 overflow-auto">
@@ -1324,14 +1326,16 @@ const DepartmentPPERulePage = () => {
                         <th className="px-3 py-2 text-left font-semibold">Цех</th>
                         <th className="px-3 py-2 text-left font-semibold">Должность</th>
                         <th className="px-3 py-2 text-left font-semibold">Действия</th>
-                        <th className="px-3 py-2 text-center font-semibold">
-                          <input
-                            type="checkbox"
-                            checked={isAllVisibleGroupsSelected}
-                            onChange={toggleSelectAllVisibleGroups}
-                            aria-label="Выбрать все строки"
-                          />
-                        </th>
+                        {isAdmin && (
+                          <th className="px-3 py-2 text-center font-semibold">
+                            <input
+                              type="checkbox"
+                              checked={isAllVisibleGroupsSelected}
+                              onChange={toggleSelectAllVisibleGroups}
+                              aria-label="Выбрать все строки"
+                            />
+                          </th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -1349,24 +1353,27 @@ const DepartmentPPERulePage = () => {
                               >
                                 Изменить
                               </button>
-                              <button
-                                onClick={() => setGroupToDelete(group)}
-                                className={`inline-flex items-center justify-center rounded border px-2 py-1 text-xs ${isAdmin ? 'border-red-400 text-red-600' : 'cursor-not-allowed border-slate-300 text-slate-400 dark:border-strokedark dark:text-slate-500'}`}
-                                title={isAdmin ? 'Удалить' : 'Удаление доступно только администратору'}
-                                disabled={!isAdmin}
-                              >
-                                <FiTrash2 className="text-sm" />
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => setGroupToDelete(group)}
+                                  className="inline-flex items-center justify-center rounded border border-red-400 px-2 py-1 text-xs text-red-600"
+                                  title="Удалить"
+                                >
+                                  <FiTrash2 className="text-sm" />
+                                </button>
+                              )}
                             </div>
                           </td>
-                          <td className="px-3 py-2 text-center align-top">
-                            <input
-                              type="checkbox"
-                              checked={selectedGroupKeys.includes(group.key)}
-                              onChange={() => toggleGroupSelection(group.key)}
-                              aria-label={`Выбрать ${group.department_name} ${group.position_name}`}
-                            />
-                          </td>
+                          {isAdmin && (
+                            <td className="px-3 py-2 text-center align-top">
+                              <input
+                                type="checkbox"
+                                checked={selectedGroupKeys.includes(group.key)}
+                                onChange={() => toggleGroupSelection(group.key)}
+                                aria-label={`Выбрать ${group.department_name} ${group.position_name}`}
+                              />
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

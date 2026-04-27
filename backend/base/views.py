@@ -559,6 +559,16 @@ def ensure_can_manage_employees(request):
     )
 
 
+def ensure_admin_only(request):
+    role = get_effective_user_role(request.user)
+    if role == UserRole.ADMIN:
+        return None
+    return Response(
+        {"error": "Только администратор имеет доступ."},
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 def ensure_can_submit_ppe_arrival(request):
     if user_has_feature_access(request.user, 'ppe_arrival_intake'):
         return None
@@ -943,7 +953,7 @@ class SettingsPPEProductDetailApiView(APIView):
     permission_classes = [IsAuthenticated]
 
     def put(self, request, pk):
-        permission_error = ensure_can_modify(request)
+        permission_error = ensure_admin_only(request)
         if permission_error:
             return permission_error
 
@@ -955,7 +965,7 @@ class SettingsPPEProductDetailApiView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
-        permission_error = ensure_can_modify(request)
+        permission_error = ensure_admin_only(request)
         if permission_error:
             return permission_error
 
@@ -1000,7 +1010,7 @@ class SettingsPPEDepartmentRuleDetailApiView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
-        permission_error = ensure_can_modify(request)
+        permission_error = ensure_admin_only(request)
         if permission_error:
             return permission_error
 
