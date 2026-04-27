@@ -477,7 +477,7 @@ const SignIn: React.FC = () => {
           .trim();
 
         setFaceTargetUser(fullName || responseData?.username || username);
-        setFaceChallengeInstruction(String(responseData?.face_challenge_instruction || 'Смотрите прямо в камеру, затем выполните движение из подсказки во время проверки.'));
+        setFaceChallengeInstruction(String(responseData?.face_challenge_instruction || 'Смотрите прямо в камеру, затем слегка сместите лицо в любую сторону и чуть поверните голову.'));
         setFaceChallengeToken(String(responseData?.face_challenge_token || ''));
         setFaceVerifyError('');
         setFaceBurstStatus('');
@@ -762,7 +762,7 @@ const SignIn: React.FC = () => {
               <p className="mb-2 text-sm font-medium text-black dark:text-white">Пользователь: {faceTargetUser}</p>
             ) : null}
             <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-              {faceChallengeInstruction || 'Смотрите прямо в камеру, затем выполните движение из подсказки во время проверки. Система отклонит фото с экрана телефона.'}
+              {faceChallengeInstruction || 'Смотрите прямо в камеру, затем слегка сместите лицо в любую сторону и чуть поверните голову. Система отклонит фото с экрана телефона.'}
             </p>
 
             {!cameraOpen ? (

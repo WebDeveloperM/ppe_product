@@ -40,13 +40,13 @@ FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', FAC
 FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
 FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURST_MOTION_THRESHOLD', 2.2))
 FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 4))
-FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD', 0.045))
-FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD', 6.5))
+FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD', 0.03))
+FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD', 4.0))
 FACE_ID_CHALLENGE_TOKEN_MAX_AGE_SECONDS = int(getattr(settings, 'FACE_ID_CHALLENGE_TOKEN_MAX_AGE_SECONDS', 120))
 
 FACE_ID_CHALLENGE_DIRECTIONS = {
-    'left': 'Смотрите прямо в камеру, затем во время проверки сместите лицо влево и слегка поверните голову.',
-    'right': 'Смотрите прямо в камеру, затем во время проверки сместите лицо вправо и слегка поверните голову.',
+    'left': 'Смотрите прямо в камеру, затем во время проверки слегка сместите лицо в любую сторону и чуть поверните голову.',
+    'right': 'Смотрите прямо в камеру, затем во время проверки слегка сместите лицо в любую сторону и чуть поверните голову.',
 }
 
 
@@ -336,11 +336,14 @@ def calculate_face_challenge_result(images, direction):
     turn_delta = end_turn - start_turn
 
     expected_shift = -lateral_shift if direction == 'left' else lateral_shift
-    challenge_completed = expected_shift >= FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD and abs(turn_delta) >= FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD
+    absolute_shift = abs(lateral_shift)
+    turn_magnitude = abs(turn_delta)
+    challenge_completed = absolute_shift >= FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD and turn_magnitude >= FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD
 
     return {
         'challenge_completed': challenge_completed,
         'lateral_shift': lateral_shift,
+        'absolute_shift': absolute_shift,
         'turn_delta': turn_delta,
         'expected_direction': direction,
     }
@@ -679,6 +682,7 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_
                 'verified': False,
                 'challenge_direction': challenge_direction,
                 'lateral_shift': round(float(challenge_result.get('lateral_shift', 0.0)), 3),
+                'absolute_shift': round(float(challenge_result.get('absolute_shift', 0.0)), 3),
                 'turn_delta': round(float(challenge_result.get('turn_delta', 0.0)), 3),
                 'position_threshold': FACE_ID_LIVE_CHALLENGE_POSITION_THRESHOLD,
                 'turn_threshold': FACE_ID_LIVE_CHALLENGE_TURN_THRESHOLD,
