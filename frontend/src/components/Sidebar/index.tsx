@@ -24,7 +24,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
   const canSeeSettings = pageAccess.settings;
   const canSeePPEArrival = pageAccess.ppe_arrival;
   const canSeeStatistics = pageAccess.statistics;
-  const canEditBaseSettings = role === 'admin' || role === 'warehouse_staff';
+  const canEditBaseSettings = role === 'admin' || role === 'it_center' || role === 'warehouse_staff';
   const canManageFaceIdControl = featureAccess.face_id_control;
   const isSettingsRoute = pathname === '/nastroyka' || pathname.startsWith('/nastroyka/');
   const settingsMenuItems = [

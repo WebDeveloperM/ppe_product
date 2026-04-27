@@ -25,9 +25,10 @@ const getProductGenderLabel = (value?: string) => {
   return PRODUCT_GENDER_OPTIONS.find((option) => option.value === value)?.label || 'Для всех';
 };
 
-const normalizeRole = (rawRole: string | null): 'admin' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
+const normalizeRole = (rawRole: string | null): 'admin' | 'it_center' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
   const value = String(rawRole || '').trim().toLowerCase();
   if (value === 'admin' || value === 'админ') return 'admin';
+  if (value === 'it_center' || value === 'it-center' || value === 'it center') return 'it_center';
   if (value === 'warehouse_manager' || value === 'складской менеджер') return 'warehouse_manager';
   if (value === 'warehouse_staff' || value === 'складской рабочий') return 'warehouse_staff';
   return 'user';
@@ -48,7 +49,7 @@ const getBackendError = (error: any, fallback: string) => {
 const ProductPage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
-  const canEditBaseSettings = role === 'admin' || role === 'warehouse_staff';
+  const canEditBaseSettings = role === 'admin' || role === 'it_center' || role === 'warehouse_staff';
   const isAdmin = role === 'admin';
 
   const [loading, setLoading] = useState(true);

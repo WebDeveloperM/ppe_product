@@ -63,9 +63,10 @@ type DepartmentPPERuleTableRow = {
   items: DepartmentPPERule[];
 };
 
-const normalizeRole = (rawRole: string | null): 'admin' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
+const normalizeRole = (rawRole: string | null): 'admin' | 'it_center' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
   const value = String(rawRole || '').trim().toLowerCase();
   if (value === 'admin' || value === 'админ') return 'admin';
+  if (value === 'it_center' || value === 'it-center' || value === 'it center') return 'it_center';
   if (value === 'warehouse_manager' || value === 'складской менеджер') return 'warehouse_manager';
   if (value === 'warehouse_staff' || value === 'складской рабочий') return 'warehouse_staff';
   return 'user';
@@ -124,7 +125,7 @@ const DepartmentPPERulePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
-  const canEditBaseSettings = role === 'admin' || role === 'warehouse_staff';
+  const canEditBaseSettings = role === 'admin' || role === 'it_center' || role === 'warehouse_staff';
   const isAdmin = role === 'admin';
   const isCreatePage = location.pathname.endsWith('/create');
 

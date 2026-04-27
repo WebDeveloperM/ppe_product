@@ -45,7 +45,7 @@ type SettingsUser = {
   username: string;
   first_name: string;
   last_name: string;
-  role: 'admin' | 'warehouse_manager' | 'user';
+  role: 'admin' | 'it_center' | 'warehouse_manager' | 'user';
   base_avatar?: string | null;
   is_superuser?: boolean;
   is_active?: boolean;
@@ -62,9 +62,10 @@ type Employee = {
   requires_face_id_checkout: boolean;
 };
 
-const normalizeRole = (rawRole: string | null): 'admin' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
+const normalizeRole = (rawRole: string | null): 'admin' | 'it_center' | 'warehouse_manager' | 'warehouse_staff' | 'user' => {
   const value = String(rawRole || '').trim().toLowerCase();
   if (value === 'admin' || value === 'админ') return 'admin';
+  if (value === 'it_center' || value === 'it-center' || value === 'it center') return 'it_center';
   if (value === 'warehouse_manager' || value === 'складской менеджер') return 'warehouse_manager';
   if (value === 'warehouse_staff' || value === 'складской рабочий') return 'warehouse_staff';
   return 'user';
@@ -156,7 +157,7 @@ const NastroykaPage = () => {
   const featureAccess = useMemo(() => getStoredFeatureAccess(role), [role]);
   const canManageSettings = pageAccess.settings;
   const isAdmin = role === 'admin';
-  const canEditBaseSettings = role === 'admin' || role === 'warehouse_staff';
+  const canEditBaseSettings = role === 'admin' || role === 'it_center' || role === 'warehouse_staff';
   const canManageFaceIdControl = featureAccess.face_id_control;
 
   const [loading, setLoading] = useState(true);
@@ -209,7 +210,7 @@ const NastroykaPage = () => {
       setLoading(false);
       return;
     }
-    if (isAdmin || role === 'warehouse_staff') {
+    if (isAdmin || role === 'it_center' || role === 'warehouse_staff') {
       loadSettings();
     } else {
       setLoading(false);
@@ -255,7 +256,7 @@ const NastroykaPage = () => {
         <div className="rounded-sm border border-stroke bg-white p-5 shadow-default dark:border-strokedark dark:bg-boxdark">
           <div className="text-base text-red-600">Нет доступа к странице</div>
           <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-            Только admin, warehouse_manager или warehouse_staff могут использовать этот раздел.
+            Только admin, it_center, warehouse_manager или warehouse_staff могут использовать этот раздел.
           </div>
         </div>
       ) : (

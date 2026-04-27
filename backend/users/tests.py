@@ -120,6 +120,48 @@ class RolePageAccessSettingsTests(APITestCase):
 			},
 		)
 
+	def test_it_center_gets_admin_like_defaults_except_face_id_and_page_access_management(self):
+		it_user = User.objects.create_user(username='it_center_user', password='test12345')
+		profile, _ = UserRole.objects.get_or_create(user=it_user)
+		profile.role = UserRole.IT_CENTER
+		profile.save(update_fields=['role'])
+
+		self.client.force_authenticate(user=it_user)
+		response = self.client.get('/api/v1/users/user/')
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data['role'], UserRole.IT_CENTER)
+		self.assertEqual(
+			response.data['page_access'],
+			{
+				'dashboard': True,
+				'ppe_arrival': True,
+				'statistics': True,
+				'settings': True,
+			},
+		)
+		self.assertEqual(
+			response.data['feature_access'],
+			{
+				'dashboard_due_cards': True,
+				'dashboard_export_excel': True,
+				'dashboard_delete_employee': True,
+				'employee_ppe_tab': True,
+				'face_id_control': False,
+				'ppe_arrival_intake': True,
+			},
+		)
+		self.assertEqual(
+			response.data['permissions'],
+			{
+				'can_edit': True,
+				'can_delete': True,
+				'view_only': False,
+				'can_manage_employees': True,
+				'can_manage_page_access': False,
+			},
+		)
+
 	@override_settings(TOKEN_SESSION_TTL_SECONDS=7200)
 	def test_password_login_refreshes_token_expiry_to_two_hours(self):
 		user = User.objects.create_user(username='session_user', password='test12345')

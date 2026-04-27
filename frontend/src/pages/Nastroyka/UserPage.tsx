@@ -49,6 +49,7 @@ const EMPLOYEE_PAGE_SIZE = 50;
 
 const ROLE_LABELS: Record<string, string> = {
   user: 'Пользователь',
+  it_center: 'IT Center',
   warehouse_staff: 'Складской рабочий',
   warehouse_manager: 'Кладовщик',
   admin: 'Администратор',
@@ -57,6 +58,7 @@ const ROLE_LABELS: Record<string, string> = {
 const normalizeRole = (rawRole: string | null): string => {
   const value = String(rawRole || '').trim().toLowerCase();
   if (value === 'admin' || value === 'админ') return 'admin';
+  if (value === 'it_center' || value === 'it-center' || value === 'it center') return 'it_center';
   if (value === 'warehouse_manager' || value === 'складской менеджер') return 'warehouse_manager';
   if (value === 'warehouse_staff' || value === 'складской рабочий') return 'warehouse_staff';
   return 'user';
@@ -726,6 +728,7 @@ const UserPage = () => {
                   className="w-full rounded border border-stroke bg-transparent px-3 py-2.5 dark:border-strokedark dark:bg-transparent"
                 >
                   <option value="user">Пользователь</option>
+                  <option value="it_center">IT Center</option>
                   <option value="warehouse_staff">Складской рабочий</option>
                   <option value="warehouse_manager">Кладовщик</option>
                   <option value="admin">Администратор</option>

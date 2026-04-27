@@ -106,7 +106,7 @@ export default function ViewPO() {
     const role = normalizeRole(localStorage.getItem('role'));
     const canViewEmployeePPETab = getStoredFeatureAccess(role).employee_ppe_tab;
     const canExportExcel = getStoredFeatureAccess(role).dashboard_export_excel;
-    const canAddItem = role === 'admin' || role === 'warehouse_staff';
+    const canAddItem = role === 'admin' || role === 'it_center' || role === 'warehouse_staff';
 
     const [pendingIssue, setPendingIssue] = useState<{ id: number; timeRemainingSeconds: number } | null>(null);
 

@@ -6,7 +6,7 @@ import axioss from '../../api/axios';
 import { normalizeRole } from '../../utils/pageAccess';
 
 type PageAccessSettingsRow = {
-  role: 'admin' | 'warehouse_manager' | 'warehouse_staff' | 'user';
+  role: 'admin' | 'it_center' | 'warehouse_manager' | 'warehouse_staff' | 'user';
   role_label: string;
   pages: {
     dashboard: boolean;

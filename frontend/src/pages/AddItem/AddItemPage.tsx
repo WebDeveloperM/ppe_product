@@ -89,7 +89,7 @@ const AddItemPage = () => {
   const { slug } = useParams();
   const navigate = useNavigate();
   const role = localStorage.getItem('role') || 'user';
-  const canAddItem = role === 'admin' || role === 'warehouse_staff';
+  const canAddItem = role === 'admin' || role === 'it_center' || role === 'warehouse_staff';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

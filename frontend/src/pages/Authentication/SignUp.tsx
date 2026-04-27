@@ -6,10 +6,11 @@ import axioss from '../../api/axios';
 import { BASE_URL } from '../../utils/urls';
 import { isAuthenticated } from '../../utils/auth';
 
-type UserRole = 'admin' | 'warehouse_manager' | 'user';
+type UserRole = 'admin' | 'it_center' | 'warehouse_manager' | 'user';
 
 const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: 'admin', label: 'Администратор' },
+  { value: 'it_center', label: 'IT Center' },
   { value: 'warehouse_manager', label: 'Кладовщик' },
   { value: 'user', label: 'Пользователь' },
 ];

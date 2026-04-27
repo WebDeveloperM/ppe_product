@@ -532,11 +532,11 @@ def get_employee_items_queryset(employee_payload):
 def ensure_can_modify(request):
     """
     Проверяет, может ли пользователь модифицировать данные (кроме сотрудников).
-    Разрешено: ADMIN, WAREHOUSE_STAFF
+    Разрешено: ADMIN, IT_CENTER, WAREHOUSE_STAFF
     Запрещено: USER, WAREHOUSE_MANAGER
     """
     role = get_effective_user_role(request.user)
-    if role in [UserRole.ADMIN, UserRole.WAREHOUSE_STAFF]:
+    if role in [UserRole.ADMIN, UserRole.IT_CENTER, UserRole.WAREHOUSE_STAFF]:
         return None
     return Response(
         {"error": "У вас есть только права на просмотр."},
@@ -547,11 +547,11 @@ def ensure_can_modify(request):
 def ensure_can_manage_employees(request):
     """
     Проверяет, может ли пользователь управлять сотрудниками (добавлять, редактировать).
-    Разрешено: ADMIN
+    Разрешено: ADMIN, IT_CENTER
     Запрещено: USER, WAREHOUSE_MANAGER, WAREHOUSE_STAFF
     """
     role = get_effective_user_role(request.user)
-    if role == UserRole.ADMIN:
+    if role in [UserRole.ADMIN, UserRole.IT_CENTER]:
         return None
     return Response(
         {"error": "У вас нет прав на управление сотрудниками."},
@@ -598,7 +598,7 @@ def ensure_can_view_dashboard_due_cards(request):
 
 def ensure_can_delete(request):
     role = get_effective_user_role(request.user)
-    if role == UserRole.ADMIN:
+    if role in [UserRole.ADMIN, UserRole.IT_CENTER]:
         return None
     return Response(
         {"error": "Вы не являетесь администратором. У вас нет прав на удаление."},
@@ -4885,9 +4885,9 @@ class PendingIssueConfirmApiView(APIView):
 
         # Step 2: warehouse signature + final confirmation
         role = get_effective_user_role(request.user)
-        if role not in [UserRole.ADMIN, UserRole.WAREHOUSE_STAFF]:
+        if role not in [UserRole.ADMIN, UserRole.IT_CENTER, UserRole.WAREHOUSE_STAFF]:
             return Response(
-                {"error": "Только администратор или складской рабочий может подтверждать выдачу."},
+                {"error": "Только администратор, IT Center или складской рабочий может подтверждать выдачу."},
                 status=status.HTTP_403_FORBIDDEN,
             )
 

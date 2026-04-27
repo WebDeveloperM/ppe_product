@@ -60,10 +60,10 @@ def build_login_response(user):
         'page_access': get_page_access_for_role(role),
         'feature_access': get_feature_access_for_role(role),
         'permissions': {
-            'can_edit': role in [UserRole.ADMIN, UserRole.WAREHOUSE_STAFF],
-            'can_delete': role == UserRole.ADMIN,
+            'can_edit': role in [UserRole.ADMIN, UserRole.IT_CENTER, UserRole.WAREHOUSE_STAFF],
+            'can_delete': role in [UserRole.ADMIN, UserRole.IT_CENTER],
             'view_only': role in [UserRole.USER, UserRole.WAREHOUSE_MANAGER],
-            'can_manage_employees': role == UserRole.ADMIN,
+            'can_manage_employees': role in [UserRole.ADMIN, UserRole.IT_CENTER],
             'can_manage_page_access': role == UserRole.ADMIN,
         },
     }
@@ -593,10 +593,10 @@ class UserInfoView(APIView):
             "page_access": get_page_access_for_role(role),
             "feature_access": get_feature_access_for_role(role),
             "permissions": {
-                "can_edit": role in [UserRole.ADMIN, UserRole.WAREHOUSE_STAFF],
-                "can_delete": role == UserRole.ADMIN,
+                "can_edit": role in [UserRole.ADMIN, UserRole.IT_CENTER, UserRole.WAREHOUSE_STAFF],
+                "can_delete": role in [UserRole.ADMIN, UserRole.IT_CENTER],
                 "view_only": role in [UserRole.USER, UserRole.WAREHOUSE_MANAGER],
-                "can_manage_employees": role == UserRole.ADMIN,
+                "can_manage_employees": role in [UserRole.ADMIN, UserRole.IT_CENTER],
                 "can_manage_page_access": role == UserRole.ADMIN,
             }
         }, status=status.HTTP_200_OK)
@@ -637,7 +637,7 @@ class RegisterAPIView(APIView):
         if password != password_confirm:
             return Response({"error": "Пароль и подтверждение пароля не совпадают."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if role not in [UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER, UserRole.USER]:
+        if role not in [UserRole.ADMIN, UserRole.IT_CENTER, UserRole.WAREHOUSE_MANAGER, UserRole.USER]:
             return Response({"error": "Недопустимая роль."}, status=status.HTTP_400_BAD_REQUEST)
 
         if role == UserRole.ADMIN and not request.user.is_superuser:
@@ -949,7 +949,7 @@ class SettingsUsersListCreateAPIView(APIView):
         if not employee_slug:
             return Response({"error": "Выберите сотрудника."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if role not in [UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER, UserRole.WAREHOUSE_STAFF, UserRole.USER]:
+        if role not in [UserRole.ADMIN, UserRole.IT_CENTER, UserRole.WAREHOUSE_MANAGER, UserRole.WAREHOUSE_STAFF, UserRole.USER]:
             return Response({"error": "Недопустимая роль."}, status=status.HTTP_400_BAD_REQUEST)
         if role == UserRole.ADMIN and not request.user.is_superuser:
             return Response({"error": "Только суперпользователь может создать администратора."}, status=status.HTTP_403_FORBIDDEN)
@@ -1096,7 +1096,7 @@ class SettingsUsersDetailAPIView(APIView):
             user.set_password(validated_password)
 
         if role:
-            if role not in [UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER, UserRole.WAREHOUSE_STAFF, UserRole.USER]:
+            if role not in [UserRole.ADMIN, UserRole.IT_CENTER, UserRole.WAREHOUSE_MANAGER, UserRole.WAREHOUSE_STAFF, UserRole.USER]:
                 return Response({"error": "Недопустимая роль."}, status=status.HTTP_400_BAD_REQUEST)
             if role == UserRole.ADMIN and not request.user.is_superuser:
                 return Response({"error": "Только суперпользователь может назначить роль администратора."}, status=status.HTTP_403_FORBIDDEN)

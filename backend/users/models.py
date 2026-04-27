@@ -28,12 +28,14 @@ class CustomToken(Token):
 
 class UserRole(models.Model):
     ADMIN = 'admin'
+    IT_CENTER = 'it_center'
     WAREHOUSE_MANAGER = 'warehouse_manager'
     WAREHOUSE_STAFF = 'warehouse_staff'
     USER = 'user'
 
     ROLE_CHOICES = (
         (ADMIN, 'Админ'),
+        (IT_CENTER, 'IT Center'),
         (WAREHOUSE_MANAGER, 'Складской менеджер'),
         (WAREHOUSE_STAFF, 'Складской рабочий'),
         (USER, 'Обычный пользователь'),
@@ -95,7 +97,7 @@ def get_default_page_access(role):
         'settings': False,
     }
 
-    if normalized_role == UserRole.ADMIN:
+    if normalized_role in [UserRole.ADMIN, UserRole.IT_CENTER]:
         return {
             'dashboard': True,
             'ppe_arrival': True,
@@ -133,6 +135,16 @@ def get_default_feature_access(role):
             'dashboard_delete_employee': True,
             'employee_ppe_tab': True,
             'face_id_control': True,
+            'ppe_arrival_intake': True,
+        }
+
+    if normalized_role == UserRole.IT_CENTER:
+        return {
+            'dashboard_due_cards': True,
+            'dashboard_export_excel': True,
+            'dashboard_delete_employee': True,
+            'employee_ppe_tab': True,
+            'face_id_control': False,
             'ppe_arrival_intake': True,
         }
 

@@ -1,4 +1,4 @@
-export type NormalizedRole = 'admin' | 'warehouse_manager' | 'warehouse_staff' | 'user';
+export type NormalizedRole = 'admin' | 'it_center' | 'warehouse_manager' | 'warehouse_staff' | 'user';
 
 export type PageAccess = {
   dashboard: boolean;
@@ -22,13 +22,14 @@ const FEATURE_ACCESS_STORAGE_KEY = 'feature_access';
 export const normalizeRole = (rawRole: string | null): NormalizedRole => {
   const value = String(rawRole || '').trim().toLowerCase();
   if (value === 'admin' || value === 'админ') return 'admin';
+  if (value === 'it_center' || value === 'it-center' || value === 'it center') return 'it_center';
   if (value === 'warehouse_manager' || value === 'складской менеджер') return 'warehouse_manager';
   if (value === 'warehouse_staff' || value === 'складской рабочий') return 'warehouse_staff';
   return 'user';
 };
 
 export const getDefaultPageAccess = (role: NormalizedRole): PageAccess => {
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'it_center') {
     return {
       dashboard: true,
       ppe_arrival: true,
@@ -76,6 +77,17 @@ export const getDefaultFeatureAccess = (role: NormalizedRole): FeatureAccess => 
       dashboard_delete_employee: true,
       employee_ppe_tab: true,
       face_id_control: true,
+      ppe_arrival_intake: true,
+    };
+  }
+
+  if (role === 'it_center') {
+    return {
+      dashboard_due_cards: true,
+      dashboard_export_excel: true,
+      dashboard_delete_employee: true,
+      employee_ppe_tab: true,
+      face_id_control: false,
       ppe_arrival_intake: true,
     };
   }
