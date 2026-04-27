@@ -315,6 +315,22 @@ class BnpzIdLoginTests(APITestCase):
 		self.assertFalse(User.objects.filter(username='unauthorized_user').exists())
 
 
+class FaceIdDirectLoginDisabledTests(APITestCase):
+	def test_faceid_direct_login_is_disabled_by_default(self):
+		response = self.client.post(
+			'/api/v1/users/faceid/login/',
+			{'face_capture': build_test_image_data_url('captured-face.jpg')},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+		self.assertEqual(
+			response.data['error'],
+			'Прямой вход через Face ID отключен из соображений безопасности. Используйте логин и пароль с Face ID подтверждением.',
+		)
+
+
+@override_settings(FACE_ID_DIRECT_LOGIN_ENABLED=True)
 class FaceIdLoginTests(APITestCase):
 	@patch('users.views.list_employees')
 	@patch('users.views.calculate_face_similarity_score')

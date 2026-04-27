@@ -504,6 +504,14 @@ class FaceIdLoginAPIView(APIView):
 
     @staticmethod
     def post(request, *args, **kwargs):
+        if not bool(getattr(settings, 'FACE_ID_DIRECT_LOGIN_ENABLED', False)):
+            return Response(
+                {
+                    'error': 'Прямой вход через Face ID отключен из соображений безопасности. Используйте логин и пароль с Face ID подтверждением.',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         face_capture = request.data.get('face_capture')
 
         user, error_response = match_user_by_face_capture(face_capture)

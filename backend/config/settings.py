@@ -283,6 +283,7 @@ def _env_bool(name, default=False):
     return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+FACE_ID_DIRECT_LOGIN_ENABLED = _env_bool('FACE_ID_DIRECT_LOGIN_ENABLED', False)
 EMPLOYEE_SERVICE_ENABLED = _env_bool('EMPLOYEE_SERVICE_ENABLED', False)
 EMPLOYEE_SERVICE_BASE_URL = os.environ.get('EMPLOYEE_SERVICE_BASE_URL', 'http://127.0.0.1:5000').strip()
 EMPLOYEE_SERVICE_PUBLIC_URL = os.environ.get('EMPLOYEE_SERVICE_PUBLIC_URL', EMPLOYEE_SERVICE_PUBLIC_URL_DEFAULT).strip()

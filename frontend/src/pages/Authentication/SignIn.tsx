@@ -106,13 +106,6 @@ const SignIn: React.FC = () => {
     window.location.href = authorizeUrl.toString();
   };
 
-  const startFaceIdLogin = () => {
-    setFaceModalMode('face-only');
-    setFaceTargetUser('');
-    setFaceVerifyError('');
-    setFaceModalOpen(true);
-  };
-
   const completeBnpzIdLogin = async (code: string, state: string) => {
     const expectedState = consumeBnpzIdState();
     if (!expectedState || expectedState !== state) {
@@ -699,7 +692,7 @@ const SignIn: React.FC = () => {
                   <span className="h-px flex-1 bg-stroke dark:bg-strokedark"></span>
                 </div>
 
-                <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-1">
                   <button
                     type="button"
                     onClick={startBnpzIdLogin}
@@ -709,15 +702,10 @@ const SignIn: React.FC = () => {
                     <FaKey className='text-primary' />
                     Через bnpzID
                   </button>
-                  <button
-                    type="button"
-                    onClick={startFaceIdLogin}
-                    disabled={submitting || bnpzIdLoading}
-                    className="flex w-full items-center justify-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4 font-medium text-primary hover:bg-primary/10 disabled:opacity-60"
-                  >
-                    <MdOutlineFaceRetouchingNatural className='text-xl' />
-                    Через FaceID
-                  </button>
+                </div>
+
+                <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Прямой вход через Face ID отключен из соображений безопасности. Для входа используйте логин и пароль, а затем подтвердите личность через Face ID.
                 </div>
 
                 {/* <a href='https://t.me/marufshabonov1514' target='_blank' className="flex w-full items-center justify-center gap-3.5 rounded-lg border border-stroke bg-gray p-4 hover:bg-opacity-50 dark:border-strokedark dark:bg-meta-4 dark:hover:bg-opacity-50">
