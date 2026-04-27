@@ -1672,6 +1672,40 @@ def detect_face_boxes(image: Image.Image):
     ]
 
 
+def estimate_face_turn_score(image: Image.Image) -> float:
+    cv2 = _load_cv2_module()
+    detector, _, _ = _get_sface_engines()
+    if cv2 is None or detector is None:
+        raise ValueError('Сервис распознавания лиц пока не запущен (детектор)')
+
+    rgb_np = np.asarray(image.convert('RGB'))
+    if rgb_np.size == 0:
+        raise ValueError('Face ID изображение пустое.')
+
+    try:
+        bgr = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2BGR)
+        height, width = bgr.shape[:2]
+        detector.setInputSize((width, height))
+        _, faces = detector.detect(bgr)
+    except Exception as exc:
+        raise ValueError('Не удалось обработать изображение лица.') from exc
+
+    if faces is None or len(faces) == 0:
+        raise ValueError('Лицо не обнаружено')
+
+    best_face = max(faces, key=lambda face: float(face[2]) * float(face[3]))
+    if len(best_face) < 14:
+        raise ValueError('Недостаточно данных для проверки положения головы.')
+
+    landmarks = np.asarray(best_face[4:14], dtype=np.float32).reshape(5, 2)
+    eyes = sorted(landmarks[:2], key=lambda point: float(point[0]))
+    left_eye, right_eye = eyes[0], eyes[1]
+    nose = landmarks[2]
+    eye_distance = max(float(right_eye[0] - left_eye[0]), 1.0)
+    eye_center_x = float((left_eye[0] + right_eye[0]) / 2.0)
+    return float((float(nose[0]) - eye_center_x) / eye_distance)
+
+
 def _orb_similarity(face_a: np.ndarray, face_b: np.ndarray) -> float:
     cv2 = _load_cv2_module()
     if cv2 is None:

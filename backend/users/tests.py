@@ -185,6 +185,61 @@ class RolePageAccessSettingsTests(APITestCase):
 		self.assertLess(remaining_seconds, 7205)
 		self.assertEqual(response.data['token'], token.key)
 
+	@patch('users.views.calculate_face_turn_score')
+	@patch('users.views.calculate_face_similarity_score')
+	def test_password_login_requires_live_face_challenge(self, similarity_mock, turn_score_mock):
+		user = User.objects.create_user(username='face_session_user', password='test12345')
+		profile, _ = UserRole.objects.get_or_create(user=user)
+		profile.role = UserRole.USER
+		profile.face_id_required = True
+		profile.base_avatar = build_test_image('avatar.jpg')
+		profile.save(update_fields=['role', 'face_id_required', 'base_avatar'])
+
+		similarity_mock.side_effect = [95.0, 92.0]
+		turn_score_mock.side_effect = [0.01, 0.03]
+
+		response = self.client.post(
+			'/api/v1/users/login/',
+			{
+				'username': 'face_session_user',
+				'password': 'test12345',
+				'face_capture': build_test_image_data_url('captured-face.jpg'),
+				'face_challenge_capture': build_test_image_data_url('captured-side-face.jpg'),
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+		self.assertEqual(response.data['verified'], False)
+		self.assertIn('поверните голову в сторону', response.data['error'])
+
+	@patch('users.views.calculate_face_turn_score')
+	@patch('users.views.calculate_face_similarity_score')
+	def test_password_login_succeeds_with_live_face_challenge(self, similarity_mock, turn_score_mock):
+		user = User.objects.create_user(username='face_live_user', password='test12345')
+		profile, _ = UserRole.objects.get_or_create(user=user)
+		profile.role = UserRole.USER
+		profile.face_id_required = True
+		profile.base_avatar = build_test_image('avatar-live.jpg')
+		profile.save(update_fields=['role', 'face_id_required', 'base_avatar'])
+
+		similarity_mock.side_effect = [95.0, 90.0]
+		turn_score_mock.side_effect = [0.01, 0.22]
+
+		response = self.client.post(
+			'/api/v1/users/login/',
+			{
+				'username': 'face_live_user',
+				'password': 'test12345',
+				'face_capture': build_test_image_data_url('captured-front.jpg'),
+				'face_challenge_capture': build_test_image_data_url('captured-turn.jpg'),
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data['username'], 'face_live_user')
+
 	@override_settings(EMPLOYEE_SERVICE_ENABLED=True, EMPLOYEE_SERVICE_BASE_URL='http://employee-service:8010')
 	@patch('users.views.download_employee_image')
 	@patch('users.views.get_employee_by_slug')

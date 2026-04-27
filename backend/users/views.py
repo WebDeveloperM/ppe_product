@@ -37,6 +37,8 @@ from .models import (
 FACE_ID_VERIFY_THRESHOLD = float(getattr(settings, 'FACE_SIMILARITY_THRESHOLD', 72.0))
 FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', FACE_ID_VERIFY_THRESHOLD))
 FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
+FACE_ID_LIVE_CHALLENGE_POSE_DELTA = float(getattr(settings, 'FACE_ID_LIVE_CHALLENGE_POSE_DELTA', 0.12))
+FACE_ID_LIVE_CHALLENGE_FRAME_MATCH = float(getattr(settings, 'FACE_ID_LIVE_CHALLENGE_FRAME_MATCH', 55.0))
 
 
 def build_login_response(user):
@@ -288,6 +290,12 @@ def calculate_face_similarity_score(base_image, captured_image):
     return float(calculate_face_identity_similarity(base_image, captured_image))
 
 
+def calculate_face_turn_score(image):
+    from base.views import estimate_face_turn_score
+
+    return float(estimate_face_turn_score(image))
+
+
 def get_faceid_login_candidate_profiles():
     raw_profiles = UserRole.objects.select_related('user').filter(
         user__is_active=True,
@@ -390,7 +398,7 @@ def match_user_by_face_capture(face_capture):
     return best_profile.user, None
 
 
-def verify_login_face_id(user, profile, face_capture):
+def verify_login_face_id(user, profile, face_capture, face_challenge_capture):
     user_face_id_required = bool(profile.face_id_required) if profile else True
     if not user_face_id_required:
         return None
@@ -406,6 +414,15 @@ def verify_login_face_id(user, profile, face_capture):
         return Response(
             {
                 'error': 'Для этой роли требуется Face ID подтверждение.',
+                **face_id_context,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not face_challenge_capture:
+        return Response(
+            {
+                'error': 'Для Face ID подтверждения нужны два кадра: сначала смотрите прямо, затем поверните голову в сторону.',
                 **face_id_context,
             },
             status=status.HTTP_400_BAD_REQUEST,
@@ -441,6 +458,16 @@ def verify_login_face_id(user, profile, face_capture):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    challenge_image = decode_image_to_pil(face_challenge_capture)
+    if challenge_image is None:
+        return Response(
+            {
+                'error': 'Второй Face ID кадр некорректен.',
+                **face_id_context,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     try:
         similarity = calculate_face_similarity_score(base_image, captured_image)
     except ValueError as exc:
@@ -460,6 +487,27 @@ def verify_login_face_id(user, profile, face_capture):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    try:
+        frame_similarity = calculate_face_similarity_score(captured_image, challenge_image)
+        initial_turn_score = calculate_face_turn_score(captured_image)
+        challenge_turn_score = calculate_face_turn_score(challenge_image)
+    except ValueError as exc:
+        return Response(
+            {
+                'error': str(exc),
+                **face_id_context,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception:
+        return Response(
+            {
+                'error': 'Ошибка проверки живого Face ID подтверждения.',
+                **face_id_context,
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if similarity < FACE_ID_VERIFY_THRESHOLD:
         return Response(
             {
@@ -468,6 +516,31 @@ def verify_login_face_id(user, profile, face_capture):
                 'verified': False,
                 'similarity': round(similarity, 2),
                 'threshold': FACE_ID_VERIFY_THRESHOLD,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    if frame_similarity < FACE_ID_LIVE_CHALLENGE_FRAME_MATCH:
+        return Response(
+            {
+                'error': 'Face ID не подтвержден. Оба кадра должны принадлежать одному человеку.',
+                **face_id_context,
+                'verified': False,
+                'frame_similarity': round(frame_similarity, 2),
+                'frame_threshold': FACE_ID_LIVE_CHALLENGE_FRAME_MATCH,
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    pose_delta = abs(challenge_turn_score - initial_turn_score)
+    if pose_delta < FACE_ID_LIVE_CHALLENGE_POSE_DELTA:
+        return Response(
+            {
+                'error': 'Face ID не подтвержден. На втором кадре поверните голову в сторону, а не показывайте статичное фото.',
+                **face_id_context,
+                'verified': False,
+                'pose_delta': round(pose_delta, 3),
+                'pose_threshold': FACE_ID_LIVE_CHALLENGE_POSE_DELTA,
             },
             status=status.HTTP_403_FORBIDDEN,
         )
@@ -483,6 +556,7 @@ class LoginAPIView(APIView):
         username = request.data.get('username')
         password = request.data.get('password')
         face_capture = request.data.get('face_capture')
+        face_challenge_capture = request.data.get('face_challenge_capture')
 
         user = authenticate(username=username, password=password)
 
@@ -490,7 +564,7 @@ class LoginAPIView(APIView):
             role = get_effective_user_role(user)
 
             profile = getattr(user, 'role_profile', None)
-            face_verification_response = verify_login_face_id(user, profile, face_capture)
+            face_verification_response = verify_login_face_id(user, profile, face_capture, face_challenge_capture)
             if face_verification_response is not None:
                 return face_verification_response
 
