@@ -30,8 +30,8 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
 };
 
 const SignIn: React.FC = () => {
-  const FACE_BURST_FRAME_COUNT = 3;
-  const FACE_BURST_FRAME_DELAY_MS = 220;
+  const FACE_BURST_FRAME_COUNT = 4;
+  const FACE_BURST_FRAME_DELAY_MS = 260;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

@@ -37,8 +37,8 @@ from .models import (
 FACE_ID_VERIFY_THRESHOLD = float(getattr(settings, 'FACE_SIMILARITY_THRESHOLD', 72.0))
 FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', FACE_ID_VERIFY_THRESHOLD))
 FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
-FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURST_MOTION_THRESHOLD', 1.65))
-FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 3))
+FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURST_MOTION_THRESHOLD', 2.2))
+FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 4))
 
 
 def build_login_response(user):

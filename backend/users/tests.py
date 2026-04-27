@@ -212,6 +212,7 @@ class RolePageAccessSettingsTests(APITestCase):
 					build_test_image_data_url('captured-face-1.jpg'),
 					build_test_image_data_url('captured-face-2.jpg'),
 					build_test_image_data_url('captured-face-3.jpg'),
+					build_test_image_data_url('captured-face-4.jpg'),
 				],
 			},
 			format='json',
@@ -233,7 +234,7 @@ class RolePageAccessSettingsTests(APITestCase):
 
 		similarity_mock.return_value = 95.0
 		liveness_mock.return_value = {
-			'motion_score': 2.34,
+			'motion_score': 2.86,
 			'pixel_difference': 1.41,
 			'box_shift': 1.87,
 		}
@@ -248,6 +249,7 @@ class RolePageAccessSettingsTests(APITestCase):
 					build_test_image_data_url('captured-front.jpg'),
 					build_test_image_data_url('captured-middle.jpg'),
 					build_test_image_data_url('captured-end.jpg'),
+					build_test_image_data_url('captured-last.jpg'),
 				],
 			},
 			format='json',
