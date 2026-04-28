@@ -69,8 +69,6 @@ const SignIn: React.FC = () => {
   const [_, setResData] = useState("");
   const [error, setError] = useState<any>(null);
   const [bnpzIdLoading, setBnpzIdLoading] = useState(false);
-  const [challengeDirection, setChallengeDirection] = useState('');
-  const [challengeToken, setChallengeToken] = useState('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -505,15 +503,8 @@ const SignIn: React.FC = () => {
     }
     setFaceVerifyError('');
     setCaptureProgress(0);
-
-    if (challengeDirection) {
-      const dirLabel = challengeDirection === 'left' ? 'CHAPGA (влево) ←' : 'O\'NGGA (вправо) →';
-      setFaceBurstStatus(`Бошингизни ${dirLabel} буринг ушлаб туринг. Назаратингизни камерада ушлаб туринг...`);
-      await wait(1200);
-    } else {
-      setFaceBurstStatus('Приготовьтесь. Проверка займет несколько секунд. За это время хотя бы один раз моргните.');
-      await wait(FACE_BURST_PREPARE_DELAY_MS);
-    }
+    setFaceBurstStatus('Приготовьтесь. Проверка займет несколько секунд. За это время хотя бы один раз моргните.');
+    await wait(FACE_BURST_PREPARE_DELAY_MS);
 
     if (!videoRef.current || !canvasRef.current) {
       setFaceBurstStatus('');
@@ -521,12 +512,7 @@ const SignIn: React.FC = () => {
       return;
     }
 
-    if (challengeDirection) {
-      const dirLabel = challengeDirection === 'left' ? 'chapga ←' : 'o\'ngga →';
-      setFaceBurstStatus(`Kamera yoqilgan. Boshingizni ${dirLabel} buring va shu holatda ushlang...`);
-    } else {
-      setFaceBurstStatus('Идет проверка. Смотрите в камеру и хотя бы один раз моргните.');
-    }
+    setFaceBurstStatus('Идет проверка. Смотрите в камеру и хотя бы один раз моргните.');
 
     const frames: string[] = [];
     for (let index = 0; index < FACE_BURST_FRAME_COUNT; index += 1) {
@@ -569,8 +555,6 @@ const SignIn: React.FC = () => {
     setFaceVerifyError('');
     setFaceBounds(null);
     setCaptureProgress(0);
-    setChallengeDirection('');
-    setChallengeToken('');
     stopCamera();
   };
 
@@ -608,9 +592,6 @@ const SignIn: React.FC = () => {
     if (withFaceId && framePayload.length) {
       payload.face_capture_frames = framePayload;
     }
-    if (withFaceId && challengeToken) {
-      payload.face_challenge_token = challengeToken;
-    }
 
     setSubmitting(true);
     try {
@@ -631,13 +612,6 @@ const SignIn: React.FC = () => {
         setFaceTargetUser(fullName || responseData?.username || username);
         setFaceVerifyError('');
         setFaceBurstStatus('');
-        // Store challenge direction and token from server
-        if (responseData?.face_challenge_direction) {
-          setChallengeDirection(String(responseData.face_challenge_direction));
-        }
-        if (responseData?.face_challenge_token) {
-          setChallengeToken(String(responseData.face_challenge_token));
-        }
         setFaceModalOpen(true);
         toast.info('Для этой роли требуется Face ID подтверждение');
         return;
@@ -647,13 +621,6 @@ const SignIn: React.FC = () => {
         const message = getRequestErrorMessage(err, 'Face ID не подтвержден');
         setFaceVerifyError(String(message));
         setFaceBurstStatus('');
-        // Update challenge token if a new one is returned
-        if (responseData?.face_challenge_direction) {
-          setChallengeDirection(String(responseData.face_challenge_direction));
-        }
-        if (responseData?.face_challenge_token) {
-          setChallengeToken(String(responseData.face_challenge_token));
-        }
         toast.error(String(message));
         return;
       }
@@ -929,30 +896,9 @@ const SignIn: React.FC = () => {
               <p className="mb-2 text-sm font-medium text-black dark:text-white">Пользователь: {faceTargetUser}</p>
             ) : null}
 
-            {challengeDirection ? (
-              <div className="mb-3 rounded-lg border-2 border-indigo-400 bg-indigo-50 px-4 py-3 dark:border-indigo-600 dark:bg-indigo-950/40">
-                <p className="mb-1 text-sm font-semibold text-indigo-700 dark:text-indigo-300">
-                  Liveness tekshiruvi — boshingizni buring:
-                </p>
-                <div className="flex items-center gap-3">
-                  <span className="text-5xl leading-none" aria-label={challengeDirection === 'left' ? 'chapga' : 'o\'ngga'}>
-                    {challengeDirection === 'left' ? '←' : '→'}
-                  </span>
-                  <p className="text-base font-bold text-indigo-800 dark:text-indigo-200">
-                    {challengeDirection === 'left'
-                      ? "Boshingizni CHAPGA buring (влево)"
-                      : "Boshingizni O'NGGA buring (вправо)"}
-                  </p>
-                </div>
-                <p className="mt-1 text-xs text-indigo-600 dark:text-indigo-400">
-                  Tugmani bosing va boshingizni ko'rsatilgan tomonga burib, shu holatda ushlang.
-                </p>
-              </div>
-            ) : (
-              <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-                Смотрите в камеру несколько секунд и хотя бы один раз закройте и откройте глаза. Статичная фотография на телефоне такую проверку не пройдет.
-              </p>
-            )}
+            <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
+              Смотрите в камеру несколько секунд и хотя бы один раз закройте и откройте глаза. Статичная фотография на телефоне такую проверку не пройдет.
+            </p>
 
             {!cameraOpen ? (
               <div className="rounded border border-stroke px-3 py-2 text-sm text-slate-600 dark:border-strokedark dark:text-slate-300">
@@ -1020,7 +966,7 @@ const SignIn: React.FC = () => {
                       {faceGuideDetected
                         ? (submitting
                           ? 'Tekshiruv davom etmoqda...'
-                          : (challengeDirection ? (`Tayyor! Boshingizni ${challengeDirection === 'left' ? 'CHAPGA ←' : "O'NGGA →"} buring.`) : ''))
+                          : 'Tayyor! Kameraga tik qarang va tekshiruvni boshlang.')
                         : faceDetectionSupported
                           ? 'Kameraga tik qarang. Tizim yuzni aniqlashi kerak.'
                           : "Brauzer yuz detektorini qo'llamaydi. Yuzni markazda ushlab tekshiruvni boshlang."}
@@ -1036,9 +982,7 @@ const SignIn: React.FC = () => {
                   >
                     {submitting
                       ? 'Проверка...'
-                      : challengeDirection
-                        ? `Boshni ${challengeDirection === 'left' ? 'chapga \u2190' : "o'ngga \u2192"} burib tekshirish`
-                        : 'Проверить Face ID'}
+                      : 'Проверить Face ID'}
                   </button>
                 </div>
               </div>
