@@ -66,10 +66,13 @@ const FaceIDPage = () => {
   const [selectedMainEmployeeIds, setSelectedMainEmployeeIds] = useState<number[]>([]);
   const [bulkMainStatus, setBulkMainStatus] = useState<'required' | 'not_required'>('not_required');
   const [savingMainBulk, setSavingMainBulk] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'required' | 'not_required'>('all');
   const hasLoadedMainListRef = useRef(false);
 
   const totalModalPages = Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE));
-  const visibleEmployees = employees;
+  const visibleEmployees = statusFilter === 'all'
+    ? employees
+    : employees.filter((e) => statusFilter === 'required' ? e.requires_face_id_checkout : !e.requires_face_id_checkout);
 
   const fetchFaceIdEmployees = async (params: Record<string, string | number | boolean | undefined>) => {
     const response = await axioss.get('/employees/face-id-exemption/', { params });
@@ -83,10 +86,12 @@ const FaceIDPage = () => {
     setLoading(true);
     try {
       const search = [tableNumberSearch.trim(), employeeNameSearch.trim()].filter(Boolean).join(' ');
+      const requiresFilter = statusFilter === 'all' ? undefined : statusFilter === 'required';
       const response = await fetchFaceIdEmployees({
         page,
         page_size: PAGE_SIZE,
         search: search || undefined,
+        ...(requiresFilter !== undefined ? { requires_face_id_checkout: requiresFilter } : {}),
       });
       setEmployees(response.employees);
       setTotalCount(response.count);
@@ -130,7 +135,7 @@ const FaceIDPage = () => {
       loadEmployees(1);
     }, delay);
     return () => window.clearTimeout(timeoutId);
-  }, [canManageFaceIdControl, employeeNameSearch, tableNumberSearch]);
+  }, [canManageFaceIdControl, employeeNameSearch, tableNumberSearch, statusFilter]);
 
   useEffect(() => {
     if (!canManageFaceIdControl || !isAddModalOpen) {
@@ -369,6 +374,15 @@ const FaceIDPage = () => {
               placeholder="Поиск по ФИО"
               className="flex-1 rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
             />
+            <select
+              value={statusFilter}
+              onChange={(e) => { setStatusFilter(e.target.value as 'all' | 'required' | 'not_required'); setSelectedMainEmployeeIds([]); }}
+              className="rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
+            >
+              <option value="all">Все статусы</option>
+              <option value="not_required">Не требуется</option>
+              <option value="required">Требуется</option>
+            </select>
             <div className="flex shrink-0 items-center gap-2">
               <div className="flex flex-col">
                 <span className="mb-1 text-xs text-slate-500 dark:text-slate-400">Статус для выбранных</span>
