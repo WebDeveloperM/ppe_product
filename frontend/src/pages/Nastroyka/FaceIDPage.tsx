@@ -16,15 +16,7 @@ type Employee = {
   requires_face_id_checkout: boolean;
 };
 
-type FallbackEmployeesCache = {
-  filteredEmployees: Employee[];
-  nextRawPage: number;
-  rawTotalPages: number;
-  exhausted: boolean;
-};
-
 const PAGE_SIZE = 50;
-const FALLBACK_PAGE_SIZE = 200;
 
 const getBackendError = (error: any, fallback: string) => {
   const data = error?.response?.data;
@@ -72,7 +64,6 @@ const FaceIDPage = () => {
   const [bulkModalStatus, setBulkModalStatus] = useState<'required' | 'not_required'>('not_required');
   const [savingSelectedEmployee, setSavingSelectedEmployee] = useState(false);
   const hasLoadedMainListRef = useRef(false);
-  const fallbackEmployeesCacheRef = useRef<Record<string, FallbackEmployeesCache>>({});
 
   const totalModalPages = Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE));
   const visibleEmployees = useMemo(
@@ -88,81 +79,17 @@ const FaceIDPage = () => {
     };
   };
 
-  const loadEmployeesFromFallback = async (page: number, search?: string) => {
-    const cacheKey = search || '__all__';
-    let cache = fallbackEmployeesCacheRef.current[cacheKey];
-    if (!cache) {
-      cache = {
-        filteredEmployees: [],
-        nextRawPage: 1,
-        rawTotalPages: 1,
-        exhausted: false,
-      };
-      fallbackEmployeesCacheRef.current[cacheKey] = cache;
-    }
-
-    const neededEmployeesCount = page * PAGE_SIZE;
-    while (!cache.exhausted && cache.filteredEmployees.length < neededEmployeesCount) {
-      const nextResponse = await fetchFaceIdEmployees({
-        page: cache.nextRawPage,
-        page_size: FALLBACK_PAGE_SIZE,
-        search,
-      });
-
-      if (cache.nextRawPage === 1) {
-        cache.rawTotalPages = Math.max(1, Math.ceil(nextResponse.count / FALLBACK_PAGE_SIZE));
-      }
-
-      cache.filteredEmployees.push(
-        ...nextResponse.employees.filter((employee) => !employee.requires_face_id_checkout),
-      );
-      cache.nextRawPage += 1;
-      cache.exhausted = cache.nextRawPage > cache.rawTotalPages || nextResponse.employees.length === 0;
-    }
-
-    const startIndex = (page - 1) * PAGE_SIZE;
-    const pageEmployees = cache.filteredEmployees.slice(startIndex, startIndex + PAGE_SIZE);
-    setEmployees(pageEmployees);
-    setTotalCount(
-      cache.exhausted
-        ? cache.filteredEmployees.length
-        : Math.max(cache.filteredEmployees.length, startIndex + pageEmployees.length + 1),
-    );
-    setCurrentPage(page);
-  };
-
   const loadEmployees = async (page = 1) => {
     setLoading(true);
     try {
       const search = [tableNumberSearch.trim(), employeeNameSearch.trim()].filter(Boolean).join(' ');
-      const cacheKey = search || '__all__';
       const response = await fetchFaceIdEmployees({
         requires_face_id_checkout: false,
         page,
         page_size: PAGE_SIZE,
         search: search || undefined,
       });
-
-      const returnedEmployees = response.employees;
-      const visibleReturnedEmployees = returnedEmployees.filter((employee) => !employee.requires_face_id_checkout);
-      const backendFilterLooksBroken = response.count > 0
-        && (
-          visibleReturnedEmployees.length === 0
-          || returnedEmployees.some((employee) => employee.requires_face_id_checkout)
-        );
-
-      if (backendFilterLooksBroken) {
-        await loadEmployeesFromFallback(page, search || undefined);
-        return;
-      }
-
-      fallbackEmployeesCacheRef.current[cacheKey] = {
-        filteredEmployees: visibleReturnedEmployees,
-        nextRawPage: 2,
-        rawTotalPages: 1,
-        exhausted: true,
-      };
-      setEmployees(returnedEmployees);
+      setEmployees(response.employees);
       setTotalCount(response.count);
       setCurrentPage(page);
     } catch (error) {
