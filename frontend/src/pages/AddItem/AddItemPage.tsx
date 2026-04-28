@@ -641,23 +641,23 @@ const AddItemPage = () => {
     }
   };
 
-  const captureAndVerifyFace = async () => {
-    if (!slug || !videoRef.current || !canvasRef.current) return;
+  const captureFramesFromCamera = async (frameCount = 1) => {
+    if (!videoRef.current || !canvasRef.current) return [] as string[];
 
     const video = videoRef.current;
     if (!cameraLive) {
       setError('Камера ещё не готова. Подождите несколько секунд и повторите попытку');
-      return;
+      return [];
     }
 
     if ((video.videoWidth || 0) < 2 || (video.videoHeight || 0) < 2) {
       setError('Не удалось получить изображение с камеры. Выберите другую камеру и повторите попытку');
-      return;
+      return [];
     }
 
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
-    if (!context) return;
+    if (!context) return [];
 
     const captureFrame = () => {
       canvas.width = video.videoWidth || 640;
@@ -667,16 +667,32 @@ const AddItemPage = () => {
     };
 
     const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-
     const capturedFrames: string[] = [];
-    for (let index = 0; index < 4; index += 1) {
+
+    for (let index = 0; index < frameCount; index += 1) {
       capturedFrames.push(captureFrame());
-      if (index < 3) {
+      if (index < frameCount - 1) {
         await sleep(120);
       }
     }
 
     setCapturedImage(capturedFrames[capturedFrames.length - 1] || null);
+    return capturedFrames;
+  };
+
+  const handleCaptureFrameOnly = async () => {
+    const capturedFrames = await captureFramesFromCamera(1);
+    if (!capturedFrames.length) return;
+
+    setFaceVerified(false);
+    setFaceMessage('Кадр снят. Можно сохранить его как базовое фото.');
+  };
+
+  const captureAndVerifyFace = async () => {
+    if (!slug) return;
+
+    const capturedFrames = await captureFramesFromCamera(4);
+    if (!capturedFrames.length) return;
 
     setVerifyingFace(true);
     setFaceMessage('Проверка...');
@@ -1103,6 +1119,15 @@ const AddItemPage = () => {
                             <div className="text-xs text-gray-500">Yuz aniqlandi: {faceBoxes.length}</div>
                           )}
                           <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={handleCaptureFrameOnly}
+                              disabled={updatingBaseImage || !cameraLive}
+                              className="rounded bg-sky-600 px-3 py-2 text-sm text-white hover:bg-sky-700 disabled:opacity-50"
+                              title={!cameraLive ? 'Сначала дождитесь запуска видеопотока камеры' : ''}
+                            >
+                              Снять кадр
+                            </button>
                             <button
                               type="button"
                               onClick={captureAndVerifyFace}
