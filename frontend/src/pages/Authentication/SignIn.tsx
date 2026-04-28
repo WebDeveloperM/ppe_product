@@ -871,9 +871,9 @@ const SignIn: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {/* <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                   Прямой вход через Face ID отключен из соображений безопасности. Для входа используйте логин и пароль, а затем подтвердите личность через Face ID.
-                </div>
+                </div> */}
 
                 {/* <a href='https://t.me/marufshabonov1514' target='_blank' className="flex w-full items-center justify-center gap-3.5 rounded-lg border border-stroke bg-gray p-4 hover:bg-opacity-50 dark:border-strokedark dark:bg-meta-4 dark:hover:bg-opacity-50">
                   <FaKey className='text-primary' />
@@ -919,7 +919,7 @@ const SignIn: React.FC = () => {
                     />
                     {faceBounds ? (
                       <div
-                        className="pointer-events-none absolute border-2 border-emerald-400/80 transition-all duration-200"
+                        className="pointer-events-none absolute transition-all duration-200"
                         style={{
                           left: `${faceBounds.leftPct}%`,
                           top: `${faceBounds.topPct}%`,
@@ -947,7 +947,7 @@ const SignIn: React.FC = () => {
                             cy="50"
                             r="46"
                             fill="none"
-                            stroke="rgb(34 197 94)"
+                            stroke="rgba(255,255,255,0.82)"
                             strokeWidth="4"
                             strokeLinecap="round"
                             strokeDasharray={ringCircumference}
