@@ -930,22 +930,24 @@ const SignIn: React.FC = () => {
                         }}
                       >
                         <svg
-                          className="absolute inset-[-10px] h-[calc(100%+20px)] w-[calc(100%+20px)] -rotate-90"
+                          className="absolute inset-[-10px] h-[calc(100%+20px)] w-[calc(100%+20px)]"
                           viewBox="0 0 100 100"
                           preserveAspectRatio="none"
                         >
-                          <circle
+                          <ellipse
                             cx="50"
                             cy="50"
-                            r="46"
+                            rx="36"
+                            ry="46"
                             fill="none"
                             stroke="rgba(255,255,255,0.28)"
                             strokeWidth="3"
                           />
-                          <circle
+                          <ellipse
                             cx="50"
                             cy="50"
-                            r="46"
+                            rx="36"
+                            ry="46"
                             fill="none"
                             stroke="rgb(34 197 94)"
                             strokeWidth="4"
