@@ -150,6 +150,23 @@ const LockIcon = () => (
   </svg>
 );
 
+const ReportIcon = () => (
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6" />
+    <path d="M8 13h8" />
+    <path d="M8 17h8" />
+    <path d="M8 9h2" />
+  </svg>
+);
+
+const formatDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const NastroykaPage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
@@ -170,6 +187,7 @@ const NastroykaPage = () => {
   const [users, setUsers] = useState<SettingsUser[]>([]);
   const [usersCount, setUsersCount] = useState(0);
   const [employeeCount, setEmployeeCount] = useState(0);
+  const [dailyIssueCount, setDailyIssueCount] = useState(0);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -194,9 +212,20 @@ const NastroykaPage = () => {
         const results = Array.isArray(usersPayload) ? usersPayload : usersPayload.results || [];
         setUsers(results);
         setUsersCount(Array.isArray(usersPayload) ? results.length : Number(usersPayload.count || 0));
+
+        const todayKey = formatDateKey(new Date());
+        const dailyIssuesRes = await axioss.get('/all-items/', {
+          params: {
+            issued_at: todayKey,
+            page: 1,
+            page_size: 1,
+          },
+        });
+        setDailyIssueCount(Number(dailyIssuesRes.data?.count || 0));
       } else {
         setUsers([]);
         setUsersCount(0);
+        setDailyIssueCount(0);
       }
     } catch (error) {
       toast.error(getBackendError(error, 'Не удалось загрузить данные настроек'));
@@ -323,6 +352,13 @@ const NastroykaPage = () => {
                   count={4}
                   onClick={() => navigate('/nastroyka/page-access')}
                   color="bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+                />
+                <SettingCard
+                  icon={ReportIcon}
+                  title="Ежедневная выдача СИЗ"
+                  count={dailyIssueCount}
+                  onClick={() => navigate('/nastroyka/daily-ppe-issued')}
+                  color="bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400"
                 />
               </>
             )}

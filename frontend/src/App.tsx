@@ -37,6 +37,7 @@ import PersonPage from './pages/Nastroyka/PersonPage';
 import UserPage from './pages/Nastroyka/UserPage';
 import FaceIDPage from './pages/Nastroyka/FaceIDPage';
 import PageAccessPage from './pages/Nastroyka/PageAccessPage';
+import DailyPPEIssuedPage from './pages/Nastroyka/DailyPPEIssuedPage';
 import IssueQrDetailPage from './pages/IssueQr/IssueQrDetailPage';
 import 'primeicons/primeicons.css';
 import { isAuthenticated } from './utils/auth';
@@ -395,6 +396,19 @@ function App() {
               <>
                 <PageTitle title="Доступ к страницам" />
                 <PageAccessPage />
+              </>
+            ) : (
+              <Navigate to={isAuthenticated() ? getDeniedRoute() : '/auth/signin'} replace />
+            )
+          }
+        />
+        <Route
+          path="/nastroyka/daily-ppe-issued"
+          element={
+            isAuthenticated() && canAccessSettings && isAdmin ? (
+              <>
+                <PageTitle title="Ежедневная выдача СИЗ" />
+                <DailyPPEIssuedPage />
               </>
             ) : (
               <Navigate to={isAuthenticated() ? getDeniedRoute() : '/auth/signin'} replace />
