@@ -10,6 +10,19 @@ import axios from 'axios'
 import { RiLockPasswordLine } from "react-icons/ri";
 import { normalizeFeatureAccess, normalizePageAccess, normalizeRole, storeFeatureAccess, storePageAccess } from '../../utils/pageAccess';
 
+type FaceBounds = {
+  leftPct: number;
+  topPct: number;
+  widthPct: number;
+  heightPct: number;
+};
+
+type BrowserFaceDetector = {
+  detect: (input: HTMLVideoElement) => Promise<Array<{ boundingBox?: { x: number; y: number; width: number; height: number } }>>;
+};
+
+type BrowserFaceDetectorConstructor = new (options?: { fastMode?: boolean; maxDetectedFaces?: number }) => BrowserFaceDetector;
+
 const getRequestErrorMessage = (error: any, fallback: string) => {
   const status = Number(error?.response?.status || 0);
   const responseData = error?.response?.data || {};
@@ -29,6 +42,9 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
   return fallback;
 };
 
+const FACE_DETECTION_INTERVAL_MS = 250;
+const FACE_OVERLAY_PADDING = 4;
+
 const SignIn: React.FC = () => {
   const FACE_BURST_FRAME_COUNT = 10;
   const FACE_BURST_FRAME_DELAY_MS = 300;
@@ -46,6 +62,9 @@ const SignIn: React.FC = () => {
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [faceVerifyError, setFaceVerifyError] = useState('');
   const [faceBurstStatus, setFaceBurstStatus] = useState('');
+  const [faceBounds, setFaceBounds] = useState<FaceBounds | null>(null);
+  const [captureProgress, setCaptureProgress] = useState(0);
+  const [faceDetectionSupported, setFaceDetectionSupported] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [_, setResData] = useState("");
   const [error, setError] = useState<any>(null);
@@ -53,10 +72,84 @@ const SignIn: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const faceDetectorRef = useRef<BrowserFaceDetector | null>(null);
+  const faceDetectionTimerRef = useRef<number | null>(null);
+  const faceDetectionBusyRef = useRef(false);
   const bnpzIdHandledRef = useRef(false);
   const navigate = useNavigate();
 
+  const stopFaceDetectionLoop = () => {
+    if (faceDetectionTimerRef.current !== null) {
+      window.clearTimeout(faceDetectionTimerRef.current);
+      faceDetectionTimerRef.current = null;
+    }
+    faceDetectionBusyRef.current = false;
+  };
+
+  const toPercent = (value: number, total: number) => {
+    if (!total) return 0;
+    return Math.max(0, Math.min(100, (value / total) * 100));
+  };
+
+  const normalizeDetectedFace = (boundingBox: { x: number; y: number; width: number; height: number }, video: HTMLVideoElement): FaceBounds => {
+    const left = Math.max(0, boundingBox.x - (boundingBox.width * FACE_OVERLAY_PADDING) / 100);
+    const top = Math.max(0, boundingBox.y - (boundingBox.height * FACE_OVERLAY_PADDING) / 100);
+    const width = Math.min(video.videoWidth - left, boundingBox.width * (1 + (FACE_OVERLAY_PADDING * 2) / 100));
+    const height = Math.min(video.videoHeight - top, boundingBox.height * (1 + (FACE_OVERLAY_PADDING * 2) / 100));
+
+    return {
+      leftPct: toPercent(left, video.videoWidth),
+      topPct: toPercent(top, video.videoHeight),
+      widthPct: toPercent(width, video.videoWidth),
+      heightPct: toPercent(height, video.videoHeight),
+    };
+  };
+
+  const scheduleFaceDetection = (delay = FACE_DETECTION_INTERVAL_MS) => {
+    stopFaceDetectionLoop();
+    if (!faceModalOpen || !cameraLive || !faceDetectorRef.current) {
+      return;
+    }
+
+    faceDetectionTimerRef.current = window.setTimeout(() => {
+      void detectFaceInVideo();
+    }, delay);
+  };
+
+  const detectFaceInVideo = async () => {
+    if (faceDetectionBusyRef.current || !faceModalOpen || !cameraLive || !videoRef.current || !faceDetectorRef.current) {
+      scheduleFaceDetection();
+      return;
+    }
+
+    const video = videoRef.current;
+    if (!video.videoWidth || !video.videoHeight || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      scheduleFaceDetection();
+      return;
+    }
+
+    faceDetectionBusyRef.current = true;
+    try {
+      const detectedFaces = await faceDetectorRef.current.detect(video);
+      const bestFace = (detectedFaces || [])
+        .map((item: { boundingBox?: { x: number; y: number; width: number; height: number } }) => item?.boundingBox)
+        .filter((item: { x: number; y: number; width: number; height: number } | undefined): item is { x: number; y: number; width: number; height: number } => Boolean(item))
+        .sort(
+          (left: { x: number; y: number; width: number; height: number }, right: { x: number; y: number; width: number; height: number }) =>
+            (right.width * right.height) - (left.width * left.height),
+        )[0];
+
+      setFaceBounds(bestFace ? normalizeDetectedFace(bestFace, video) : null);
+    } catch {
+      setFaceBounds(null);
+    } finally {
+      faceDetectionBusyRef.current = false;
+      scheduleFaceDetection();
+    }
+  };
+
   const stopCamera = () => {
+    stopFaceDetectionLoop();
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track: MediaStreamTrack) => track.stop());
       streamRef.current = null;
@@ -66,13 +159,50 @@ const SignIn: React.FC = () => {
     }
     setCameraOpen(false);
     setCameraLive(false);
+    setFaceBounds(null);
+    setCaptureProgress(0);
   };
+
+  useEffect(() => {
+    const FaceDetectorApi = (window as Window & { FaceDetector?: BrowserFaceDetectorConstructor }).FaceDetector;
+    if (FaceDetectorApi) {
+      faceDetectorRef.current = new FaceDetectorApi({ fastMode: true, maxDetectedFaces: 1 });
+      setFaceDetectionSupported(true);
+      return;
+    }
+
+    faceDetectorRef.current = null;
+    setFaceDetectionSupported(false);
+  }, []);
 
   useEffect(() => {
     return () => {
       stopCamera();
     };
   }, []);
+
+  useEffect(() => {
+    if (!faceModalOpen || !cameraLive) {
+      stopFaceDetectionLoop();
+      setFaceBounds(null);
+      return;
+    }
+
+    if (!faceDetectorRef.current) {
+      setFaceBounds({
+        leftPct: 30,
+        topPct: 16,
+        widthPct: 40,
+        heightPct: 58,
+      });
+      return;
+    }
+
+    scheduleFaceDetection(0);
+    return () => {
+      stopFaceDetectionLoop();
+    };
+  }, [faceModalOpen, cameraLive]);
 
   const persistBnpzIdState = (state: string) => {
     sessionStorage.setItem('bnpzid_state', state);
@@ -367,12 +497,18 @@ const SignIn: React.FC = () => {
 
   const captureFace = async () => {
     if (!videoRef.current || !canvasRef.current) return;
+    if (!faceBounds) {
+      setFaceVerifyError('Сначала дождитесь, пока система найдет лицо в кадре.');
+      return;
+    }
     setFaceVerifyError('');
+    setCaptureProgress(0);
     setFaceBurstStatus('Приготовьтесь. Проверка займет несколько секунд. За это время хотя бы один раз моргните.');
     await wait(FACE_BURST_PREPARE_DELAY_MS);
 
     if (!videoRef.current || !canvasRef.current) {
       setFaceBurstStatus('');
+      setCaptureProgress(0);
       return;
     }
 
@@ -380,9 +516,11 @@ const SignIn: React.FC = () => {
 
     const frames: string[] = [];
     for (let index = 0; index < FACE_BURST_FRAME_COUNT; index += 1) {
+      setCaptureProgress((index + 1) / FACE_BURST_FRAME_COUNT);
       const frame = captureCurrentFrame();
       if (!frame) {
         setFaceBurstStatus('');
+        setCaptureProgress(0);
         return;
       }
       frames.push(frame);
@@ -393,13 +531,18 @@ const SignIn: React.FC = () => {
 
     if (!frames.length) {
       setFaceBurstStatus('');
+      setCaptureProgress(0);
       return;
     }
 
     setFaceCapture(frames[0]);
     setFaceCaptureFrames(frames);
     setFaceBurstStatus('Кадры сняты, выполняется проверка...');
-    await performLogin(true, frames[0], frames);
+    try {
+      await performLogin(true, frames[0], frames);
+    } finally {
+      setCaptureProgress(0);
+    }
   };
 
   const closeFaceModal = () => {
@@ -410,6 +553,8 @@ const SignIn: React.FC = () => {
     setFaceTargetUser('');
     setCameraError('');
     setFaceVerifyError('');
+    setFaceBounds(null);
+    setCaptureProgress(0);
     stopCamera();
   };
 
@@ -508,6 +653,11 @@ const SignIn: React.FC = () => {
   };
 
   console.log(error, 1111111);
+
+  const faceGuideDetected = Boolean(faceBounds);
+  const ringProgress = Math.max(0, Math.min(1, captureProgress));
+  const ringCircumference = 2 * Math.PI * 46;
+  const ringDashOffset = ringCircumference * (1 - ringProgress);
 
 
   return (
@@ -755,21 +905,73 @@ const SignIn: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-2">
-                <video
-                  ref={videoRef}
-                  className="h-[70vh] w-full rounded border bg-black object-cover"
-                  autoPlay
-                  playsInline
-                  muted
-                  onPlaying={() => setCameraLive(true)}
-                  onPause={() => setCameraLive(false)}
-                  onEmptied={() => setCameraLive(false)}
-                />
+                <div className="relative overflow-hidden rounded border bg-black">
+                  <div className="aspect-video w-full">
+                    <video
+                      ref={videoRef}
+                      className="h-full w-full object-cover"
+                      autoPlay
+                      playsInline
+                      muted
+                      onPlaying={() => setCameraLive(true)}
+                      onPause={() => setCameraLive(false)}
+                      onEmptied={() => setCameraLive(false)}
+                    />
+                    {faceBounds ? (
+                      <div
+                        className="pointer-events-none absolute border-2 border-emerald-400/80 bg-emerald-400/10 shadow-[0_0_0_9999px_rgba(15,23,42,0.18)] transition-all duration-200"
+                        style={{
+                          left: `${faceBounds.leftPct}%`,
+                          top: `${faceBounds.topPct}%`,
+                          width: `${faceBounds.widthPct}%`,
+                          height: `${faceBounds.heightPct}%`,
+                          borderRadius: '999px',
+                        }}
+                      >
+                        <svg
+                          className="absolute inset-[-10px] h-[calc(100%+20px)] w-[calc(100%+20px)] -rotate-90"
+                          viewBox="0 0 100 100"
+                          preserveAspectRatio="none"
+                        >
+                          <circle
+                            cx="50"
+                            cy="50"
+                            r="46"
+                            fill="none"
+                            stroke="rgba(255,255,255,0.28)"
+                            strokeWidth="3"
+                          />
+                          <circle
+                            cx="50"
+                            cy="50"
+                            r="46"
+                            fill="none"
+                            stroke="rgb(34 197 94)"
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                            strokeDasharray={ringCircumference}
+                            strokeDashoffset={ringDashOffset}
+                            style={{ transition: submitting ? 'stroke-dashoffset 0.25s linear' : 'stroke-dashoffset 0.18s ease' }}
+                          />
+                        </svg>
+                      </div>
+                    ) : null}
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/80 to-transparent px-4 py-3 text-xs text-white">
+                      {faceGuideDetected
+                        ? (submitting
+                          ? 'Yuz aniqlandi. Blink tekshiruvi davom etmoqda.'
+                          : 'Yuz aniqlandi. Ko‘zni ochib-yoping va tekshiruvni boshlang.')
+                        : faceDetectionSupported
+                          ? 'Kameraga tik qarang. Tizim yuzni aniqlashi kerak.'
+                          : 'Brauzer yuz detektorini qo‘llamaydi. Yuzni markazda ushlab tekshiruvni boshlang.'}
+                    </div>
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={captureFace}
-                    disabled={!cameraLive || submitting}
+                    disabled={!cameraLive || submitting || !faceGuideDetected}
                     className="rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
                   >
                     {submitting ? 'Проверка...' : 'Проверить Face ID'}
