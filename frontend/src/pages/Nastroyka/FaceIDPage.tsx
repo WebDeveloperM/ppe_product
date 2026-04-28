@@ -66,10 +66,7 @@ const FaceIDPage = () => {
   const hasLoadedMainListRef = useRef(false);
 
   const totalModalPages = Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE));
-  const visibleEmployees = useMemo(
-    () => employees.filter((employee) => !employee.requires_face_id_checkout),
-    [employees],
-  );
+  const visibleEmployees = employees;
 
   const fetchFaceIdEmployees = async (params: Record<string, string | number | boolean | undefined>) => {
     const response = await axioss.get('/employees/face-id-exemption/', { params });
@@ -84,7 +81,6 @@ const FaceIDPage = () => {
     try {
       const search = [tableNumberSearch.trim(), employeeNameSearch.trim()].filter(Boolean).join(' ');
       const response = await fetchFaceIdEmployees({
-        requires_face_id_checkout: false,
         page,
         page_size: PAGE_SIZE,
         search: search || undefined,

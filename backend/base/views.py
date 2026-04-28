@@ -5139,14 +5139,14 @@ class EmployeeFaceIdExemptionApiView(APIView):
                     requires_face_id_checkout=requires_face_id_filter,
                 )
                 if isinstance(payload, dict):
-                    employees = list(payload.get('employees') or payload.get('results') or [])
+                    employees = [apply_local_face_id_override(employee) for employee in (payload.get('employees') or payload.get('results') or [])]
                     return Response({
                         'count': payload.get('count', 0),
                         'next': payload.get('next'),
                         'previous': payload.get('previous'),
                         'employees': employees,
                     }, status=status.HTTP_200_OK)
-                employees = list(payload if isinstance(payload, list) else [])
+                employees = [apply_local_face_id_override(employee) for employee in (payload if isinstance(payload, list) else [])]
                 if requires_face_id_filter is not None:
                     employees = [
                         employee for employee in employees
