@@ -922,11 +922,11 @@ const SignIn: React.FC = () => {
                         className="pointer-events-none absolute transition-all duration-200"
                         style={{
                           left: `${Math.max(0, faceBounds.leftPct - 3)}%`,
-                          top: `${Math.max(0, faceBounds.topPct - 2)}%`,
-                          width: `${Math.min(100, faceBounds.widthPct * 0.92)}%`,
-                          height: `${Math.min(100, faceBounds.heightPct * 1.08)}%`,
+                          top: `${Math.max(0, faceBounds.topPct - 3)}%`,
+                          width: `${Math.min(100, faceBounds.widthPct * 0.74)}%`,
+                          height: `${Math.min(100, faceBounds.heightPct * 1.22)}%`,
                           borderRadius: '999px',
-                          transform: 'translateX(10%)',
+                          transform: 'translateX(16%)',
                         }}
                       >
                         <svg
