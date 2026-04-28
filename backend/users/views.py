@@ -431,6 +431,9 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_
     if not user_face_id_required:
         return None
 
+    if profile and profile.employee_slug:
+        profile = sync_profile_avatar_from_employee_service(user, profile)
+
     face_id_context = {
         'requires_face_id': True,
         'username': user.username,

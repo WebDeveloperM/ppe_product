@@ -328,6 +328,75 @@ class RolePageAccessSettingsTests(APITestCase):
 		self.assertEqual(response.status_code, status.HTTP_200_OK)
 		self.assertEqual(response.data['username'], 'face_live_user')
 
+	@override_settings(EMPLOYEE_SERVICE_ENABLED=True)
+	@patch('users.views.download_employee_image')
+	@patch('users.views.get_employee_by_slug')
+	@patch('users.views.calculate_face_blink_result')
+	@patch('users.views.calculate_face_burst_liveness')
+	@patch('users.views.calculate_face_similarity_score')
+	def test_password_login_syncs_base_avatar_from_employee_service_before_face_verification(
+		self,
+		similarity_mock,
+		liveness_mock,
+		blink_mock,
+		get_employee_mock,
+		download_image_mock,
+	):
+		user = User.objects.create_user(username='face_sync_login_user', password='test12345')
+		profile, _ = UserRole.objects.get_or_create(user=user)
+		profile.role = UserRole.USER
+		profile.employee_slug = 'emp-face-login-sync'
+		profile.face_id_required = True
+		profile.base_avatar = None
+		profile.save(update_fields=['role', 'employee_slug', 'face_id_required', 'base_avatar'])
+
+		get_employee_mock.return_value = {
+			'slug': 'emp-face-login-sync',
+			'first_name': 'Face',
+			'last_name': 'Login Sync',
+			'tabel_number': '7788',
+			'base_image_url': 'http://employee-service:8010/media/employee_base_images/7788.jpg',
+		}
+		download_image_mock.return_value = build_test_image('7788.jpg').read()
+		similarity_mock.return_value = 95.0
+		liveness_mock.return_value = {
+			'motion_score': 2.86,
+			'pixel_difference': 1.41,
+			'box_shift': 1.87,
+		}
+		blink_mock.return_value = {
+			'blink_detected': True,
+			'score_drop': 10.4,
+		}
+
+		response = self.client.post(
+			'/api/v1/users/login/',
+			{
+				'username': 'face_sync_login_user',
+				'password': 'test12345',
+				'face_capture': build_test_image_data_url('captured-front.jpg'),
+				'face_capture_frames': [
+					build_test_image_data_url('captured-1.jpg'),
+					build_test_image_data_url('captured-2.jpg'),
+					build_test_image_data_url('captured-3.jpg'),
+					build_test_image_data_url('captured-4.jpg'),
+					build_test_image_data_url('captured-5.jpg'),
+					build_test_image_data_url('captured-6.jpg'),
+					build_test_image_data_url('captured-7.jpg'),
+					build_test_image_data_url('captured-8.jpg'),
+					build_test_image_data_url('captured-9.jpg'),
+					build_test_image_data_url('captured-10.jpg'),
+				],
+			},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, status.HTTP_200_OK)
+		self.assertEqual(response.data['username'], 'face_sync_login_user')
+		profile.refresh_from_db()
+		self.assertTrue(bool(profile.base_avatar))
+		download_image_mock.assert_called_once_with('http://employee-service:8010/media/employee_base_images/7788.jpg')
+
 	@override_settings(EMPLOYEE_SERVICE_ENABLED=True, EMPLOYEE_SERVICE_BASE_URL='http://employee-service:8010')
 	@patch('users.views.download_employee_image')
 	@patch('users.views.get_employee_by_slug')
