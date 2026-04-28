@@ -17,6 +17,7 @@ type Employee = {
 };
 
 const PAGE_SIZE = 50;
+const FALLBACK_PAGE_SIZE = 200;
 
 const getBackendError = (error: any, fallback: string) => {
   const data = error?.response?.data;
@@ -71,20 +72,62 @@ const FaceIDPage = () => {
     [employees],
   );
 
+  const fetchFaceIdEmployees = async (params: Record<string, string | number | boolean | undefined>) => {
+    const response = await axioss.get('/employees/face-id-exemption/', { params });
+    return {
+      employees: Array.isArray(response.data?.employees) ? response.data.employees as Employee[] : [],
+      count: Number(response.data?.count || 0),
+    };
+  };
+
+  const loadEmployeesFromFallback = async (page: number, search?: string) => {
+    const filteredEmployees: Employee[] = [];
+    const firstPage = await fetchFaceIdEmployees({
+      page: 1,
+      page_size: FALLBACK_PAGE_SIZE,
+      search,
+    });
+
+    filteredEmployees.push(...firstPage.employees.filter((employee) => !employee.requires_face_id_checkout));
+
+    const totalPages = Math.max(1, Math.ceil(firstPage.count / FALLBACK_PAGE_SIZE));
+    for (let nextPage = 2; nextPage <= totalPages; nextPage += 1) {
+      const nextResponse = await fetchFaceIdEmployees({
+        page: nextPage,
+        page_size: FALLBACK_PAGE_SIZE,
+        search,
+      });
+      filteredEmployees.push(...nextResponse.employees.filter((employee) => !employee.requires_face_id_checkout));
+    }
+
+    const startIndex = (page - 1) * PAGE_SIZE;
+    setEmployees(filteredEmployees.slice(startIndex, startIndex + PAGE_SIZE));
+    setTotalCount(filteredEmployees.length);
+    setCurrentPage(page);
+  };
+
   const loadEmployees = async (page = 1) => {
     setLoading(true);
     try {
       const search = [tableNumberSearch.trim(), employeeNameSearch.trim()].filter(Boolean).join(' ');
-      const response = await axioss.get('/employees/face-id-exemption/', {
-        params: {
-          requires_face_id_checkout: false,
-          page,
-          page_size: PAGE_SIZE,
-          search: search || undefined,
-        },
+      const response = await fetchFaceIdEmployees({
+        requires_face_id_checkout: false,
+        page,
+        page_size: PAGE_SIZE,
+        search: search || undefined,
       });
-      setEmployees(Array.isArray(response.data?.employees) ? response.data.employees : []);
-      setTotalCount(Number(response.data?.count || 0));
+
+      const returnedEmployees = response.employees;
+      const allReturnedNeedFaceId = returnedEmployees.length > 0
+        && returnedEmployees.every((employee) => employee.requires_face_id_checkout);
+
+      if (response.count > 0 && allReturnedNeedFaceId) {
+        await loadEmployeesFromFallback(page, search || undefined);
+        return;
+      }
+
+      setEmployees(returnedEmployees);
+      setTotalCount(response.count);
       setCurrentPage(page);
     } catch (error) {
       toast.error(getBackendError(error, 'Не удалось загрузить список сотрудников'));
