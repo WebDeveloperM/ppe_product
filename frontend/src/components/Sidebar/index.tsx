@@ -95,6 +95,20 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
           ),
         }
       : null,
+    isAdmin
+      ? {
+          to: '/nastroyka/daily-ppe-issued',
+          label: 'Ежедневная выдача СИЗ',
+          icon: (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M14 3H7C5.89543 3 5 3.89543 5 5V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V8L14 3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+              <path d="M14 3V8H19" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+              <path d="M9 13H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              <path d="M9 17H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+            </svg>
+          ),
+        }
+      : null,
     canManageFaceIdControl
       ? {
           to: '/nastroyka/faceid',
