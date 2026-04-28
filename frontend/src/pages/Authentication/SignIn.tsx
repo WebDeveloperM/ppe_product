@@ -921,12 +921,12 @@ const SignIn: React.FC = () => {
                       <div
                         className="pointer-events-none absolute transition-all duration-200"
                         style={{
-                          left: `${faceBounds.leftPct}%`,
-                          top: `${faceBounds.topPct}%`,
-                          width: `${faceBounds.widthPct * 0.78}%`,
-                          height: `${faceBounds.heightPct}%`,
+                          left: `${Math.max(0, faceBounds.leftPct - 3)}%`,
+                          top: `${Math.max(0, faceBounds.topPct - 2)}%`,
+                          width: `${Math.min(100, faceBounds.widthPct * 0.92)}%`,
+                          height: `${Math.min(100, faceBounds.heightPct * 1.08)}%`,
                           borderRadius: '999px',
-                          transform: 'translateX(14%)',
+                          transform: 'translateX(10%)',
                         }}
                       >
                         <svg
@@ -947,7 +947,7 @@ const SignIn: React.FC = () => {
                             cy="50"
                             r="46"
                             fill="none"
-                            stroke="rgba(255,255,255,0.82)"
+                            stroke="rgb(34 197 94)"
                             strokeWidth="4"
                             strokeLinecap="round"
                             strokeDasharray={ringCircumference}
