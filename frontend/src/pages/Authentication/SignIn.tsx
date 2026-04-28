@@ -616,11 +616,17 @@ const SignIn: React.FC = () => {
   console.log(error, 1111111);
 
   const faceGuideDetected = Boolean(faceBounds);
+  const autofocusFrameWidth = faceBounds
+    ? Math.min(100, faceBounds.widthPct + 6)
+    : 64;
+  const autofocusFrameLeft = faceBounds
+    ? Math.max(0, 100 - (Math.max(0, faceBounds.leftPct - 3) + autofocusFrameWidth))
+    : 18;
   const autofocusFrameStyle = faceBounds
     ? {
-        left: `${Math.max(0, faceBounds.leftPct - 3)}%`,
+        left: `${autofocusFrameLeft}%`,
         top: `${Math.max(0, faceBounds.topPct - 3)}%`,
-        width: `${Math.min(100, faceBounds.widthPct + 6)}%`,
+        width: `${autofocusFrameWidth}%`,
         height: `${Math.min(100, faceBounds.heightPct + 6)}%`,
       }
     : {
@@ -908,11 +914,11 @@ const SignIn: React.FC = () => {
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/80 to-transparent px-4 py-3 text-xs text-white">
                       {faceGuideDetected
                         ? (submitting
-                          ? 'Tekshiruv davom etmoqda...'
-                          : 'Tayyor! Kameraga tik qarang va suratga oling.')
+                          ? 'Проверка продолжается...'
+                          : 'Готово. Смотрите в камеру и сделайте снимок.')
                         : faceDetectionSupported
-                          ? 'Kameraga tik qarang. Tizim yuzni aniqlashi kerak.'
-                          : "Brauzer yuz detektorini qo'llamaydi. Yuzni markazda ushlab tekshiruvni boshlang."}
+                          ? 'Смотрите прямо в камеру. Система должна определить лицо.'
+                          : 'Браузер не поддерживает детектор лица. Удерживайте лицо по центру и начните проверку.'}
                     </div>
                   </div>
                 </div>
@@ -934,7 +940,7 @@ const SignIn: React.FC = () => {
             {cameraError ? <p className="mt-2 text-xs text-red-600">{cameraError}</p> : null}
             {faceVerifyError ? <p className="mt-2 text-xs text-red-600">{faceVerifyError}</p> : null}
             {faceBurstStatus ? <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{faceBurstStatus}</p> : null}
-            {faceCapture ? <p className="mt-2 text-xs text-green-600">Кадры для Face ID подготовлены</p> : null}
+            {faceCapture ? <p className="mt-2 text-xs text-green-600">Снимок для Face ID подготовлен</p> : null}
             <canvas ref={canvasRef} className="hidden" />
 
             <div className="mt-4 flex gap-2">
