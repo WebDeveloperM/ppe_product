@@ -241,11 +241,11 @@ const DailyPPEIssuedPage = () => {
                 <thead className="bg-slate-100 dark:bg-slate-800">
                   <tr>
                     <th className="px-4 py-3 text-left font-semibold">№</th>
-                    <th className="px-4 py-3 text-left font-semibold">Tabel number</th>
-                    <th className="px-4 py-3 text-left font-semibold">Hodim</th>
-                    <th className="px-4 py-3 text-left font-semibold">PPE product</th>
-                    <th className="px-4 py-3 text-left font-semibold">Tasdiqlash rasmi</th>
-                    <th className="px-4 py-3 text-left font-semibold">QR code</th>
+                    <th className="px-4 py-3 text-left font-semibold">Табельный номер</th>
+                    <th className="px-4 py-3 text-left font-semibold">Сотрудник</th>
+                    <th className="px-4 py-3 text-left font-semibold">Продукт СИЗ</th>
+                    <th className="px-4 py-3 text-left font-semibold">Подтверждающая подпись</th>
+                    <th className="px-4 py-3 text-left font-semibold">QR код</th>
                   </tr>
                 </thead>
                 <tbody>
