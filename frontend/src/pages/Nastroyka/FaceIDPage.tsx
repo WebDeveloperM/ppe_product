@@ -34,6 +34,10 @@ const getEmployeeFullName = (employee: Employee) => {
   return `${employee.last_name} ${employee.first_name} ${employee.surname || ''}`.trim() || '—';
 };
 
+const getFaceIdStatusLabel = (requiresFaceIdCheckout: boolean) => {
+  return requiresFaceIdCheckout ? 'Требуется' : 'Не требуется';
+};
+
 const FaceIDPage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
@@ -56,8 +60,11 @@ const FaceIDPage = () => {
   const [modalEmployeeNameSearch, setModalEmployeeNameSearch] = useState('');
   const [modalCurrentPage, setModalCurrentPage] = useState(1);
   const [modalTotalCount, setModalTotalCount] = useState(0);
-  const [selectedModalEmployee, setSelectedModalEmployee] = useState<Employee | null>(null);
+  const [selectedModalEmployeeIds, setSelectedModalEmployeeIds] = useState<number[]>([]);
+  const [bulkModalStatus, setBulkModalStatus] = useState<'required' | 'not_required'>('not_required');
   const [savingSelectedEmployee, setSavingSelectedEmployee] = useState(false);
+
+  const totalModalPages = Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE));
 
   const loadEmployees = async (page = 1) => {
     setLoading(true);
@@ -139,22 +146,26 @@ const FaceIDPage = () => {
           emp.id === employeeId ? { ...emp, requires_face_id_checkout: newStatus } : emp,
         ),
       );
+      setModalEmployees((prev) =>
+        prev.map((emp) =>
+          emp.id === employeeId ? { ...emp, requires_face_id_checkout: newStatus } : emp,
+        ),
+      );
       const message = newStatus
         ? `Face ID требуется для ${response.data.employee.full_name}`
         : `Face ID НЕ требуется для ${response.data.employee.full_name}`;
       toast.success(message);
-      if (isAddModalOpen) {
-        loadModalEmployees(modalCurrentPage);
-      }
     } catch (error) {
       toast.error(getBackendError(error, 'Ошибка при обновлении статуса Face ID'));
+      throw error;
     }
   };
 
   const openAddModal = () => {
     setModalTableNumberSearch('');
     setModalEmployeeNameSearch('');
-    setSelectedModalEmployee(null);
+    setSelectedModalEmployeeIds([]);
+    setBulkModalStatus('not_required');
     setModalCurrentPage(1);
     setModalTotalCount(0);
     setModalEmployees([]);
@@ -167,28 +178,64 @@ const FaceIDPage = () => {
       return;
     }
     setIsAddModalOpen(false);
-    setSelectedModalEmployee(null);
+    setSelectedModalEmployeeIds([]);
   };
 
   const handleAddSelectedEmployee = async () => {
-    if (!selectedModalEmployee || savingSelectedEmployee) {
+    if (selectedModalEmployeeIds.length === 0 || savingSelectedEmployee) {
       return;
     }
-    if (!selectedModalEmployee.requires_face_id_checkout) {
-      toast.info(`Для ${getEmployeeFullName(selectedModalEmployee)} Face ID уже не требуется`);
+
+    const targetStatus = bulkModalStatus === 'required';
+    const selectedEmployees = modalEmployees.filter((employee) => selectedModalEmployeeIds.includes(employee.id));
+    const employeesToUpdate = selectedEmployees.filter(
+      (employee) => employee.requires_face_id_checkout !== targetStatus,
+    );
+
+    if (employeesToUpdate.length === 0) {
+      toast.info(`У выбранных сотрудников уже установлен статус: ${getFaceIdStatusLabel(targetStatus)}`);
       closeAddModal();
       return;
     }
 
     setSavingSelectedEmployee(true);
     try {
-      await handleToggleFaceIdExemption(selectedModalEmployee.slug, selectedModalEmployee.id, false);
+      await Promise.all(
+        employeesToUpdate.map((employee) =>
+          handleToggleFaceIdExemption(employee.slug, employee.id, targetStatus),
+        ),
+      );
       await loadEmployees(1);
+      await loadModalEmployees(modalCurrentPage);
       setIsAddModalOpen(false);
-      setSelectedModalEmployee(null);
+      setSelectedModalEmployeeIds([]);
+      toast.success(
+        `Статус "${getFaceIdStatusLabel(targetStatus)}" установлен для ${employeesToUpdate.length} сотрудника(ов)`,
+      );
     } finally {
       setSavingSelectedEmployee(false);
     }
+  };
+
+  const toggleModalEmployeeSelection = (employeeId: number) => {
+    setSelectedModalEmployeeIds((prev) =>
+      prev.includes(employeeId)
+        ? prev.filter((id) => id !== employeeId)
+        : [...prev, employeeId],
+    );
+  };
+
+  const toggleSelectAllModalEmployees = () => {
+    setSelectedModalEmployeeIds((prev) => {
+      const pageEmployeeIds = modalEmployees.map((employee) => employee.id);
+      const areAllSelected = pageEmployeeIds.length > 0 && pageEmployeeIds.every((id) => prev.includes(id));
+
+      if (areAllSelected) {
+        return prev.filter((id) => !pageEmployeeIds.includes(id));
+      }
+
+      return Array.from(new Set([...prev, ...pageEmployeeIds]));
+    });
   };
 
   const openConfirmModal = (employee: Employee, newStatus: boolean) => {
@@ -392,27 +439,57 @@ const FaceIDPage = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
-              <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                <input
-                  type="text"
-                  value={modalTableNumberSearch}
-                  onChange={(event) => setModalTableNumberSearch(event.target.value)}
-                  placeholder="Поиск по табельному номеру"
-                  className="w-full rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
-                />
-                <input
-                  type="text"
-                  value={modalEmployeeNameSearch}
-                  onChange={(event) => setModalEmployeeNameSearch(event.target.value)}
-                  placeholder="Поиск по ФИО"
-                  className="w-full rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
-                />
+              <div className="mb-4 flex flex-col gap-3 rounded border border-stroke bg-slate-50 p-4 dark:border-strokedark dark:bg-boxdark-2 lg:flex-row lg:items-end lg:justify-between">
+                <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-2">
+                  <input
+                    type="text"
+                    value={modalTableNumberSearch}
+                    onChange={(event) => setModalTableNumberSearch(event.target.value)}
+                    placeholder="Поиск по табельному номеру"
+                    className="w-full rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
+                  />
+                  <input
+                    type="text"
+                    value={modalEmployeeNameSearch}
+                    onChange={(event) => setModalEmployeeNameSearch(event.target.value)}
+                    placeholder="Поиск по ФИО"
+                    className="w-full rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
+                  />
+                </div>
+                <label className="flex min-w-[220px] flex-col text-sm text-slate-700 dark:text-slate-200">
+                  <span className="mb-1 font-medium">Статус для выбранных</span>
+                  <select
+                    value={bulkModalStatus}
+                    onChange={(event) => setBulkModalStatus(event.target.value as 'required' | 'not_required')}
+                    className="rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
+                  >
+                    <option value="not_required">Не требуется</option>
+                    <option value="required">Требуется</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+                <button
+                  type="button"
+                  onClick={toggleSelectAllModalEmployees}
+                  disabled={modalEmployees.length === 0 || modalLoading}
+                  className="rounded border border-stroke px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark dark:text-slate-200 dark:hover:bg-boxdark-2"
+                >
+                  {modalEmployees.length > 0 && modalEmployees.every((employee) => selectedModalEmployeeIds.includes(employee.id))
+                    ? 'Снять выбор со страницы'
+                    : 'Выбрать всю страницу'}
+                </button>
+                <div className="text-slate-500 dark:text-slate-300">
+                  Выбрано: {selectedModalEmployeeIds.length}
+                </div>
               </div>
 
               <div className="overflow-x-auto rounded border border-stroke dark:border-strokedark">
                 <table className="min-w-full text-sm">
                   <thead className="bg-slate-100 dark:bg-slate-800">
                     <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Выбор</th>
                       <th className="px-3 py-2 text-left font-semibold">Таб. №</th>
                       <th className="px-3 py-2 text-left font-semibold">ФИО</th>
                       <th className="px-3 py-2 text-left font-semibold">Должность</th>
@@ -421,15 +498,24 @@ const FaceIDPage = () => {
                   </thead>
                   <tbody>
                     {modalEmployees.map((emp) => {
-                      const isSelected = selectedModalEmployee?.id === emp.id;
+                      const isSelected = selectedModalEmployeeIds.includes(emp.id);
                       return (
                         <tr
                           key={emp.id}
-                          onClick={() => setSelectedModalEmployee(emp)}
+                          onClick={() => toggleModalEmployeeSelection(emp.id)}
                           className={`cursor-pointer border-t border-stroke transition-colors dark:border-strokedark ${
                             isSelected ? 'bg-primary/10' : 'hover:bg-slate-50 dark:hover:bg-boxdark-2'
                           }`}
                         >
+                          <td className="px-3 py-3">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleModalEmployeeSelection(emp.id)}
+                              onClick={(event) => event.stopPropagation()}
+                              className="h-4 w-4 rounded border-stroke text-primary focus:ring-primary"
+                            />
+                          </td>
                           <td className="px-3 py-3 text-gray-500">{emp.tabel_number || '—'}</td>
                           <td className="px-3 py-3 text-slate-900 dark:text-white">{getEmployeeFullName(emp)}</td>
                           <td className="px-3 py-3 text-gray-500">{emp.position || '—'}</td>
@@ -441,7 +527,7 @@ const FaceIDPage = () => {
                                   : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'
                               }`}
                             >
-                              {emp.requires_face_id_checkout ? 'Требуется' : 'Не требуется'}
+                              {getFaceIdStatusLabel(emp.requires_face_id_checkout)}
                             </span>
                           </td>
                         </tr>
@@ -449,7 +535,7 @@ const FaceIDPage = () => {
                     })}
                     {!modalLoading && modalEmployees.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Нет сотрудников</td>
+                        <td colSpan={5} className="px-3 py-6 text-center text-gray-500">Нет сотрудников</td>
                       </tr>
                     )}
                   </tbody>
@@ -471,12 +557,12 @@ const FaceIDPage = () => {
                     Назад
                   </button>
                   <span className="text-gray-500">
-                    {modalCurrentPage} / {Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE))}
+                    {modalCurrentPage} / {totalModalPages}
                   </span>
                   <button
                     type="button"
-                    onClick={() => loadModalEmployees(Math.min(Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE)), modalCurrentPage + 1))}
-                    disabled={modalCurrentPage >= Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE)) || modalLoading}
+                    onClick={() => loadModalEmployees(Math.min(totalModalPages, modalCurrentPage + 1))}
+                    disabled={modalCurrentPage >= totalModalPages || modalLoading}
                     className="rounded border border-stroke px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark"
                   >
                     Вперёд
@@ -497,10 +583,10 @@ const FaceIDPage = () => {
               <button
                 type="button"
                 onClick={handleAddSelectedEmployee}
-                disabled={!selectedModalEmployee || savingSelectedEmployee}
+                disabled={selectedModalEmployeeIds.length === 0 || savingSelectedEmployee}
                 className="rounded bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {savingSelectedEmployee ? 'Сохранение...' : 'Добавить'}
+                {savingSelectedEmployee ? 'Сохранение...' : 'Изменить статус'}
               </button>
             </div>
           </div>
