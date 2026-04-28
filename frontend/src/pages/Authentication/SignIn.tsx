@@ -919,13 +919,14 @@ const SignIn: React.FC = () => {
                     />
                     {faceBounds ? (
                       <div
-                        className="pointer-events-none absolute border-2 border-emerald-400/80 bg-emerald-400/10 shadow-[0_0_0_9999px_rgba(15,23,42,0.18)] transition-all duration-200"
+                        className="pointer-events-none absolute border-2 border-emerald-400/80 transition-all duration-200"
                         style={{
                           left: `${faceBounds.leftPct}%`,
                           top: `${faceBounds.topPct}%`,
-                          width: `${faceBounds.widthPct}%`,
+                          width: `${faceBounds.widthPct * 0.78}%`,
                           height: `${faceBounds.heightPct}%`,
                           borderRadius: '999px',
+                          transform: 'translateX(14%)',
                         }}
                       >
                         <svg

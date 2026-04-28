@@ -1820,10 +1820,19 @@ def estimate_face_blink(images: list[Image.Image]) -> dict:
     peak_score = max(eye_scores) if eye_scores else 0.0
     min_score = min(eye_scores) if eye_scores else 0.0
     score_drop = peak_score - min_score
-    min_index = eye_scores.index(min_score) if eye_scores else 0
-    open_before = max(eye_counts[:min_index], default=0) >= 1
-    open_after = max(eye_counts[min_index + 1:], default=0) >= 1
-    blink_detected = min_index not in {0, len(eye_scores) - 1} and open_before and open_after and score_drop >= blink_threshold
+
+    blink_detected = False
+    for frame_index in range(1, len(eye_scores) - 1):
+        current_score = eye_scores[frame_index]
+        left_peak = max(eye_scores[:frame_index], default=0.0)
+        right_peak = max(eye_scores[frame_index + 1 :], default=0.0)
+        local_drop = min(left_peak, right_peak) - current_score
+        open_before = max(eye_counts[:frame_index], default=0) >= 1 or left_peak >= blink_threshold
+        open_after = max(eye_counts[frame_index + 1 :], default=0) >= 1 or right_peak >= blink_threshold
+
+        if local_drop >= blink_threshold and open_before and open_after:
+            blink_detected = True
+            break
 
     return {
         'blink_detected': blink_detected,
