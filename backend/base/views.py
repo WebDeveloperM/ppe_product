@@ -37,6 +37,7 @@ from users.authentication import ExpiringTokenAuthentication as TokenAuthenticat
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.utils.dateparse import parse_date
 from .utils import import_computers_from_excel
 from django.shortcuts import get_object_or_404
 from django.db.models import Count
@@ -3363,6 +3364,61 @@ class AllItemsApiView(APIView):
         rows = build_employee_table_rows(result_page)
 
         return paginator.get_paginated_response(rows)
+
+
+class DailyIssuedItemsApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        issued_at_raw = str(request.GET.get('issued_at') or request.GET.get('date') or '').strip()
+        target_date = parse_date(issued_at_raw) if issued_at_raw else timezone.localdate()
+        if target_date is None:
+            return Response({'error': 'Дата указана некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        items = list(
+            Item.objects
+            .filter(is_deleted=False, issued_at__date=target_date)
+            .select_related('issued_by')
+            .prefetch_related('ppeproduct', 'pending_source')
+            .order_by('-issued_at', '-id')
+        )
+        attach_employee_snapshots(items)
+
+        rows = []
+        for item in items:
+            serialized = ItemSerializer(item, context={'request': request}).data
+            pending_obj = item.pending_source.filter(status=PendingItemIssue.STATUS_CONFIRMED).order_by('-confirmed_at').first()
+
+            signature_url = None
+            qr_code_image_url = None
+            qr_scan_url = None
+            if pending_obj is not None:
+                if pending_obj.signature_image:
+                    try:
+                        signature_url = pending_obj.signature_image.url
+                    except Exception:
+                        signature_url = None
+                if pending_obj.qr_code_image:
+                    try:
+                        qr_code_image_url = pending_obj.qr_code_image.url
+                    except Exception:
+                        qr_code_image_url = None
+                qr_frontend_path = pending_obj.get_qr_frontend_path()
+                if qr_frontend_path:
+                    try:
+                        qr_scan_url = request.build_absolute_uri(qr_frontend_path)
+                    except Exception:
+                        qr_scan_url = qr_frontend_path
+
+            rows.append({
+                **serialized,
+                'signature_image': signature_url,
+                'qr_code_image': qr_code_image_url,
+                'qr_scan_url': qr_scan_url,
+            })
+
+        return Response(rows)
 
 
 class ItemHistoryUsersApiView(APIView):

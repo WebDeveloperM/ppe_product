@@ -13,6 +13,9 @@ type EmployeeInfo = {
   last_name?: string;
   surname?: string;
   tabel_number?: string;
+  position?: string;
+  department?: { name?: string };
+  section?: { name?: string };
 };
 
 type IssueProduct = {
@@ -22,29 +25,22 @@ type IssueProduct = {
   type_product_display?: string | null;
 };
 
-type IssueHistoryRow = {
+type DailyIssuedApiRow = {
   id: number;
   issued_at?: string | null;
   signature_image?: string | null;
   qr_code_image?: string | null;
   qr_scan_url?: string | null;
-  ppeproduct_info?: IssueProduct[];
-};
-
-type AllItemsRow = {
-  id: number;
-  issued_at?: string | null;
-  signature?: string | null;
-  qr_image?: string | null;
   employee?: EmployeeInfo;
   ppeproduct_info?: IssueProduct[];
-  issue_history?: IssueHistoryRow[];
 };
 
 type DailyIssueRow = {
   key: string;
   tabelNumber: string;
   fullName: string;
+  position: string;
+  departmentSection: string;
   issuedAtRaw: string;
   issuedAt: string;
   productsLabel: string;
@@ -104,6 +100,13 @@ const buildFullName = (employee?: EmployeeInfo) => {
     .join(' ') || '—';
 };
 
+const buildDepartmentSection = (employee?: EmployeeInfo) => {
+  const department = String(employee?.department?.name || '').trim();
+  const section = String(employee?.section?.name || '').trim();
+  if (department && section) return `${department} / ${section}`;
+  return department || section || '—';
+};
+
 const buildProductsLabel = (products?: IssueProduct[]) => {
   if (!Array.isArray(products) || products.length === 0) return '—';
   return products
@@ -134,43 +137,29 @@ const DailyPPEIssuedPage = () => {
     const loadReport = async () => {
       setLoading(true);
       try {
-        const response = await axioss.get('/all-items/', {
+        const response = await axioss.get('/daily-issued-items/', {
           params: {
-            no_pagination: true,
-            include_issue_history: true,
+            issued_at: selectedDate,
           },
         });
 
-        const payload: AllItemsRow[] = Array.isArray(response.data) ? response.data : [];
+        const payload: DailyIssuedApiRow[] = Array.isArray(response.data) ? response.data : [];
         const nextRows = payload
-          .flatMap((item) => {
+          .map((item) => {
             const employee = item?.employee;
-            const history = Array.isArray(item?.issue_history) && item.issue_history.length > 0
-              ? item.issue_history
-              : (item?.issued_at
-                  ? [{
-                      id: item.id,
-                      issued_at: item.issued_at,
-                      signature_image: item.signature,
-                      qr_code_image: item.qr_image,
-                      qr_scan_url: null,
-                      ppeproduct_info: item.ppeproduct_info || [],
-                    }]
-                  : []);
-
-            return history
-              .filter((issue) => String(issue?.issued_at || '').slice(0, 10) === selectedDate)
-              .map((issue) => ({
-                key: `${employee?.id || item.id}-${issue.id}`,
-                tabelNumber: String(employee?.tabel_number || '').trim() || '—',
-                fullName: buildFullName(employee),
-                issuedAtRaw: String(issue?.issued_at || ''),
-                issuedAt: formatIssuedAt(issue?.issued_at),
-                productsLabel: buildProductsLabel(issue?.ppeproduct_info),
-                signatureImage: resolveEmployeeImageUrl(issue?.signature_image),
-                qrCodeImage: resolveEmployeeImageUrl(issue?.qr_code_image),
-                qrScanUrl: String(issue?.qr_scan_url || '').trim(),
-              }));
+            return {
+              key: `${employee?.id || item.id}-${item.id}`,
+              tabelNumber: String(employee?.tabel_number || '').trim() || '—',
+              fullName: buildFullName(employee),
+              position: String(employee?.position || '').trim() || '—',
+              departmentSection: buildDepartmentSection(employee),
+              issuedAtRaw: String(item?.issued_at || ''),
+              issuedAt: formatIssuedAt(item?.issued_at),
+              productsLabel: buildProductsLabel(item?.ppeproduct_info),
+              signatureImage: resolveEmployeeImageUrl(item?.signature_image),
+              qrCodeImage: resolveEmployeeImageUrl(item?.qr_code_image),
+              qrScanUrl: String(item?.qr_scan_url || '').trim(),
+            };
           })
           .sort((left, right) => right.issuedAtRaw.localeCompare(left.issuedAtRaw));
 
@@ -253,7 +242,7 @@ const DailyPPEIssuedPage = () => {
                   <tr>
                     <th className="px-4 py-3 text-left font-semibold">№</th>
                     <th className="px-4 py-3 text-left font-semibold">Tabel number</th>
-                    <th className="px-4 py-3 text-left font-semibold">F.I.O</th>
+                    <th className="px-4 py-3 text-left font-semibold">Hodim</th>
                     <th className="px-4 py-3 text-left font-semibold">PPE product</th>
                     <th className="px-4 py-3 text-left font-semibold">Tasdiqlash rasmi</th>
                     <th className="px-4 py-3 text-left font-semibold">QR code</th>
@@ -267,7 +256,11 @@ const DailyPPEIssuedPage = () => {
                         <div>{row.tabelNumber}</div>
                         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{row.issuedAt}</div>
                       </td>
-                      <td className="px-4 py-4 text-black dark:text-white">{row.fullName}</td>
+                      <td className="px-4 py-4 text-black dark:text-white">
+                        <div className="font-medium">{row.fullName}</div>
+                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{row.position}</div>
+                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{row.departmentSection}</div>
+                      </td>
                       <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.productsLabel}</td>
                       <td className="px-4 py-4">
                         {row.signatureImage ? (

@@ -16,6 +16,7 @@ urlpatterns = [
     path("statistics/ppe-arrival-details/", PPEStatisticsArrivalDetailsApiView.as_view()),
     path("statistics/ppe-issued-details/", PPEStatisticsIssuedDetailsApiView.as_view()),
     path("all-items/", AllItemsApiView.as_view()),
+    path("daily-issued-items/", DailyIssuedItemsApiView.as_view()),
     path("item-history-users/", ItemHistoryUsersApiView.as_view()),
     path("item-view/<slug:slug>", ItemDetailApiView.as_view()),
     path("add-item/<slug:slug>", ItemAddApiView.as_view()),
