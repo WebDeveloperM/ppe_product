@@ -66,6 +66,10 @@ const FaceIDPage = () => {
   const hasLoadedMainListRef = useRef(false);
 
   const totalModalPages = Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE));
+  const visibleEmployees = useMemo(
+    () => employees.filter((employee) => !employee.requires_face_id_checkout),
+    [employees],
+  );
 
   const loadEmployees = async (page = 1) => {
     setLoading(true);
@@ -338,7 +342,7 @@ const FaceIDPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {employees.map((emp) => {
+                {visibleEmployees.map((emp) => {
                   const fullName = getEmployeeFullName(emp);
                   return (
                     <tr key={emp.id} className="border-t border-stroke dark:border-strokedark">
@@ -357,7 +361,7 @@ const FaceIDPage = () => {
                     </tr>
                   );
                 })}
-                {!loading && employees.length === 0 && (
+                {!loading && visibleEmployees.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Нет данных</td>
                   </tr>
@@ -369,7 +373,7 @@ const FaceIDPage = () => {
           <div className="mt-4 flex flex-col gap-3 border-t border-stroke pt-4 text-sm dark:border-strokedark sm:flex-row sm:items-center sm:justify-between">
             <div className="text-gray-500">
               Показано {(totalCount === 0 ? 0 : ((currentPage - 1) * PAGE_SIZE) + 1)}-
-              {Math.min(currentPage * PAGE_SIZE, totalCount)} из {totalCount}
+              {Math.min(((currentPage - 1) * PAGE_SIZE) + visibleEmployees.length, totalCount)} из {totalCount}
             </div>
             <div className="flex items-center gap-2">
               <button
