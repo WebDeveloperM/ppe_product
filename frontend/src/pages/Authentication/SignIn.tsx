@@ -965,7 +965,7 @@ const SignIn: React.FC = () => {
                       {faceGuideDetected
                         ? (submitting
                           ? 'Yuz aniqlandi. Blink tekshiruvi davom etmoqda.'
-                          : 'Yuz aniqlandi. Ko‘zni ochib-yoping va tekshiruvni boshlang.')
+                          : '')
                         : faceDetectionSupported
                           ? 'Kameraga tik qarang. Tizim yuzni aniqlashi kerak.'
                           : 'Brauzer yuz detektorini qo‘llamaydi. Yuzni markazda ushlab tekshiruvni boshlang.'}
