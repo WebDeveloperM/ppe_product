@@ -1842,6 +1842,120 @@ def estimate_face_blink(images: list[Image.Image]) -> dict:
     }
 
 
+def estimate_head_pose_direction(images: list, required_direction: str) -> dict:
+    """
+    Estimates head pose (yaw/pitch) across frames using YuNet landmarks + solvePnP.
+    Checks if the user turned their head in the required direction.
+    Returns {'passed': bool, 'max_right_yaw': float, 'max_left_yaw': float, ...}
+    """
+    cv2 = _load_cv2_module()
+    if cv2 is None:
+        return {'passed': True, 'reason': 'cv2_unavailable_skipped'}
+
+    detector, _, _ = _get_sface_engines()
+    if detector is None:
+        return {'passed': True, 'reason': 'detector_unavailable_skipped'}
+
+    # Generic 3D face model (approximate mm, nose tip at origin)
+    face_3d = np.array([
+        (0.0, 0.0, 0.0),           # Nose tip
+        (-43.3, 32.7, -26.0),      # Right eye (person's right)
+        (43.3, 32.7, -26.0),       # Left eye (person's left)
+        (-28.9, -28.9, -24.1),     # Right mouth corner
+        (28.9, -28.9, -24.1),      # Left mouth corner
+    ], dtype=np.float64)
+
+    yaw_values = []
+    pitch_values = []
+
+    for image in images:
+        if image is None:
+            continue
+        rgb = np.asarray(image.convert('RGB'))
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        h, w = bgr.shape[:2]
+        detector.setInputSize((w, h))
+
+        try:
+            _, faces = detector.detect(bgr)
+        except Exception:
+            continue
+
+        if faces is None or len(faces) == 0:
+            continue
+
+        best_face = max(faces, key=lambda f: float(f[2]) * float(f[3]))
+
+        # YuNet: [x, y, w, h, x_re, y_re, x_le, y_le, x_nt, y_nt, x_rcm, y_rcm, x_lcm, y_lcm, score]
+        x_nt, y_nt = float(best_face[8]), float(best_face[9])
+        x_re, y_re = float(best_face[4]), float(best_face[5])
+        x_le, y_le = float(best_face[6]), float(best_face[7])
+        x_rcm, y_rcm = float(best_face[10]), float(best_face[11])
+        x_lcm, y_lcm = float(best_face[12]), float(best_face[13])
+
+        image_2d = np.array([
+            (x_nt, y_nt), (x_re, y_re), (x_le, y_le), (x_rcm, y_rcm), (x_lcm, y_lcm),
+        ], dtype=np.float64)
+
+        camera_matrix = np.array([
+            [float(w), 0, w / 2.0],
+            [0, float(w), h / 2.0],
+            [0, 0, 1.0],
+        ], dtype=np.float64)
+        dist_coeffs = np.zeros((4, 1), dtype=np.float64)
+
+        try:
+            success, rvec, _ = cv2.solvePnP(
+                face_3d, image_2d, camera_matrix, dist_coeffs,
+                flags=cv2.SOLVEPNP_ITERATIVE,
+            )
+            if not success:
+                continue
+
+            rmat, _ = cv2.Rodrigues(rvec)
+            sy = float(np.sqrt(rmat[0, 0] ** 2 + rmat[1, 0] ** 2))
+            if sy > 1e-6:
+                pitch = float(np.degrees(np.arctan2(rmat[2, 1], rmat[2, 2])))
+                yaw = float(np.degrees(np.arctan2(-rmat[2, 0], sy)))
+            else:
+                pitch = float(np.degrees(np.arctan2(-rmat[1, 2], rmat[1, 1])))
+                yaw = float(np.degrees(np.arctan2(-rmat[2, 0], sy)))
+
+            yaw_values.append(yaw)
+            pitch_values.append(pitch)
+        except Exception:
+            continue
+
+    if not yaw_values:
+        # If no valid pose detected, skip this check (fail gracefully)
+        return {'passed': True, 'reason': 'no_valid_pose_skipped', 'frames_analyzed': 0}
+
+    yaw_threshold = float(getattr(settings, 'FACE_ID_HEAD_POSE_YAW_THRESHOLD', 15.0))
+    pitch_threshold = float(getattr(settings, 'FACE_ID_HEAD_POSE_PITCH_THRESHOLD', 12.0))
+
+    max_right = max(yaw_values)
+    max_left = min(yaw_values)
+    min_pitch = min(pitch_values)
+
+    if required_direction == 'right':
+        passed = max_right >= yaw_threshold
+    elif required_direction == 'left':
+        passed = max_left <= -yaw_threshold
+    elif required_direction == 'up':
+        passed = min_pitch <= -pitch_threshold
+    else:
+        passed = True
+
+    return {
+        'passed': passed,
+        'required_direction': required_direction,
+        'max_right_yaw': round(max_right, 1),
+        'max_left_yaw': round(max_left, 1),
+        'yaw_range': round(max_right - max_left, 1),
+        'frames_analyzed': len(yaw_values),
+    }
+
+
 def estimate_face_turn_score(image: Image.Image) -> float:
     cv2 = _load_cv2_module()
     detector, _, _ = _get_sface_engines()

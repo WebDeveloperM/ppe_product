@@ -7,9 +7,11 @@ from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
 import base64
 import binascii
+import random
 import re
 import secrets
 import string
+from django.core import signing
 from io import BytesIO
 from PIL import Image
 from rest_framework import status
@@ -41,6 +43,10 @@ FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURS
 FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 8))
 FACE_ID_BLINK_SCORE_DROP_THRESHOLD = float(getattr(settings, 'FACE_ID_BLINK_SCORE_DROP_THRESHOLD', 3.0))
 FACE_ID_BLINK_REQUIRED_MESSAGE = 'Смотрите в камеру несколько секунд и хотя бы один раз моргните.'
+FACE_ID_HEAD_POSE_CHALLENGE_ENABLED = bool(getattr(settings, 'FACE_ID_HEAD_POSE_CHALLENGE_ENABLED', True))
+FACE_ID_HEAD_POSE_CHALLENGE_DIRECTIONS = ['left', 'right']
+FACE_ID_HEAD_POSE_CHALLENGE_SALT = 'face_id_head_pose_v1'
+FACE_ID_HEAD_POSE_CHALLENGE_MAX_AGE = 300  # seconds
 
 
 def build_login_response(user):
@@ -305,9 +311,42 @@ def calculate_face_blink_result(images):
 
 
 def issue_face_id_challenge():
-    return {
-        'face_challenge_instruction': FACE_ID_BLINK_REQUIRED_MESSAGE,
+    if not FACE_ID_HEAD_POSE_CHALLENGE_ENABLED:
+        return {'face_challenge_instruction': FACE_ID_BLINK_REQUIRED_MESSAGE}
+
+    direction = random.choice(FACE_ID_HEAD_POSE_CHALLENGE_DIRECTIONS)
+    token = signing.dumps(
+        {'direction': direction},
+        salt=FACE_ID_HEAD_POSE_CHALLENGE_SALT,
+    )
+    direction_labels = {
+        'left': 'Boshingizni CHAPGA buring va shu holatda ushlang (Поверните голову влево)',
+        'right': 'Boshingizni O\'NGGA buring va shu holatda ushlang (Поверните голову вправо)',
     }
+    return {
+        'face_challenge_instruction': direction_labels[direction],
+        'face_challenge_direction': direction,
+        'face_challenge_token': token,
+    }
+
+
+def decode_face_challenge_token(token):
+    """Returns {'direction': str} from signed token, or None if invalid/expired."""
+    if not token:
+        return None
+    try:
+        return signing.loads(
+            token,
+            salt=FACE_ID_HEAD_POSE_CHALLENGE_SALT,
+            max_age=FACE_ID_HEAD_POSE_CHALLENGE_MAX_AGE,
+        )
+    except Exception:
+        return None
+
+
+def calculate_head_pose_result(images, required_direction):
+    from base.views import estimate_head_pose_direction
+    return estimate_head_pose_direction(images, required_direction)
 
 
 def normalize_face_capture_frames(face_capture, face_capture_frames):
@@ -608,6 +647,48 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_
             },
             status=status.HTTP_403_FORBIDDEN,
         )
+
+    # Head pose challenge verification
+    if FACE_ID_HEAD_POSE_CHALLENGE_ENABLED and face_challenge_token:
+        challenge_data = decode_face_challenge_token(face_challenge_token)
+        if challenge_data is None:
+            new_challenge = issue_face_id_challenge()
+            return Response(
+                {
+                    'error': 'Срок проверки Face ID истёк или токен недействителен. Пожалуйста, пройдите проверку заново.',
+                    **face_id_context,
+                    **new_challenge,
+                    'verified': False,
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        required_direction = str(challenge_data.get('direction', ''))
+        try:
+            pose_result = calculate_head_pose_result(burst_images, required_direction)
+        except Exception:
+            pose_result = {'passed': True, 'reason': 'exception_skipped'}
+
+        if not pose_result.get('passed', True):
+            direction_labels = {
+                'left': 'chapga',
+                'right': 'o\'ngga',
+            }
+            direction_label = direction_labels.get(required_direction, required_direction)
+            new_challenge = issue_face_id_challenge()
+            return Response(
+                {
+                    'error': f'Face ID tasdiqlangan emas. Boshingizni {direction_label} burib ushlab turing.',
+                    **face_id_context,
+                    **new_challenge,
+                    'verified': False,
+                    'head_pose_passed': False,
+                    'required_direction': required_direction,
+                    'max_right_yaw': pose_result.get('max_right_yaw', 0.0),
+                    'max_left_yaw': pose_result.get('max_left_yaw', 0.0),
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
     return None
 

@@ -218,10 +218,6 @@ const AddItemPage = () => {
       .finally(() => setLoading(false));
   }, [slug]);
 
-  const handleBaseImageButtonClick = () => {
-    baseImageInputRef.current?.click();
-  };
-
   const handleBaseImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
     event.target.value = '';
@@ -389,7 +385,7 @@ const AddItemPage = () => {
   };
 
   useEffect(() => {
-    if (!cameraOpen || !cameraLive || !faceDetectorRef.current || !videoRef.current) {
+    if (!cameraOpen || !cameraLive || !videoRef.current) {
       if (detectFaceIntervalRef.current) {
         window.clearInterval(detectFaceIntervalRef.current);
         detectFaceIntervalRef.current = null;
@@ -400,7 +396,7 @@ const AddItemPage = () => {
     }
 
     const detectFaces = async () => {
-      if (detectInProgressRef.current || !videoRef.current || !faceDetectorRef.current) return;
+      if (detectInProgressRef.current || !videoRef.current) return;
       const video = videoRef.current;
       if ((video.videoWidth || 0) < 2 || (video.videoHeight || 0) < 2) return;
 
@@ -655,6 +651,11 @@ const AddItemPage = () => {
       return;
     }
 
+    if (faceBoxes.length === 0) {
+      setError('Yuz kadrda aniqlanmadi. Kameraga tik qarang va yuzni markazga olib qayta urinib ko‘ring');
+      return;
+    }
+
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
     if (!context) return;
@@ -669,10 +670,10 @@ const AddItemPage = () => {
     const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
     const capturedFrames: string[] = [];
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       capturedFrames.push(captureFrame());
-      if (index < 3) {
-        await sleep(120);
+      if (index < 4) {
+        await sleep(220);
       }
     }
 
