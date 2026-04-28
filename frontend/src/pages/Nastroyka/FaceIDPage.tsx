@@ -63,6 +63,9 @@ const FaceIDPage = () => {
   const [selectedModalEmployeeIds, setSelectedModalEmployeeIds] = useState<number[]>([]);
   const [bulkModalStatus, setBulkModalStatus] = useState<'required' | 'not_required'>('not_required');
   const [savingSelectedEmployee, setSavingSelectedEmployee] = useState(false);
+  const [selectedMainEmployeeIds, setSelectedMainEmployeeIds] = useState<number[]>([]);
+  const [bulkMainStatus, setBulkMainStatus] = useState<'required' | 'not_required'>('not_required');
+  const [savingMainBulk, setSavingMainBulk] = useState(false);
   const hasLoadedMainListRef = useRef(false);
 
   const totalModalPages = Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE));
@@ -164,6 +167,41 @@ const FaceIDPage = () => {
     } catch (error) {
       toast.error(getBackendError(error, 'Ошибка при обновлении статуса Face ID'));
       throw error;
+    }
+  };
+
+  const toggleMainEmployeeSelection = (employeeId: number) => {
+    setSelectedMainEmployeeIds((prev) =>
+      prev.includes(employeeId) ? prev.filter((id) => id !== employeeId) : [...prev, employeeId],
+    );
+  };
+
+  const toggleSelectAllMainEmployees = () => {
+    setSelectedMainEmployeeIds((prev) => {
+      const pageIds = visibleEmployees.map((e) => e.id);
+      const areAllSelected = pageIds.length > 0 && pageIds.every((id) => prev.includes(id));
+      if (areAllSelected) return prev.filter((id) => !pageIds.includes(id));
+      return Array.from(new Set([...prev, ...pageIds]));
+    });
+  };
+
+  const handleMainBulkApply = async () => {
+    if (selectedMainEmployeeIds.length === 0 || savingMainBulk) return;
+    const targetStatus = bulkMainStatus === 'required';
+    const selected = visibleEmployees.filter((e) => selectedMainEmployeeIds.includes(e.id));
+    const toUpdate = selected.filter((e) => e.requires_face_id_checkout !== targetStatus);
+    if (toUpdate.length === 0) {
+      toast.info(`У выбранных сотрудников уже установлен статус: ${getFaceIdStatusLabel(targetStatus)}`);
+      setSelectedMainEmployeeIds([]);
+      return;
+    }
+    setSavingMainBulk(true);
+    try {
+      await Promise.all(toUpdate.map((e) => handleToggleFaceIdExemption(e.slug, e.id, targetStatus)));
+      setSelectedMainEmployeeIds([]);
+      toast.success(`Статус "${getFaceIdStatusLabel(targetStatus)}" установлен для ${toUpdate.length} сотрудника(ов)`);
+    } finally {
+      setSavingMainBulk(false);
     }
   };
 
@@ -316,27 +354,56 @@ const FaceIDPage = () => {
             Выберите сотрудников, которым не требуется Face ID верификация при получении СИЗ.
           </p>
 
-          <div className="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
             <input
               type="text"
               value={tableNumberSearch}
               onChange={(event) => setTableNumberSearch(event.target.value)}
               placeholder="Поиск по табельному номеру"
-              className="w-full rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
+              className="flex-1 rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
             />
             <input
               type="text"
               value={employeeNameSearch}
               onChange={(event) => setEmployeeNameSearch(event.target.value)}
               placeholder="Поиск по ФИО"
-              className="w-full rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
+              className="flex-1 rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
             />
+            <div className="flex shrink-0 items-center gap-2">
+              <div className="flex flex-col">
+                <span className="mb-1 text-xs text-slate-500 dark:text-slate-400">Статус для выбранных</span>
+                <select
+                  value={bulkMainStatus}
+                  onChange={(e) => setBulkMainStatus(e.target.value as 'required' | 'not_required')}
+                  className="rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
+                >
+                  <option value="not_required">Не требуется</option>
+                  <option value="required">Требуется</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={handleMainBulkApply}
+                disabled={selectedMainEmployeeIds.length === 0 || savingMainBulk}
+                className="mt-5 rounded bg-primary px-4 py-2 text-sm text-white hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingMainBulk ? 'Сохранение...' : `Применить${selectedMainEmployeeIds.length > 0 ? ` (${selectedMainEmployeeIds.length})` : ''}`}
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-100 dark:bg-slate-800">
                 <tr>
+                  <th className="px-3 py-2 text-left">
+                    <input
+                      type="checkbox"
+                      checked={visibleEmployees.length > 0 && visibleEmployees.every((e) => selectedMainEmployeeIds.includes(e.id))}
+                      onChange={toggleSelectAllMainEmployees}
+                      className="cursor-pointer"
+                    />
+                  </th>
                   <th className="px-3 py-2 text-left font-semibold">Таб. №</th>
                   <th className="px-3 py-2 text-left font-semibold">ФИО</th>
                   <th className="px-3 py-2 text-left font-semibold">Должность</th>
@@ -348,6 +415,14 @@ const FaceIDPage = () => {
                   const fullName = getEmployeeFullName(emp);
                   return (
                     <tr key={emp.id} className="border-t border-stroke dark:border-strokedark">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedMainEmployeeIds.includes(emp.id)}
+                          onChange={() => toggleMainEmployeeSelection(emp.id)}
+                          className="cursor-pointer"
+                        />
+                      </td>
                       <td className="px-3 py-2 text-gray-500">{emp.tabel_number || '—'}</td>
                       <td className="px-3 py-2">{fullName || '—'}</td>
                       <td className="px-3 py-2 text-gray-500">{emp.position || '—'}</td>
@@ -365,7 +440,7 @@ const FaceIDPage = () => {
                 })}
                 {!loading && visibleEmployees.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-3 py-6 text-center text-gray-500">Нет данных</td>
+                    <td colSpan={5} className="px-3 py-6 text-center text-gray-500">Нет данных</td>
                   </tr>
                 )}
               </tbody>
