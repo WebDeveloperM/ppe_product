@@ -139,7 +139,7 @@ def detect_face_boxes(payload: dict):
     return _request('POST', '/api/v1/face/detect-boxes/', json=payload)
 
 
-def list_face_id_exemptions(*, search=None, page=None, page_size=None, no_pagination=False):
+def list_face_id_exemptions(*, search=None, page=None, page_size=None, no_pagination=False, requires_face_id_checkout=None):
     params = {}
     if search:
         params['search'] = search
@@ -147,6 +147,8 @@ def list_face_id_exemptions(*, search=None, page=None, page_size=None, no_pagina
         params['page'] = str(page)
     if page_size is not None:
         params['page_size'] = str(page_size)
+    if requires_face_id_checkout is not None:
+        params['requires_face_id_checkout'] = str(bool(requires_face_id_checkout)).lower()
     if no_pagination:
         params['no_pagination'] = 'true'
     return _request('GET', '/api/v1/employees/face-id-exemptions/', params=params)

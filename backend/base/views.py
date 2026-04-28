@@ -5134,25 +5134,12 @@ class EmployeeFaceIdExemptionApiView(APIView):
             try:
                 payload = list_face_id_exemptions(
                     search=request.query_params.get('search', '').strip() or None,
-                    page=None if requires_face_id_filter is not None else request.query_params.get('page'),
-                    page_size=None if requires_face_id_filter is not None else request.query_params.get('page_size'),
-                    no_pagination=requires_face_id_filter is not None,
+                    page=request.query_params.get('page'),
+                    page_size=request.query_params.get('page_size'),
+                    requires_face_id_checkout=requires_face_id_filter,
                 )
                 if isinstance(payload, dict):
                     employees = [apply_local_face_id_override(employee) for employee in (payload.get('employees') or payload.get('results') or [])]
-                    if requires_face_id_filter is not None:
-                        employees = [
-                            employee for employee in employees
-                            if bool(employee.get('requires_face_id_checkout')) is requires_face_id_filter
-                        ]
-                        paginator = EmployeePagination()
-                        paginated_employees = paginator.paginate_queryset(employees, request)
-                        return Response({
-                            'count': len(employees),
-                            'next': paginator.get_next_link(),
-                            'previous': paginator.get_previous_link(),
-                            'employees': paginated_employees,
-                        }, status=status.HTTP_200_OK)
                     return Response({
                         'count': payload.get('count', 0),
                         'next': payload.get('next'),

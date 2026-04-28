@@ -462,7 +462,13 @@ class FaceIdExemptionAccessTests(APITestCase):
 		response = self.client.get('/api/v1/employees/face-id-exemption/?requires_face_id_checkout=false')
 
 		self.assertEqual(response.status_code, 200)
-		list_face_id_exemptions_mock.assert_called_once_with(search=None, page=None, page_size=None, no_pagination=True)
+		list_face_id_exemptions_mock.assert_called_once_with(
+			search=None,
+			page='1',
+			page_size='50',
+			no_pagination=False,
+			requires_face_id_checkout=False,
+		)
 		self.assertEqual(response.data['count'], 1)
 		self.assertEqual(len(response.data['employees']), 1)
 		self.assertFalse(response.data['employees'][0]['requires_face_id_checkout'])

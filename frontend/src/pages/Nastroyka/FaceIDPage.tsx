@@ -1,5 +1,5 @@
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import axioss from '../../api/axios';
@@ -63,6 +63,7 @@ const FaceIDPage = () => {
   const [selectedModalEmployeeIds, setSelectedModalEmployeeIds] = useState<number[]>([]);
   const [bulkModalStatus, setBulkModalStatus] = useState<'required' | 'not_required'>('not_required');
   const [savingSelectedEmployee, setSavingSelectedEmployee] = useState(false);
+  const hasLoadedMainListRef = useRef(false);
 
   const totalModalPages = Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE));
 
@@ -114,16 +115,11 @@ const FaceIDPage = () => {
       setLoading(false);
       return;
     }
-    loadEmployees(1);
-  }, [canManageFaceIdControl]);
-
-  useEffect(() => {
-    if (!canManageFaceIdControl) {
-      return;
-    }
+    const delay = hasLoadedMainListRef.current ? 250 : 0;
     const timeoutId = window.setTimeout(() => {
+      hasLoadedMainListRef.current = true;
       loadEmployees(1);
-    }, 250);
+    }, delay);
     return () => window.clearTimeout(timeoutId);
   }, [canManageFaceIdControl, employeeNameSearch, tableNumberSearch]);
 
@@ -174,7 +170,6 @@ const FaceIDPage = () => {
     setModalTotalCount(0);
     setModalEmployees([]);
     setIsAddModalOpen(true);
-    loadModalEmployees(1);
   };
 
   const closeAddModal = () => {
