@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from users.authentication import ExpiringTokenAuthentication as TokenAuthentication
+from users.models import UserRole, get_effective_user_role
 
 from .employee_service_client import (
     list_departments,
@@ -117,6 +118,8 @@ def normalize_employee_service_employee(employee):
         'department_name': employee.get('department_name', ''),
         'boss_full_name': employee.get('boss_full_name', ''),
         'section_name': employee.get('section_name', ''),
+        'base_image': employee.get('base_image'),
+        'base_image_url': employee.get('base_image_url') or employee.get('base_image'),
         'metadata': employee.get('metadata', {}),
         'created_at': employee.get('created_at'),
         'updated_at': employee.get('updated_at'),
@@ -474,6 +477,14 @@ class EmployeeServiceEmployeeDetailApiView(APIView):
                 {"error": "Employee service is not enabled"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE
             )
+
+        if 'base_image' in request.FILES:
+            role = get_effective_user_role(request.user)
+            if role not in [UserRole.ADMIN, UserRole.WAREHOUSE_STAFF]:
+                return Response(
+                    {"error": "Only admin and warehouse staff can update employee base image"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
         data = request.data
         payload = {

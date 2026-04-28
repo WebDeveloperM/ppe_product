@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
 import axioss from '../../api/axios';
-import { BASE_IMAGE_URL, BASE_URL } from '../../utils/urls';
+import { BASE_URL, resolveEmployeeImageUrl } from '../../utils/urls';
 import { isAuthenticated } from '../../utils/auth';
 import { FaLongArrowAltLeft } from 'react-icons/fa';
 import { toast } from 'react-toastify';
@@ -33,11 +33,13 @@ type EmployeeSizes = {
 type AddItemResponse = {
   item?: {
     employee?: {
+      slug?: string;
       first_name?: string;
       last_name?: string;
       surname?: string;
       tabel_number?: string;
       base_image?: string | null;
+      base_image_url?: string | null;
       position?: string;
       department?: { name?: string };
       section?: { name?: string };
@@ -77,12 +79,11 @@ type AvailableSizesState = {
   sizes: AvailableSizeItem[];
 };
 
-const resolveImageUrl = (value?: string | null) => {
-  if (!value) return '';
-  if (String(value).startsWith('http://') || String(value).startsWith('https://')) {
-    return String(value);
-  }
-  return `${BASE_IMAGE_URL}${value}`;
+const dataUrlToFile = async (dataUrl: string, filename: string) => {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const extension = blob.type === 'image/png' ? 'png' : 'jpg';
+  return new File([blob], `${filename}.${extension}`, { type: blob.type || 'image/jpeg' });
 };
 
 const AddItemPage = () => {
@@ -90,12 +91,15 @@ const AddItemPage = () => {
   const navigate = useNavigate();
   const role = localStorage.getItem('role') || 'user';
   const canAddItem = role === 'admin' || role === 'it_center' || role === 'warehouse_staff';
+  const canEditEmployeeBaseImage = role === 'admin' || role === 'warehouse_staff';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [updatingBaseImage, setUpdatingBaseImage] = useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState<AddItemResponse | null>(null);
+  const baseImageInputRef = useRef<HTMLInputElement | null>(null);
   const toIssueDateTime24 = (value?: string | null) => {
     const date = value ? new Date(value) : new Date();
     if (Number.isNaN(date.getTime())) return '';
@@ -131,12 +135,50 @@ const AddItemPage = () => {
   const [faceDetectAvailable, setFaceDetectAvailable] = useState(false);
 
   const employee = data?.item?.employee;
-  const employeeBaseImageUrl = resolveImageUrl(employee?.base_image);
+  const employeeBaseImageUrl = resolveEmployeeImageUrl(employee?.base_image_url || employee?.base_image);
+  const employeeSlug = String(employee?.slug || slug || '').trim();
   const ppeOptions = data?.ppe_products ?? [];
   const selectedPpeOptions = useMemo(
     () => ppeOptions.filter((item) => selectedPpeIds.includes(item.id)),
     [ppeOptions, selectedPpeIds],
   );
+
+  const applyEmployeeImage = (nextImageUrl: string) => {
+    setData((prev) => {
+      if (!prev?.item?.employee) return prev;
+      return {
+        ...prev,
+        item: {
+          ...prev.item,
+          employee: {
+            ...prev.item.employee,
+            base_image: nextImageUrl,
+            base_image_url: nextImageUrl,
+          },
+        },
+      };
+    });
+  };
+
+  const uploadEmployeeBaseImage = async (file: File) => {
+    if (!employeeSlug) return;
+
+    const formData = new FormData();
+    formData.append('base_image', file);
+
+    const response = await axioss.put(`${BASE_URL}/employee-service/employees/${employeeSlug}/`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    const nextImageUrl = String(response.data?.base_image_url || response.data?.base_image || '').trim();
+    if (nextImageUrl) {
+      applyEmployeeImage(nextImageUrl);
+    }
+
+    setFaceVerified(false);
+    setFaceMessage('');
+    stopCamera();
+  };
 
   useEffect(() => {
     if (!slug) return;
@@ -175,6 +217,53 @@ const AddItemPage = () => {
         .catch(() => setError('Ошибка при загрузке данных'))
       .finally(() => setLoading(false));
   }, [slug]);
+
+  const handleBaseImageButtonClick = () => {
+    baseImageInputRef.current?.click();
+  };
+
+  const handleBaseImageFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0] || null;
+    event.target.value = '';
+
+    if (!selectedFile || !employeeSlug) return;
+    if (!selectedFile.type.startsWith('image/')) {
+      toast.error('Faqat rasm faylini yuklash mumkin');
+      return;
+    }
+
+    try {
+      setUpdatingBaseImage(true);
+      await uploadEmployeeBaseImage(selectedFile);
+      setCapturedImage(null);
+      toast.success('Bazaviy rasm yangilandi');
+    } catch (uploadError: any) {
+      const backendError = uploadError?.response?.data?.error;
+      toast.error(backendError || 'Bazaviy rasmni yangilab bo‘lmadi');
+    } finally {
+      setUpdatingBaseImage(false);
+    }
+  };
+
+  const handleUseCapturedImageAsBase = async () => {
+    if (!capturedImage || !employeeSlug) {
+      toast.error('Avval kameradan rasm oling');
+      return;
+    }
+
+    try {
+      setUpdatingBaseImage(true);
+      const safeName = String(employee?.tabel_number || employeeSlug || 'employee').replace(/[^a-zA-Z0-9-_]/g, '_');
+      const capturedFile = await dataUrlToFile(capturedImage, `employee-base-${safeName}`);
+      await uploadEmployeeBaseImage(capturedFile);
+      toast.success('Kameradan olingan rasm bazaviy rasm sifatida saqlandi');
+    } catch (uploadError: any) {
+      const backendError = uploadError?.response?.data?.error;
+      toast.error(backendError || 'Kamera rasmi bazaviy rasm sifatida saqlanmadi');
+    } finally {
+      setUpdatingBaseImage(false);
+    }
+  };
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -482,7 +571,7 @@ const AddItemPage = () => {
   };
 
   const startCamera = async () => {
-    if (!employee?.base_image) {
+    if (!employee?.base_image && !canEditEmployeeBaseImage) {
       setError('Не загружена базовая фотография сотрудника 3×4');
       return;
     }
@@ -920,6 +1009,25 @@ const AddItemPage = () => {
                               Базовое фото отсутствует
                             </div>
                           )}
+                          {canEditEmployeeBaseImage && employeeSlug && (
+                            <div className="mt-3">
+                              <input
+                                ref={baseImageInputRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handleBaseImageFileChange}
+                              />
+                              <button
+                                type="button"
+                                onClick={handleBaseImageButtonClick}
+                                disabled={updatingBaseImage}
+                                className="rounded border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {updatingBaseImage ? 'Rasm yangilanmoqda...' : 'Bazaviy rasmni o‘zgartirish'}
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         <div>
@@ -1004,6 +1112,16 @@ const AddItemPage = () => {
                             >
                               {verifyingFace ? 'Проверка...' : 'Снять и проверить'}
                             </button>
+                            {canEditEmployeeBaseImage && capturedImage && (
+                              <button
+                                type="button"
+                                onClick={handleUseCapturedImageAsBase}
+                                disabled={updatingBaseImage}
+                                className="rounded bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
+                              >
+                                {updatingBaseImage ? 'Сохранение...' : 'Saqlash base rasm'}
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={stopCamera}

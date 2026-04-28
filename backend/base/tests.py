@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APITestCase
 
 from .models import Department, Section, Employee, EmployeeFaceIdOverride, PPEProduct, PositionPPERenewalRule, PendingItemIssue, Item
@@ -80,6 +81,76 @@ class PendingIssueTwoStepSignatureTests(APITestCase):
 		manager_profile, _ = UserRole.objects.get_or_create(user=self.created_by)
 		manager_profile.role = UserRole.WAREHOUSE_STAFF
 		manager_profile.save(update_fields=['role'])
+
+
+class EmployeeServiceEmployeeBaseImagePermissionTests(APITestCase):
+	def setUp(self):
+		self.employee_slug = 'remote-employee-1'
+		self.url = f'/api/v1/employee-service/employees/{self.employee_slug}/'
+		self.admin_user = User.objects.create_user(username='admin_user', password='test12345')
+		self.staff_user = User.objects.create_user(username='warehouse_staff_user', password='test12345')
+		self.it_center_user = User.objects.create_user(username='it_center_user', password='test12345')
+
+		admin_profile, _ = UserRole.objects.get_or_create(user=self.admin_user)
+		admin_profile.role = UserRole.ADMIN
+		admin_profile.save(update_fields=['role'])
+
+		staff_profile, _ = UserRole.objects.get_or_create(user=self.staff_user)
+		staff_profile.role = UserRole.WAREHOUSE_STAFF
+		staff_profile.save(update_fields=['role'])
+
+		it_center_profile, _ = UserRole.objects.get_or_create(user=self.it_center_user)
+		it_center_profile.role = UserRole.IT_CENTER
+		it_center_profile.save(update_fields=['role'])
+
+	def _build_upload(self, name='avatar.png'):
+		return SimpleUploadedFile(name, b'fake-image-bytes', content_type='image/png')
+
+	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
+	@patch('base.employee_service_views.update_employee_payload')
+	def test_admin_can_update_employee_base_image(self, update_employee_payload_mock, _enabled_mock):
+		update_employee_payload_mock.return_value = {
+			'id': 1,
+			'slug': self.employee_slug,
+			'first_name': 'Ali',
+			'base_image': '/media/employee_base_images/new-avatar.png',
+			'base_image_url': '/media/employee_base_images/new-avatar.png',
+		}
+
+		self.client.force_authenticate(user=self.admin_user)
+		response = self.client.put(self.url, {'base_image': self._build_upload()}, format='multipart')
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['base_image_url'], '/media/employee_base_images/new-avatar.png')
+		update_employee_payload_mock.assert_called_once()
+		self.assertEqual(update_employee_payload_mock.call_args.args[0], self.employee_slug)
+		self.assertEqual(update_employee_payload_mock.call_args.args[1], {})
+		self.assertIn('base_image', update_employee_payload_mock.call_args.args[2])
+
+	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
+	@patch('base.employee_service_views.update_employee_payload')
+	def test_warehouse_staff_can_update_employee_base_image(self, update_employee_payload_mock, _enabled_mock):
+		update_employee_payload_mock.return_value = {
+			'id': 1,
+			'slug': self.employee_slug,
+			'base_image': '/media/employee_base_images/staff-avatar.png',
+			'base_image_url': '/media/employee_base_images/staff-avatar.png',
+		}
+
+		self.client.force_authenticate(user=self.staff_user)
+		response = self.client.put(self.url, {'base_image': self._build_upload('staff.png')}, format='multipart')
+
+		self.assertEqual(response.status_code, 200)
+		update_employee_payload_mock.assert_called_once()
+
+	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
+	@patch('base.employee_service_views.update_employee_payload')
+	def test_it_center_cannot_update_employee_base_image(self, update_employee_payload_mock, _enabled_mock):
+		self.client.force_authenticate(user=self.it_center_user)
+		response = self.client.put(self.url, {'base_image': self._build_upload('blocked.png')}, format='multipart')
+
+		self.assertEqual(response.status_code, 403)
+		update_employee_payload_mock.assert_not_called()
 
 	def test_non_warehouse_user_cannot_complete_second_step(self):
 		self.client.force_authenticate(user=self.user)
