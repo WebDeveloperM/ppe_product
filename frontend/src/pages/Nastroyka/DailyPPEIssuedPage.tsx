@@ -244,6 +244,7 @@ const DailyPPEIssuedPage = () => {
                     <th className="px-4 py-3 text-left font-semibold">Табельный номер</th>
                     <th className="px-4 py-3 text-left font-semibold">Сотрудник</th>
                     <th className="px-4 py-3 text-left font-semibold">Продукт СИЗ</th>
+                    <th className="px-4 py-3 text-left font-semibold">Дата выдачи</th>
                     <th className="px-4 py-3 text-left font-semibold">Подтверждающая подпись</th>
                     <th className="px-4 py-3 text-left font-semibold">QR код</th>
                   </tr>
@@ -252,16 +253,14 @@ const DailyPPEIssuedPage = () => {
                   {rows.map((row, index) => (
                     <tr key={row.key} className="border-t border-stroke align-top dark:border-strokedark">
                       <td className="px-4 py-4 font-medium text-black dark:text-white">{index + 1}</td>
-                      <td className="px-4 py-4 text-slate-700 dark:text-slate-200">
-                        <div>{row.tabelNumber}</div>
-                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{row.issuedAt}</div>
-                      </td>
+                      <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.tabelNumber}</td>
                       <td className="px-4 py-4 text-black dark:text-white">
                         <div className="font-medium">{row.fullName}</div>
                         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{row.position}</div>
                         <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{row.departmentSection}</div>
                       </td>
                       <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.productsLabel}</td>
+                      <td className="px-4 py-4 text-slate-700 dark:text-slate-200 whitespace-nowrap">{row.issuedAt}</td>
                       <td className="px-4 py-4">
                         {row.signatureImage ? (
                           <a href={row.signatureImage} target="_blank" rel="noreferrer" className="block w-fit">
