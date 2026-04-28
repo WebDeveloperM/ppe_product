@@ -30,8 +30,8 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
 };
 
 const SignIn: React.FC = () => {
-  const FACE_BURST_FRAME_COUNT = 15;
-  const FACE_BURST_FRAME_DELAY_MS = 350;
+  const FACE_BURST_FRAME_COUNT = 10;
+  const FACE_BURST_FRAME_DELAY_MS = 300;
   const FACE_BURST_PREPARE_DELAY_MS = 1000;
 
   const [username, setUsername] = useState("");
@@ -368,7 +368,7 @@ const SignIn: React.FC = () => {
   const captureFace = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     setFaceVerifyError('');
-    setFaceBurstStatus('Приготовьтесь. Проверка будет длиться 5 секунд. За это время хотя бы один раз моргните.');
+    setFaceBurstStatus('Приготовьтесь. Проверка займет несколько секунд. За это время хотя бы один раз моргните.');
     await wait(FACE_BURST_PREPARE_DELAY_MS);
 
     if (!videoRef.current || !canvasRef.current) {
@@ -376,7 +376,7 @@ const SignIn: React.FC = () => {
       return;
     }
 
-    setFaceBurstStatus('Идет 5-секундная проверка. Смотрите в камеру и хотя бы один раз моргните.');
+    setFaceBurstStatus('Идет проверка. Смотрите в камеру и хотя бы один раз моргните.');
 
     const frames: string[] = [];
     for (let index = 0; index < FACE_BURST_FRAME_COUNT; index += 1) {
@@ -746,7 +746,7 @@ const SignIn: React.FC = () => {
               <p className="mb-2 text-sm font-medium text-black dark:text-white">Пользователь: {faceTargetUser}</p>
             ) : null}
             <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-              Смотрите в камеру 5 секунд и хотя бы один раз закройте и откройте глаза. Статичная фотография на телефоне такую проверку не пройдет.
+              Смотрите в камеру несколько секунд и хотя бы один раз закройте и откройте глаза. Статичная фотография на телефоне такую проверку не пройдет.
             </p>
 
             {!cameraOpen ? (

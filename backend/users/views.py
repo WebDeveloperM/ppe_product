@@ -37,10 +37,10 @@ from .models import (
 FACE_ID_VERIFY_THRESHOLD = float(getattr(settings, 'FACE_SIMILARITY_THRESHOLD', 72.0))
 FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', FACE_ID_VERIFY_THRESHOLD))
 FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
-FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURST_MOTION_THRESHOLD', 2.2))
-FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 12))
-FACE_ID_BLINK_SCORE_DROP_THRESHOLD = float(getattr(settings, 'FACE_ID_BLINK_SCORE_DROP_THRESHOLD', 6.0))
-FACE_ID_BLINK_REQUIRED_MESSAGE = 'Смотрите в камеру 5 секунд и хотя бы один раз моргните.'
+FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURST_MOTION_THRESHOLD', 1.6))
+FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 8))
+FACE_ID_BLINK_SCORE_DROP_THRESHOLD = float(getattr(settings, 'FACE_ID_BLINK_SCORE_DROP_THRESHOLD', 3.0))
+FACE_ID_BLINK_REQUIRED_MESSAGE = 'Смотрите в камеру несколько секунд и хотя бы один раз моргните.'
 
 
 def build_login_response(user):

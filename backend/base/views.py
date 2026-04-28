@@ -1756,10 +1756,11 @@ def estimate_face_burst_liveness(images: list[Image.Image]) -> dict:
 def estimate_face_blink(images: list[Image.Image]) -> dict:
     cv2 = _load_cv2_module()
     eye_classifier = _get_eye_cascade_classifier()
+    blink_threshold = float(getattr(settings, 'FACE_ID_BLINK_SCORE_DROP_THRESHOLD', 3.0))
     normalized_images = [image for image in images if image is not None]
     if cv2 is None or eye_classifier is None:
         raise ValueError('Сервис проверки моргания пока не запущен.')
-    if len(normalized_images) < 6:
+    if len(normalized_images) < 5:
         raise ValueError('Для проверки моргания нужно больше кадров.')
 
     eye_counts = []
@@ -1822,7 +1823,7 @@ def estimate_face_blink(images: list[Image.Image]) -> dict:
     min_index = eye_scores.index(min_score) if eye_scores else 0
     open_before = max(eye_counts[:min_index], default=0) >= 1
     open_after = max(eye_counts[min_index + 1:], default=0) >= 1
-    blink_detected = min_index not in {0, len(eye_scores) - 1} and open_before and open_after and score_drop >= 6.0
+    blink_detected = min_index not in {0, len(eye_scores) - 1} and open_before and open_after and score_drop >= blink_threshold
 
     return {
         'blink_detected': blink_detected,
