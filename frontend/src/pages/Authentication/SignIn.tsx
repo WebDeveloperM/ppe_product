@@ -30,9 +30,9 @@ const getRequestErrorMessage = (error: any, fallback: string) => {
 };
 
 const SignIn: React.FC = () => {
-  const FACE_BURST_FRAME_COUNT = 6;
-  const FACE_BURST_FRAME_DELAY_MS = 280;
-  const FACE_BURST_PREPARE_DELAY_MS = 900;
+  const FACE_BURST_FRAME_COUNT = 15;
+  const FACE_BURST_FRAME_DELAY_MS = 350;
+  const FACE_BURST_PREPARE_DELAY_MS = 1000;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -40,8 +40,6 @@ const SignIn: React.FC = () => {
   const [faceCaptureFrames, setFaceCaptureFrames] = useState<string[]>([]);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
   const [faceTargetUser, setFaceTargetUser] = useState('');
-  const [faceChallengeInstruction, setFaceChallengeInstruction] = useState('');
-  const [faceChallengeToken, setFaceChallengeToken] = useState('');
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraLive, setCameraLive] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -369,13 +367,8 @@ const SignIn: React.FC = () => {
 
   const captureFace = async () => {
     if (!videoRef.current || !canvasRef.current) return;
-    if (!faceChallengeToken) {
-      setFaceVerifyError('Face ID challenge не подготовлен. Повторите вход.');
-      return;
-    }
-
     setFaceVerifyError('');
-    setFaceBurstStatus('Приготовьтесь. Съемка начнется через секунду, затем выполните подсказку.');
+    setFaceBurstStatus('Приготовьтесь. Проверка будет длиться 5 секунд. За это время хотя бы один раз моргните.');
     await wait(FACE_BURST_PREPARE_DELAY_MS);
 
     if (!videoRef.current || !canvasRef.current) {
@@ -383,7 +376,7 @@ const SignIn: React.FC = () => {
       return;
     }
 
-    setFaceBurstStatus('Съемка началась. Медленно выполните движение из подсказки.');
+    setFaceBurstStatus('Идет 5-секундная проверка. Смотрите в камеру и хотя бы один раз моргните.');
 
     const frames: string[] = [];
     for (let index = 0; index < FACE_BURST_FRAME_COUNT; index += 1) {
@@ -414,8 +407,6 @@ const SignIn: React.FC = () => {
     setFaceCapture('');
     setFaceCaptureFrames([]);
     setFaceBurstStatus('');
-    setFaceChallengeInstruction('');
-    setFaceChallengeToken('');
     setFaceTargetUser('');
     setCameraError('');
     setFaceVerifyError('');
@@ -456,9 +447,6 @@ const SignIn: React.FC = () => {
     if (withFaceId && framePayload.length) {
       payload.face_capture_frames = framePayload;
     }
-    if (withFaceId && faceChallengeToken) {
-      payload.face_challenge_token = faceChallengeToken;
-    }
 
     setSubmitting(true);
     try {
@@ -477,8 +465,6 @@ const SignIn: React.FC = () => {
           .trim();
 
         setFaceTargetUser(fullName || responseData?.username || username);
-        setFaceChallengeInstruction(String(responseData?.face_challenge_instruction || 'Смотрите прямо в камеру, затем слегка сместите лицо в любую сторону и чуть поверните голову.'));
-        setFaceChallengeToken(String(responseData?.face_challenge_token || ''));
         setFaceVerifyError('');
         setFaceBurstStatus('');
         setFaceModalOpen(true);
@@ -488,8 +474,6 @@ const SignIn: React.FC = () => {
 
       if (requiresFaceId && withFaceId) {
         const message = getRequestErrorMessage(err, 'Face ID не подтвержден');
-        setFaceChallengeInstruction(String(responseData?.face_challenge_instruction || faceChallengeInstruction));
-        setFaceChallengeToken(String(responseData?.face_challenge_token || faceChallengeToken));
         setFaceVerifyError(String(message));
         setFaceBurstStatus('');
         toast.error(String(message));
@@ -762,7 +746,7 @@ const SignIn: React.FC = () => {
               <p className="mb-2 text-sm font-medium text-black dark:text-white">Пользователь: {faceTargetUser}</p>
             ) : null}
             <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-              {faceChallengeInstruction || 'Смотрите прямо в камеру, затем слегка сместите лицо в любую сторону и чуть поверните голову. Система отклонит фото с экрана телефона.'}
+              Смотрите в камеру 5 секунд и хотя бы один раз закройте и откройте глаза. Статичная фотография на телефоне такую проверку не пройдет.
             </p>
 
             {!cameraOpen ? (

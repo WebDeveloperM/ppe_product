@@ -1570,6 +1570,22 @@ def _get_face_cascade_classifier():
         return None
 
 
+@lru_cache(maxsize=1)
+def _get_eye_cascade_classifier():
+    cv2 = _load_cv2_module()
+    if cv2 is None:
+        return None
+
+    try:
+        cascade_path = cv2.data.haarcascades + 'haarcascade_eye_tree_eyeglasses.xml'
+        classifier = cv2.CascadeClassifier(cascade_path)
+        if classifier.empty():
+            return None
+        return classifier
+    except Exception:
+        return None
+
+
 def extract_primary_face(image: Image.Image):
     cv2 = _load_cv2_module()
     classifier = _get_face_cascade_classifier()
@@ -1734,6 +1750,85 @@ def estimate_face_burst_liveness(images: list[Image.Image]) -> dict:
         'box_shift': average_box_shift,
         'scale_change': average_scale_change,
         'frame_count': len(normalized_images),
+    }
+
+
+def estimate_face_blink(images: list[Image.Image]) -> dict:
+    cv2 = _load_cv2_module()
+    eye_classifier = _get_eye_cascade_classifier()
+    normalized_images = [image for image in images if image is not None]
+    if cv2 is None or eye_classifier is None:
+        raise ValueError('Сервис проверки моргания пока не запущен.')
+    if len(normalized_images) < 6:
+        raise ValueError('Для проверки моргания нужно больше кадров.')
+
+    eye_counts = []
+    eye_scores = []
+
+    for image in normalized_images:
+        rgb_np = np.asarray(image.convert('RGB'))
+        if rgb_np.size == 0:
+            raise ValueError('Один из кадров пустой.')
+
+        gray = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2GRAY)
+        gray = cv2.equalizeHist(gray)
+        boxes = detect_face_boxes(image)
+        if not boxes:
+            raise ValueError('Лицо не обнаружено')
+
+        best_box = max(boxes, key=lambda box: int(box['width']) * int(box['height']))
+        x = max(int(best_box['x']), 0)
+        y = max(int(best_box['y']), 0)
+        width = max(int(best_box['width']), 1)
+        height = max(int(best_box['height']), 1)
+
+        roi = gray[y:min(gray.shape[0], y + int(height * 0.55)), x:min(gray.shape[1], x + width)]
+        if roi.size == 0:
+            raise ValueError('Не удалось выделить область глаз.')
+
+        min_width = max(int(width * 0.12), 14)
+        min_height = max(int(height * 0.08), 10)
+        max_width = max(int(width * 0.5), min_width)
+        max_height = max(int(height * 0.28), min_height)
+
+        detected_eyes = eye_classifier.detectMultiScale(
+            roi,
+            scaleFactor=1.05,
+            minNeighbors=3,
+            minSize=(min_width, min_height),
+            maxSize=(max_width, max_height),
+        )
+
+        valid_eyes = sorted(
+            detected_eyes,
+            key=lambda eye: int(eye[2]) * int(eye[3]),
+            reverse=True,
+        )[:2] if detected_eyes is not None else []
+
+        eye_count = len(valid_eyes)
+        eye_counts.append(eye_count)
+
+        if eye_count == 0:
+            eye_scores.append(0.0)
+            continue
+
+        areas = [float(eye[2] * eye[3]) for eye in valid_eyes]
+        normalized_area = (sum(areas) / eye_count) / max(float(width * height), 1.0) * 1000.0
+        eye_scores.append((eye_count * 8.0) + normalized_area)
+
+    peak_score = max(eye_scores) if eye_scores else 0.0
+    min_score = min(eye_scores) if eye_scores else 0.0
+    score_drop = peak_score - min_score
+    min_index = eye_scores.index(min_score) if eye_scores else 0
+    open_before = max(eye_counts[:min_index], default=0) >= 1
+    open_after = max(eye_counts[min_index + 1:], default=0) >= 1
+    blink_detected = min_index not in {0, len(eye_scores) - 1} and open_before and open_after and score_drop >= 6.0
+
+    return {
+        'blink_detected': blink_detected,
+        'eye_counts': eye_counts,
+        'eye_scores': eye_scores,
+        'score_drop': score_drop,
     }
 
 
