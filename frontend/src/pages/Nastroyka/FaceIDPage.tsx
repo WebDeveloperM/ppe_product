@@ -16,6 +16,13 @@ type Employee = {
   requires_face_id_checkout: boolean;
 };
 
+type FallbackEmployeesCache = {
+  filteredEmployees: Employee[];
+  nextRawPage: number;
+  rawTotalPages: number;
+  exhausted: boolean;
+};
+
 const PAGE_SIZE = 50;
 const FALLBACK_PAGE_SIZE = 200;
 
@@ -65,6 +72,7 @@ const FaceIDPage = () => {
   const [bulkModalStatus, setBulkModalStatus] = useState<'required' | 'not_required'>('not_required');
   const [savingSelectedEmployee, setSavingSelectedEmployee] = useState(false);
   const hasLoadedMainListRef = useRef(false);
+  const fallbackEmployeesCacheRef = useRef<Record<string, FallbackEmployeesCache>>({});
 
   const totalModalPages = Math.max(1, Math.ceil(modalTotalCount / PAGE_SIZE));
   const visibleEmployees = useMemo(
@@ -81,28 +89,45 @@ const FaceIDPage = () => {
   };
 
   const loadEmployeesFromFallback = async (page: number, search?: string) => {
-    const filteredEmployees: Employee[] = [];
-    const firstPage = await fetchFaceIdEmployees({
-      page: 1,
-      page_size: FALLBACK_PAGE_SIZE,
-      search,
-    });
+    const cacheKey = search || '__all__';
+    let cache = fallbackEmployeesCacheRef.current[cacheKey];
+    if (!cache) {
+      cache = {
+        filteredEmployees: [],
+        nextRawPage: 1,
+        rawTotalPages: 1,
+        exhausted: false,
+      };
+      fallbackEmployeesCacheRef.current[cacheKey] = cache;
+    }
 
-    filteredEmployees.push(...firstPage.employees.filter((employee) => !employee.requires_face_id_checkout));
-
-    const totalPages = Math.max(1, Math.ceil(firstPage.count / FALLBACK_PAGE_SIZE));
-    for (let nextPage = 2; nextPage <= totalPages; nextPage += 1) {
+    const neededEmployeesCount = page * PAGE_SIZE;
+    while (!cache.exhausted && cache.filteredEmployees.length < neededEmployeesCount) {
       const nextResponse = await fetchFaceIdEmployees({
-        page: nextPage,
+        page: cache.nextRawPage,
         page_size: FALLBACK_PAGE_SIZE,
         search,
       });
-      filteredEmployees.push(...nextResponse.employees.filter((employee) => !employee.requires_face_id_checkout));
+
+      if (cache.nextRawPage === 1) {
+        cache.rawTotalPages = Math.max(1, Math.ceil(nextResponse.count / FALLBACK_PAGE_SIZE));
+      }
+
+      cache.filteredEmployees.push(
+        ...nextResponse.employees.filter((employee) => !employee.requires_face_id_checkout),
+      );
+      cache.nextRawPage += 1;
+      cache.exhausted = cache.nextRawPage > cache.rawTotalPages || nextResponse.employees.length === 0;
     }
 
     const startIndex = (page - 1) * PAGE_SIZE;
-    setEmployees(filteredEmployees.slice(startIndex, startIndex + PAGE_SIZE));
-    setTotalCount(filteredEmployees.length);
+    const pageEmployees = cache.filteredEmployees.slice(startIndex, startIndex + PAGE_SIZE);
+    setEmployees(pageEmployees);
+    setTotalCount(
+      cache.exhausted
+        ? cache.filteredEmployees.length
+        : Math.max(cache.filteredEmployees.length, startIndex + pageEmployees.length + 1),
+    );
     setCurrentPage(page);
   };
 
@@ -110,6 +135,7 @@ const FaceIDPage = () => {
     setLoading(true);
     try {
       const search = [tableNumberSearch.trim(), employeeNameSearch.trim()].filter(Boolean).join(' ');
+      const cacheKey = search || '__all__';
       const response = await fetchFaceIdEmployees({
         requires_face_id_checkout: false,
         page,
@@ -118,14 +144,24 @@ const FaceIDPage = () => {
       });
 
       const returnedEmployees = response.employees;
-      const allReturnedNeedFaceId = returnedEmployees.length > 0
-        && returnedEmployees.every((employee) => employee.requires_face_id_checkout);
+      const visibleReturnedEmployees = returnedEmployees.filter((employee) => !employee.requires_face_id_checkout);
+      const backendFilterLooksBroken = response.count > 0
+        && (
+          visibleReturnedEmployees.length === 0
+          || returnedEmployees.some((employee) => employee.requires_face_id_checkout)
+        );
 
-      if (response.count > 0 && allReturnedNeedFaceId) {
+      if (backendFilterLooksBroken) {
         await loadEmployeesFromFallback(page, search || undefined);
         return;
       }
 
+      fallbackEmployeesCacheRef.current[cacheKey] = {
+        filteredEmployees: visibleReturnedEmployees,
+        nextRawPage: 2,
+        rawTotalPages: 1,
+        exhausted: true,
+      };
       setEmployees(returnedEmployees);
       setTotalCount(response.count);
       setCurrentPage(page);
