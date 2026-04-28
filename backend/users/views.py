@@ -39,8 +39,7 @@ FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', FAC
 FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
 FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURST_MOTION_THRESHOLD', 1.6))
 FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 8))
-FACE_ID_BLINK_SCORE_DROP_THRESHOLD = float(getattr(settings, 'FACE_ID_BLINK_SCORE_DROP_THRESHOLD', 3.0))
-FACE_ID_BLINK_REQUIRED_MESSAGE = 'Смотрите в камеру несколько секунд и хотя бы один раз моргните.'
+FACE_ID_BURST_REQUIRED_MESSAGE = 'Смотрите в камеру несколько секунд, удерживая лицо в кадре.'
 
 
 def build_login_response(user):
@@ -298,15 +297,9 @@ def calculate_face_burst_liveness(images):
     return estimate_face_burst_liveness(images)
 
 
-def calculate_face_blink_result(images):
-    from base.views import estimate_face_blink
-
-    return estimate_face_blink(images)
-
-
 def issue_face_id_challenge():
     return {
-        'face_challenge_instruction': FACE_ID_BLINK_REQUIRED_MESSAGE,
+        'face_challenge_instruction': FACE_ID_BURST_REQUIRED_MESSAGE,
     }
 
 
@@ -573,42 +566,6 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_
                 'motion_threshold': FACE_ID_LIVE_BURST_MOTION_THRESHOLD,
                 'pixel_difference': round(float(liveness_result.get('pixel_difference', 0.0)), 3),
                 'box_shift': round(float(liveness_result.get('box_shift', 0.0)), 3),
-            },
-            status=status.HTTP_403_FORBIDDEN,
-        )
-
-    try:
-        blink_result = calculate_face_blink_result(burst_images)
-    except ValueError as exc:
-        return Response(
-            {
-                'error': str(exc),
-                **face_id_context,
-                **challenge_payload,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    except Exception:
-        return Response(
-            {
-                'error': 'Ошибка проверки моргания для Face ID.',
-                **face_id_context,
-                **challenge_payload,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    score_drop = float(blink_result.get('score_drop', 0.0))
-    if not bool(blink_result.get('blink_detected')) or score_drop < FACE_ID_BLINK_SCORE_DROP_THRESHOLD:
-        return Response(
-            {
-                'error': 'Face ID не подтвержден. В течение проверки хотя бы один раз закройте и откройте глаза.',
-                **face_id_context,
-                **challenge_payload,
-                'verified': False,
-                'blink_detected': bool(blink_result.get('blink_detected')),
-                'blink_score_drop': round(score_drop, 3),
-                'blink_threshold': FACE_ID_BLINK_SCORE_DROP_THRESHOLD,
             },
             status=status.HTTP_403_FORBIDDEN,
         )

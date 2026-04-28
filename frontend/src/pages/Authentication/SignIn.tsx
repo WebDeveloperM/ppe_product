@@ -503,7 +503,7 @@ const SignIn: React.FC = () => {
     }
     setFaceVerifyError('');
     setCaptureProgress(0);
-    setFaceBurstStatus('Приготовьтесь. Проверка займет несколько секунд. За это время хотя бы один раз моргните.');
+    setFaceBurstStatus('Приготовьтесь. Проверка займет несколько секунд. Удерживайте лицо ровно в кадре.');
     await wait(FACE_BURST_PREPARE_DELAY_MS);
 
     if (!videoRef.current || !canvasRef.current) {
@@ -512,7 +512,7 @@ const SignIn: React.FC = () => {
       return;
     }
 
-    setFaceBurstStatus('Идет проверка. Смотрите в камеру и хотя бы один раз моргните.');
+    setFaceBurstStatus('Идет проверка. Смотрите в камеру и удерживайте лицо в кадре.');
 
     const frames: string[] = [];
     for (let index = 0; index < FACE_BURST_FRAME_COUNT; index += 1) {
@@ -897,7 +897,7 @@ const SignIn: React.FC = () => {
             ) : null}
 
             <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-              Смотрите в камеру несколько секунд и хотя бы один раз закройте и откройте глаза. Статичная фотография на телефоне такую проверку не пройдет.
+              Смотрите в камеру несколько секунд и удерживайте лицо в рамке. Статичная фотография на телефоне такую проверку не пройдет.
             </p>
 
             {!cameraOpen ? (

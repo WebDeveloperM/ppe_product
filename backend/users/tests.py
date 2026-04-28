@@ -230,10 +230,9 @@ class RolePageAccessSettingsTests(APITestCase):
 		self.assertEqual(response.data['verified'], False)
 		self.assertIn('похожее на фото с экрана телефона', response.data['error'])
 
-	@patch('users.views.calculate_face_blink_result')
 	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
-	def test_password_login_rejects_when_user_does_not_blink(self, similarity_mock, liveness_mock, blink_mock):
+	def test_password_login_rejects_when_live_burst_is_too_static(self, similarity_mock, liveness_mock):
 		user = User.objects.create_user(username='face_fail_user', password='test12345')
 		profile, _ = UserRole.objects.get_or_create(user=user)
 		profile.role = UserRole.USER
@@ -243,13 +242,9 @@ class RolePageAccessSettingsTests(APITestCase):
 
 		similarity_mock.return_value = 95.0
 		liveness_mock.return_value = {
-			'motion_score': 3.4,
-			'pixel_difference': 1.9,
-			'box_shift': 2.3,
-		}
-		blink_mock.return_value = {
-			'blink_detected': False,
-			'score_drop': 2.1,
+			'motion_score': 0.8,
+			'pixel_difference': 0.2,
+			'box_shift': 0.3,
 		}
 
 		response = self.client.post(
@@ -277,12 +272,11 @@ class RolePageAccessSettingsTests(APITestCase):
 		)
 
 		self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-		self.assertIn('закройте и откройте глаза', response.data['error'])
+		self.assertIn('похожее на фото с экрана телефона', response.data['error'])
 
-	@patch('users.views.calculate_face_blink_result')
 	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
-	def test_password_login_succeeds_with_live_blink(self, similarity_mock, liveness_mock, blink_mock):
+	def test_password_login_succeeds_with_live_burst_motion(self, similarity_mock, liveness_mock):
 		user = User.objects.create_user(username='face_live_user', password='test12345')
 		profile, _ = UserRole.objects.get_or_create(user=user)
 		profile.role = UserRole.USER
@@ -295,10 +289,6 @@ class RolePageAccessSettingsTests(APITestCase):
 			'motion_score': 2.86,
 			'pixel_difference': 1.41,
 			'box_shift': 1.87,
-		}
-		blink_mock.return_value = {
-			'blink_detected': True,
-			'score_drop': 10.4,
 		}
 
 		response = self.client.post(
@@ -331,14 +321,12 @@ class RolePageAccessSettingsTests(APITestCase):
 	@override_settings(EMPLOYEE_SERVICE_ENABLED=True)
 	@patch('users.views.download_employee_image')
 	@patch('users.views.get_employee_by_slug')
-	@patch('users.views.calculate_face_blink_result')
 	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
 	def test_password_login_syncs_base_avatar_from_employee_service_before_face_verification(
 		self,
 		similarity_mock,
 		liveness_mock,
-		blink_mock,
 		get_employee_mock,
 		download_image_mock,
 	):
@@ -363,10 +351,6 @@ class RolePageAccessSettingsTests(APITestCase):
 			'motion_score': 2.86,
 			'pixel_difference': 1.41,
 			'box_shift': 1.87,
-		}
-		blink_mock.return_value = {
-			'blink_detected': True,
-			'score_drop': 10.4,
 		}
 
 		response = self.client.post(
