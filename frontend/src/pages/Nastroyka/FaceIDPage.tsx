@@ -77,8 +77,10 @@ const FaceIDPage = () => {
           search: search || undefined,
         },
       });
-      setEmployees(response.data?.employees || []);
-      setTotalCount(Number(response.data?.count || 0));
+      const loadedEmployees = Array.isArray(response.data?.employees) ? response.data.employees : [];
+      const filteredEmployees = loadedEmployees.filter((employee: Employee) => !employee.requires_face_id_checkout);
+      setEmployees(filteredEmployees);
+      setTotalCount(filteredEmployees.length);
       setCurrentPage(page);
     } catch (error) {
       toast.error(getBackendError(error, 'Не удалось загрузить список сотрудников'));
