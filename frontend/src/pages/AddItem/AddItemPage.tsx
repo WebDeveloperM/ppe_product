@@ -1024,7 +1024,7 @@ const AddItemPage = () => {
                                 disabled={updatingBaseImage}
                                 className="rounded border border-primary px-3 py-2 text-sm font-medium text-primary hover:bg-primary hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                {updatingBaseImage ? 'Rasm yangilanmoqda...' : 'Bazaviy rasmni o‘zgartirish'}
+                                {updatingBaseImage ? 'Фотография обновляется...' : 'Изменить базовое фото'}
                               </button>
                             </div>
                           )}
