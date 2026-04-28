@@ -427,6 +427,46 @@ class FaceIdExemptionAccessTests(APITestCase):
 		self.assertEqual(response.data['count'], 1)
 		self.assertFalse(response.data['employees'][0]['requires_face_id_checkout'])
 
+	@patch('base.views.list_face_id_exemptions')
+	def test_face_id_list_filters_only_not_required_employees(self, list_face_id_exemptions_mock):
+		list_face_id_exemptions_mock.return_value = {
+			'count': 2,
+			'next': None,
+			'previous': None,
+			'employees': [
+				{
+					'id': 9112,
+					'external_id': '9112',
+					'slug': 'default-9112-maruf-shabonov',
+					'first_name': 'Maruf',
+					'last_name': 'Shabonov',
+					'surname': 'Bahriddin Ugli',
+					'tabel_number': '9112',
+					'position': 'Engineer',
+					'requires_face_id_checkout': False,
+				},
+				{
+					'id': 7777,
+					'external_id': '7777',
+					'slug': 'default-7777-timur-bakayev',
+					'first_name': 'Timur',
+					'last_name': 'Bakayev',
+					'surname': 'Ruslanovich',
+					'tabel_number': '7777',
+					'position': 'Engineer',
+					'requires_face_id_checkout': True,
+				},
+			],
+		}
+
+		response = self.client.get('/api/v1/employees/face-id-exemption/?requires_face_id_checkout=false')
+
+		self.assertEqual(response.status_code, 200)
+		list_face_id_exemptions_mock.assert_called_once_with(search=None, page=None, page_size=None, no_pagination=True)
+		self.assertEqual(response.data['count'], 1)
+		self.assertEqual(len(response.data['employees']), 1)
+		self.assertFalse(response.data['employees'][0]['requires_face_id_checkout'])
+
 
 class ItemAddGenderFilteringTests(APITestCase):
 	def setUp(self):

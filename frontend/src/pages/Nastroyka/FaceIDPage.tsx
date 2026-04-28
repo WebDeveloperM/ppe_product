@@ -72,15 +72,14 @@ const FaceIDPage = () => {
       const search = [tableNumberSearch.trim(), employeeNameSearch.trim()].filter(Boolean).join(' ');
       const response = await axioss.get('/employees/face-id-exemption/', {
         params: {
+          requires_face_id_checkout: false,
           page,
           page_size: PAGE_SIZE,
           search: search || undefined,
         },
       });
-      const loadedEmployees = Array.isArray(response.data?.employees) ? response.data.employees : [];
-      const filteredEmployees = loadedEmployees.filter((employee: Employee) => !employee.requires_face_id_checkout);
-      setEmployees(filteredEmployees);
-      setTotalCount(filteredEmployees.length);
+      setEmployees(Array.isArray(response.data?.employees) ? response.data.employees : []);
+      setTotalCount(Number(response.data?.count || 0));
       setCurrentPage(page);
     } catch (error) {
       toast.error(getBackendError(error, 'Не удалось загрузить список сотрудников'));
@@ -143,11 +142,14 @@ const FaceIDPage = () => {
       const response = await axioss.patch(`/employees/${employeeSlug}/face-id-exemption/`, {
         requires_face_id_checkout: newStatus,
       });
-      setEmployees((prev) =>
-        prev.map((emp) =>
+      setEmployees((prev) => {
+        if (newStatus) {
+          return prev.filter((emp) => emp.id !== employeeId);
+        }
+        return prev.map((emp) =>
           emp.id === employeeId ? { ...emp, requires_face_id_checkout: newStatus } : emp,
-        ),
-      );
+        );
+      });
       setModalEmployees((prev) =>
         prev.map((emp) =>
           emp.id === employeeId ? { ...emp, requires_face_id_checkout: newStatus } : emp,

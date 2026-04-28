@@ -5111,21 +5111,48 @@ class EmployeeFaceIdExemptionApiView(APIView):
     permission_classes = [IsAuthenticated]
 
     @staticmethod
+    def _parse_requires_face_id_filter(raw_value):
+        value = str(raw_value or '').strip().lower()
+        if value in {'true', '1', 'yes'}:
+            return True
+        if value in {'false', '0', 'no'}:
+            return False
+        return None
+
+    @staticmethod
     def get(request, *args, **kwargs):
         """Get list of employees with their Face ID requirement status."""
         permission_error = ensure_can_manage_face_id_control(request)
         if permission_error:
             return permission_error
 
+        requires_face_id_filter = EmployeeFaceIdExemptionApiView._parse_requires_face_id_filter(
+            request.query_params.get('requires_face_id_checkout')
+        )
+
         if is_employee_service_enabled():
             try:
                 payload = list_face_id_exemptions(
                     search=request.query_params.get('search', '').strip() or None,
-                    page=request.query_params.get('page'),
-                    page_size=request.query_params.get('page_size'),
+                    page=None if requires_face_id_filter is not None else request.query_params.get('page'),
+                    page_size=None if requires_face_id_filter is not None else request.query_params.get('page_size'),
+                    no_pagination=requires_face_id_filter is not None,
                 )
                 if isinstance(payload, dict):
                     employees = [apply_local_face_id_override(employee) for employee in (payload.get('employees') or payload.get('results') or [])]
+                    if requires_face_id_filter is not None:
+                        employees = [
+                            employee for employee in employees
+                            if bool(employee.get('requires_face_id_checkout')) is requires_face_id_filter
+                        ]
+                        paginator = EmployeePagination()
+                        paginated_employees = paginator.paginate_queryset(employees, request)
+                        return Response({
+                            'count': len(employees),
+                            'next': paginator.get_next_link(),
+                            'previous': paginator.get_previous_link(),
+                            'employees': paginated_employees,
+                        }, status=status.HTTP_200_OK)
                     return Response({
                         'count': payload.get('count', 0),
                         'next': payload.get('next'),
@@ -5133,6 +5160,11 @@ class EmployeeFaceIdExemptionApiView(APIView):
                         'employees': employees,
                     }, status=status.HTTP_200_OK)
                 employees = [apply_local_face_id_override(employee) for employee in (payload if isinstance(payload, list) else [])]
+                if requires_face_id_filter is not None:
+                    employees = [
+                        employee for employee in employees
+                        if bool(employee.get('requires_face_id_checkout')) is requires_face_id_filter
+                    ]
                 return Response({'count': len(employees), 'next': None, 'previous': None, 'employees': employees}, status=status.HTTP_200_OK)
             except EmployeeServiceClientError as exc:
                 return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
