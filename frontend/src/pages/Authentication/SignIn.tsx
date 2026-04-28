@@ -924,10 +924,10 @@ const SignIn: React.FC = () => {
                           style={{
                             left: `${Math.max(0, faceBounds.leftPct - 3)}%`,
                             top: `${Math.max(0, faceBounds.topPct - 3)}%`,
-                            width: `${Math.min(100, faceBounds.widthPct * 0.74)}%`,
+                            width: `${Math.min(100, faceBounds.widthPct * 0.86)}%`,
                             height: `${Math.min(100, faceBounds.heightPct * 1.22)}%`,
                             borderRadius: '999px',
-                            transform: 'translateX(16%)',
+                            transform: 'translateX(10%)',
                           }}
                         >
                           <svg
