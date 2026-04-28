@@ -37,9 +37,7 @@ from .models import (
 FACE_ID_VERIFY_THRESHOLD = float(getattr(settings, 'FACE_SIMILARITY_THRESHOLD', 72.0))
 FACE_ID_MATCH_THRESHOLD = float(getattr(settings, 'FACE_ID_LOGIN_THRESHOLD', FACE_ID_VERIFY_THRESHOLD))
 FACE_ID_MATCH_MIN_GAP = float(getattr(settings, 'FACE_ID_LOGIN_MIN_GAP', 6.0))
-FACE_ID_LIVE_BURST_MOTION_THRESHOLD = float(getattr(settings, 'FACE_ID_LIVE_BURST_MOTION_THRESHOLD', 1.6))
-FACE_ID_LIVE_BURST_MIN_FRAMES = int(getattr(settings, 'FACE_ID_LIVE_BURST_MIN_FRAMES', 8))
-FACE_ID_BURST_REQUIRED_MESSAGE = 'Смотрите в камеру несколько секунд, удерживая лицо в кадре.'
+FACE_ID_CAPTURE_REQUIRED_MESSAGE = 'Посмотрите в камеру и сделайте один четкий снимок лица.'
 
 
 def build_login_response(user):
@@ -291,34 +289,14 @@ def calculate_face_similarity_score(base_image, captured_image):
     return float(calculate_face_identity_similarity(base_image, captured_image))
 
 
-def calculate_face_burst_liveness(images):
-    from base.views import estimate_face_burst_liveness
-
-    return estimate_face_burst_liveness(images)
-
-
 def issue_face_id_challenge():
     return {
-        'face_challenge_instruction': FACE_ID_BURST_REQUIRED_MESSAGE,
+        'face_challenge_instruction': FACE_ID_CAPTURE_REQUIRED_MESSAGE,
     }
 
 
 def decode_face_challenge_token(token):
     return None
-
-
-def normalize_face_capture_frames(face_capture, face_capture_frames):
-    normalized_frames = []
-
-    if isinstance(face_capture_frames, list):
-        normalized_frames.extend([frame for frame in face_capture_frames if frame])
-    elif face_capture_frames:
-        normalized_frames.append(face_capture_frames)
-
-    if face_capture and face_capture not in normalized_frames:
-        normalized_frames.insert(0, face_capture)
-
-    return normalized_frames
 
 
 def get_faceid_login_candidate_profiles():
@@ -423,7 +401,7 @@ def match_user_by_face_capture(face_capture):
     return best_profile.user, None
 
 
-def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_challenge_token):
+def verify_login_face_id(user, profile, face_capture):
     user_face_id_required = bool(profile.face_id_required) if profile else True
     if not user_face_id_required:
         return None
@@ -438,23 +416,12 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_
         'lastname': user.last_name,
     }
 
-    capture_frames = normalize_face_capture_frames(face_capture, face_capture_frames)
     challenge_payload = issue_face_id_challenge()
 
-    if not capture_frames:
+    if not face_capture:
         return Response(
             {
                 'error': 'Для этой роли требуется Face ID подтверждение.',
-                **face_id_context,
-                **challenge_payload,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    if len(capture_frames) < FACE_ID_LIVE_BURST_MIN_FRAMES:
-        return Response(
-            {
-                'error': 'Для Face ID подтверждения нужно короткое живое видео из нескольких кадров. Удерживайте лицо перед камерой до конца проверки.',
                 **face_id_context,
                 **challenge_payload,
             },
@@ -491,19 +458,6 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    burst_images = []
-    for frame_payload in capture_frames:
-        frame_image = decode_image_to_pil(frame_payload)
-        if frame_image is None:
-            return Response(
-                {
-                    'error': 'Один из Face ID кадров некорректен.',
-                    **face_id_context,
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        burst_images.append(frame_image)
-
     try:
         similarity = calculate_face_similarity_score(base_image, captured_image)
     except ValueError as exc:
@@ -523,25 +477,6 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    try:
-        liveness_result = calculate_face_burst_liveness(burst_images)
-    except ValueError as exc:
-        return Response(
-            {
-                'error': str(exc),
-                **face_id_context,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    except Exception:
-        return Response(
-            {
-                'error': 'Ошибка проверки живого Face ID подтверждения.',
-                **face_id_context,
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
     if similarity < FACE_ID_VERIFY_THRESHOLD:
         return Response(
             {
@@ -550,22 +485,6 @@ def verify_login_face_id(user, profile, face_capture, face_capture_frames, face_
                 'verified': False,
                 'similarity': round(similarity, 2),
                 'threshold': FACE_ID_VERIFY_THRESHOLD,
-            },
-            status=status.HTTP_403_FORBIDDEN,
-        )
-
-    motion_score = float(liveness_result.get('motion_score', 0.0))
-    if motion_score < FACE_ID_LIVE_BURST_MOTION_THRESHOLD:
-        return Response(
-            {
-                'error': 'Face ID не подтвержден. Обнаружено слишком статичное изображение, похожее на фото с экрана телефона.',
-                **face_id_context,
-                **challenge_payload,
-                'verified': False,
-                'motion_score': round(motion_score, 3),
-                'motion_threshold': FACE_ID_LIVE_BURST_MOTION_THRESHOLD,
-                'pixel_difference': round(float(liveness_result.get('pixel_difference', 0.0)), 3),
-                'box_shift': round(float(liveness_result.get('box_shift', 0.0)), 3),
             },
             status=status.HTTP_403_FORBIDDEN,
         )
@@ -581,8 +500,6 @@ class LoginAPIView(APIView):
         username = request.data.get('username')
         password = request.data.get('password')
         face_capture = request.data.get('face_capture')
-        face_capture_frames = request.data.get('face_capture_frames')
-        face_challenge_token = request.data.get('face_challenge_token')
 
         user = authenticate(username=username, password=password)
 
@@ -590,7 +507,7 @@ class LoginAPIView(APIView):
             role = get_effective_user_role(user)
 
             profile = getattr(user, 'role_profile', None)
-            face_verification_response = verify_login_face_id(user, profile, face_capture, face_capture_frames, face_challenge_token)
+            face_verification_response = verify_login_face_id(user, profile, face_capture)
             if face_verification_response is not None:
                 return face_verification_response
 

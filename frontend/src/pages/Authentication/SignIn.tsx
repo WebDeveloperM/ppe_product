@@ -46,14 +46,9 @@ const FACE_DETECTION_INTERVAL_MS = 250;
 const FACE_OVERLAY_PADDING = 4;
 
 const SignIn: React.FC = () => {
-  const FACE_BURST_FRAME_COUNT = 10;
-  const FACE_BURST_FRAME_DELAY_MS = 300;
-  const FACE_BURST_PREPARE_DELAY_MS = 1000;
-
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [faceCapture, setFaceCapture] = useState("");
-  const [faceCaptureFrames, setFaceCaptureFrames] = useState<string[]>([]);
   const [faceModalOpen, setFaceModalOpen] = useState(false);
   const [faceTargetUser, setFaceTargetUser] = useState('');
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -333,7 +328,6 @@ const SignIn: React.FC = () => {
   useEffect(() => {
     if (faceModalOpen) {
       setFaceCapture('');
-      setFaceCaptureFrames([]);
       setFaceVerifyError('');
       setFaceBurstStatus('');
       startCamera();
@@ -477,10 +471,6 @@ const SignIn: React.FC = () => {
     }
   };
 
-  const wait = (milliseconds: number) => new Promise<void>((resolve) => {
-    window.setTimeout(resolve, milliseconds);
-  });
-
   const captureCurrentFrame = () => {
     if (!videoRef.current || !canvasRef.current) return '';
     const video = videoRef.current;
@@ -503,43 +493,19 @@ const SignIn: React.FC = () => {
     }
     setFaceVerifyError('');
     setCaptureProgress(0);
-    setFaceBurstStatus('Приготовьтесь. Проверка займет несколько секунд. Удерживайте лицо ровно в кадре.');
-    await wait(FACE_BURST_PREPARE_DELAY_MS);
+    setFaceBurstStatus('Снимок получен, выполняется проверка...');
+    setCaptureProgress(1);
 
-    if (!videoRef.current || !canvasRef.current) {
+    const frame = captureCurrentFrame();
+    if (!frame) {
       setFaceBurstStatus('');
       setCaptureProgress(0);
       return;
     }
 
-    setFaceBurstStatus('Идет проверка. Смотрите в камеру и удерживайте лицо в кадре.');
-
-    const frames: string[] = [];
-    for (let index = 0; index < FACE_BURST_FRAME_COUNT; index += 1) {
-      setCaptureProgress((index + 1) / FACE_BURST_FRAME_COUNT);
-      const frame = captureCurrentFrame();
-      if (!frame) {
-        setFaceBurstStatus('');
-        setCaptureProgress(0);
-        return;
-      }
-      frames.push(frame);
-      if (index < FACE_BURST_FRAME_COUNT - 1) {
-        await wait(FACE_BURST_FRAME_DELAY_MS);
-      }
-    }
-
-    if (!frames.length) {
-      setFaceBurstStatus('');
-      setCaptureProgress(0);
-      return;
-    }
-
-    setFaceCapture(frames[0]);
-    setFaceCaptureFrames(frames);
-    setFaceBurstStatus('Кадры сняты, выполняется проверка...');
+    setFaceCapture(frame);
     try {
-      await performLogin(true, frames[0], frames);
+      await performLogin(true, frame);
     } finally {
       setCaptureProgress(0);
     }
@@ -548,7 +514,6 @@ const SignIn: React.FC = () => {
   const closeFaceModal = () => {
     setFaceModalOpen(false);
     setFaceCapture('');
-    setFaceCaptureFrames([]);
     setFaceBurstStatus('');
     setFaceTargetUser('');
     setCameraError('');
@@ -578,7 +543,7 @@ const SignIn: React.FC = () => {
     localStorage.setItem("isLogin", "true")
   };
 
-  const performLogin = async (withFaceId: boolean, capturedFace?: string, capturedFrames?: string[]) => {
+  const performLogin = async (withFaceId: boolean, capturedFace?: string) => {
     const payload: Record<string, string | string[]> = {
       username,
       password,
@@ -587,10 +552,6 @@ const SignIn: React.FC = () => {
     const facePayload = capturedFace || faceCapture;
     if (withFaceId && facePayload) {
       payload.face_capture = facePayload;
-    }
-    const framePayload = capturedFrames || faceCaptureFrames;
-    if (withFaceId && framePayload.length) {
-      payload.face_capture_frames = framePayload;
     }
 
     setSubmitting(true);
@@ -655,9 +616,26 @@ const SignIn: React.FC = () => {
   console.log(error, 1111111);
 
   const faceGuideDetected = Boolean(faceBounds);
-  const ringProgress = Math.max(0, Math.min(1, captureProgress));
-  const ringCircumference = 2 * Math.PI * 46;
-  const ringDashOffset = ringCircumference * (1 - ringProgress);
+  const autofocusFrameStyle = faceBounds
+    ? {
+        left: `${Math.max(0, faceBounds.leftPct - 3)}%`,
+        top: `${Math.max(0, faceBounds.topPct - 3)}%`,
+        width: `${Math.min(100, faceBounds.widthPct + 6)}%`,
+        height: `${Math.min(100, faceBounds.heightPct + 6)}%`,
+      }
+    : {
+        left: '18%',
+        top: '14%',
+        width: '64%',
+        height: '70%',
+      };
+  const autofocusFrameVisualStyle = {
+    borderColor: faceGuideDetected ? 'rgb(34 197 94)' : 'rgba(34, 197, 94, 0.8)',
+    borderStyle: faceGuideDetected ? 'solid' as const : 'dashed' as const,
+    boxShadow: captureProgress > 0
+      ? '0 0 0 2px rgba(34,197,94,0.28), 0 0 24px rgba(34,197,94,0.45)'
+      : '0 0 0 1px rgba(34,197,94,0.2), 0 0 16px rgba(34,197,94,0.24)',
+  };
 
 
   return (
@@ -897,7 +875,7 @@ const SignIn: React.FC = () => {
             ) : null}
 
             <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
-              Смотрите в камеру несколько секунд и удерживайте лицо в рамке. Статичная фотография на телефоне такую проверку не пройдет.
+              Посмотрите в камеру и сделайте один четкий снимок лица для сравнения с базовым фото.
             </p>
 
             {!cameraOpen ? (
@@ -919,54 +897,19 @@ const SignIn: React.FC = () => {
                         onPause={() => setCameraLive(false)}
                         onEmptied={() => setCameraLive(false)}
                       />
-                      {faceBounds ? (
-                        <div
-                          className="pointer-events-none absolute transition-all duration-200"
-                          style={{
-                            left: `${Math.max(0, faceBounds.leftPct - 3)}%`,
-                            top: `${Math.max(0, faceBounds.topPct - 3)}%`,
-                            width: `${Math.min(100, faceBounds.widthPct * 0.86)}%`,
-                            height: `${Math.min(100, faceBounds.heightPct * 1.22)}%`,
-                            borderRadius: '999px',
-                            transform: 'translateX(10%)',
-                          }}
-                        >
-                          <svg
-                            className="absolute inset-[-10px] h-[calc(100%+20px)] w-[calc(100%+20px)]"
-                            viewBox="0 0 100 100"
-                            preserveAspectRatio="none"
-                          >
-                            <ellipse
-                              cx="50"
-                              cy="50"
-                              rx="36"
-                              ry="46"
-                              fill="none"
-                              stroke="rgba(255,255,255,0.28)"
-                              strokeWidth="3"
-                            />
-                            <ellipse
-                              cx="50"
-                              cy="50"
-                              rx="36"
-                              ry="46"
-                              fill="none"
-                              stroke="rgb(34 197 94)"
-                              strokeWidth="4"
-                              strokeLinecap="round"
-                              strokeDasharray={ringCircumference}
-                              strokeDashoffset={ringDashOffset}
-                              style={{ transition: submitting ? 'stroke-dashoffset 0.25s linear' : 'stroke-dashoffset 0.18s ease' }}
-                            />
-                          </svg>
-                        </div>
-                      ) : null}
+                      <div
+                        className="pointer-events-none absolute rounded-2xl border-[3px] transition-all duration-200"
+                        style={{
+                          ...autofocusFrameStyle,
+                          ...autofocusFrameVisualStyle,
+                        }}
+                      />
                     </div>
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/80 to-transparent px-4 py-3 text-xs text-white">
                       {faceGuideDetected
                         ? (submitting
                           ? 'Tekshiruv davom etmoqda...'
-                          : 'Tayyor! Kameraga tik qarang va tekshiruvni boshlang.')
+                          : 'Tayyor! Kameraga tik qarang va suratga oling.')
                         : faceDetectionSupported
                           ? 'Kameraga tik qarang. Tizim yuzni aniqlashi kerak.'
                           : "Brauzer yuz detektorini qo'llamaydi. Yuzni markazda ushlab tekshiruvni boshlang."}
@@ -982,7 +925,7 @@ const SignIn: React.FC = () => {
                   >
                     {submitting
                       ? 'Проверка...'
-                      : 'Проверить Face ID'}
+                      : 'Снять и проверить Face ID'}
                   </button>
                 </div>
               </div>

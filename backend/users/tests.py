@@ -185,9 +185,8 @@ class RolePageAccessSettingsTests(APITestCase):
 		self.assertLess(remaining_seconds, 7205)
 		self.assertEqual(response.data['token'], token.key)
 
-	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
-	def test_password_login_rejects_static_phone_like_face_burst(self, similarity_mock, liveness_mock):
+	def test_password_login_rejects_when_face_does_not_match_base_avatar(self, similarity_mock):
 		user = User.objects.create_user(username='face_session_user', password='test12345')
 		profile, _ = UserRole.objects.get_or_create(user=user)
 		profile.role = UserRole.USER
@@ -195,12 +194,7 @@ class RolePageAccessSettingsTests(APITestCase):
 		profile.base_avatar = build_test_image('avatar.jpg')
 		profile.save(update_fields=['role', 'face_id_required', 'base_avatar'])
 
-		similarity_mock.return_value = 95.0
-		liveness_mock.return_value = {
-			'motion_score': 0.42,
-			'pixel_difference': 0.12,
-			'box_shift': 0.31,
-		}
+		similarity_mock.return_value = 41.0
 
 		response = self.client.post(
 			'/api/v1/users/login/',
@@ -208,31 +202,16 @@ class RolePageAccessSettingsTests(APITestCase):
 				'username': 'face_session_user',
 				'password': 'test12345',
 				'face_capture': build_test_image_data_url('captured-face.jpg'),
-				'face_capture_frames': [
-					build_test_image_data_url('captured-face-1.jpg'),
-					build_test_image_data_url('captured-face-2.jpg'),
-					build_test_image_data_url('captured-face-3.jpg'),
-					build_test_image_data_url('captured-face-4.jpg'),
-					build_test_image_data_url('captured-face-5.jpg'),
-					build_test_image_data_url('captured-face-6.jpg'),
-					build_test_image_data_url('captured-face-7.jpg'),
-					build_test_image_data_url('captured-face-8.jpg'),
-					build_test_image_data_url('captured-face-9.jpg'),
-					build_test_image_data_url('captured-face-10.jpg'),
-					build_test_image_data_url('captured-face-11.jpg'),
-					build_test_image_data_url('captured-face-12.jpg'),
-				],
 			},
 			format='json',
 		)
 
 		self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 		self.assertEqual(response.data['verified'], False)
-		self.assertIn('похожее на фото с экрана телефона', response.data['error'])
+		self.assertIn('Лицо не совпало', response.data['error'])
 
-	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
-	def test_password_login_rejects_when_live_burst_is_too_static(self, similarity_mock, liveness_mock):
+	def test_password_login_requires_face_capture_when_face_id_enabled(self, similarity_mock):
 		user = User.objects.create_user(username='face_fail_user', password='test12345')
 		profile, _ = UserRole.objects.get_or_create(user=user)
 		profile.role = UserRole.USER
@@ -240,43 +219,20 @@ class RolePageAccessSettingsTests(APITestCase):
 		profile.base_avatar = build_test_image('avatar-fail.jpg')
 		profile.save(update_fields=['role', 'face_id_required', 'base_avatar'])
 
-		similarity_mock.return_value = 95.0
-		liveness_mock.return_value = {
-			'motion_score': 0.8,
-			'pixel_difference': 0.2,
-			'box_shift': 0.3,
-		}
-
 		response = self.client.post(
 			'/api/v1/users/login/',
 			{
 				'username': 'face_fail_user',
 				'password': 'test12345',
-				'face_capture': build_test_image_data_url('captured-front.jpg'),
-				'face_capture_frames': [
-					build_test_image_data_url('captured-1.jpg'),
-					build_test_image_data_url('captured-2.jpg'),
-					build_test_image_data_url('captured-3.jpg'),
-					build_test_image_data_url('captured-4.jpg'),
-					build_test_image_data_url('captured-5.jpg'),
-					build_test_image_data_url('captured-6.jpg'),
-					build_test_image_data_url('captured-7.jpg'),
-					build_test_image_data_url('captured-8.jpg'),
-					build_test_image_data_url('captured-9.jpg'),
-					build_test_image_data_url('captured-10.jpg'),
-					build_test_image_data_url('captured-11.jpg'),
-					build_test_image_data_url('captured-12.jpg'),
-				],
 			},
 			format='json',
 		)
 
-		self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-		self.assertIn('похожее на фото с экрана телефона', response.data['error'])
+		self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+		self.assertIn('требуется Face ID подтверждение', response.data['error'])
 
-	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
-	def test_password_login_succeeds_with_live_burst_motion(self, similarity_mock, liveness_mock):
+	def test_password_login_succeeds_with_matching_base_avatar(self, similarity_mock):
 		user = User.objects.create_user(username='face_live_user', password='test12345')
 		profile, _ = UserRole.objects.get_or_create(user=user)
 		profile.role = UserRole.USER
@@ -285,11 +241,6 @@ class RolePageAccessSettingsTests(APITestCase):
 		profile.save(update_fields=['role', 'face_id_required', 'base_avatar'])
 
 		similarity_mock.return_value = 95.0
-		liveness_mock.return_value = {
-			'motion_score': 2.86,
-			'pixel_difference': 1.41,
-			'box_shift': 1.87,
-		}
 
 		response = self.client.post(
 			'/api/v1/users/login/',
@@ -297,20 +248,6 @@ class RolePageAccessSettingsTests(APITestCase):
 				'username': 'face_live_user',
 				'password': 'test12345',
 				'face_capture': build_test_image_data_url('captured-front.jpg'),
-				'face_capture_frames': [
-					build_test_image_data_url('captured-1.jpg'),
-					build_test_image_data_url('captured-2.jpg'),
-					build_test_image_data_url('captured-3.jpg'),
-					build_test_image_data_url('captured-4.jpg'),
-					build_test_image_data_url('captured-5.jpg'),
-					build_test_image_data_url('captured-6.jpg'),
-					build_test_image_data_url('captured-7.jpg'),
-					build_test_image_data_url('captured-8.jpg'),
-					build_test_image_data_url('captured-9.jpg'),
-					build_test_image_data_url('captured-10.jpg'),
-					build_test_image_data_url('captured-11.jpg'),
-					build_test_image_data_url('captured-12.jpg'),
-				],
 			},
 			format='json',
 		)
@@ -321,12 +258,10 @@ class RolePageAccessSettingsTests(APITestCase):
 	@override_settings(EMPLOYEE_SERVICE_ENABLED=True)
 	@patch('users.views.download_employee_image')
 	@patch('users.views.get_employee_by_slug')
-	@patch('users.views.calculate_face_burst_liveness')
 	@patch('users.views.calculate_face_similarity_score')
 	def test_password_login_syncs_base_avatar_from_employee_service_before_face_verification(
 		self,
 		similarity_mock,
-		liveness_mock,
 		get_employee_mock,
 		download_image_mock,
 	):
@@ -347,11 +282,6 @@ class RolePageAccessSettingsTests(APITestCase):
 		}
 		download_image_mock.return_value = build_test_image('7788.jpg').read()
 		similarity_mock.return_value = 95.0
-		liveness_mock.return_value = {
-			'motion_score': 2.86,
-			'pixel_difference': 1.41,
-			'box_shift': 1.87,
-		}
 
 		response = self.client.post(
 			'/api/v1/users/login/',
@@ -359,18 +289,6 @@ class RolePageAccessSettingsTests(APITestCase):
 				'username': 'face_sync_login_user',
 				'password': 'test12345',
 				'face_capture': build_test_image_data_url('captured-front.jpg'),
-				'face_capture_frames': [
-					build_test_image_data_url('captured-1.jpg'),
-					build_test_image_data_url('captured-2.jpg'),
-					build_test_image_data_url('captured-3.jpg'),
-					build_test_image_data_url('captured-4.jpg'),
-					build_test_image_data_url('captured-5.jpg'),
-					build_test_image_data_url('captured-6.jpg'),
-					build_test_image_data_url('captured-7.jpg'),
-					build_test_image_data_url('captured-8.jpg'),
-					build_test_image_data_url('captured-9.jpg'),
-					build_test_image_data_url('captured-10.jpg'),
-				],
 			},
 			format='json',
 		)
