@@ -907,58 +907,60 @@ const SignIn: React.FC = () => {
               <div className="space-y-2">
                 <div className="relative overflow-hidden rounded border bg-black">
                   <div className="aspect-video w-full">
-                    <video
-                      ref={videoRef}
-                      className="h-full w-full object-cover"
-                      autoPlay
-                      playsInline
-                      muted
-                      onPlaying={() => setCameraLive(true)}
-                      onPause={() => setCameraLive(false)}
-                      onEmptied={() => setCameraLive(false)}
-                    />
-                    {faceBounds ? (
-                      <div
-                        className="pointer-events-none absolute transition-all duration-200"
-                        style={{
-                          left: `${Math.max(0, faceBounds.leftPct - 3)}%`,
-                          top: `${Math.max(0, faceBounds.topPct - 3)}%`,
-                          width: `${Math.min(100, faceBounds.widthPct * 0.74)}%`,
-                          height: `${Math.min(100, faceBounds.heightPct * 1.22)}%`,
-                          borderRadius: '999px',
-                          transform: 'translateX(16%)',
-                        }}
-                      >
-                        <svg
-                          className="absolute inset-[-10px] h-[calc(100%+20px)] w-[calc(100%+20px)]"
-                          viewBox="0 0 100 100"
-                          preserveAspectRatio="none"
+                    <div className="absolute inset-0" style={{ transform: 'scaleX(-1)' }}>
+                      <video
+                        ref={videoRef}
+                        className="h-full w-full object-cover"
+                        autoPlay
+                        playsInline
+                        muted
+                        onPlaying={() => setCameraLive(true)}
+                        onPause={() => setCameraLive(false)}
+                        onEmptied={() => setCameraLive(false)}
+                      />
+                      {faceBounds ? (
+                        <div
+                          className="pointer-events-none absolute transition-all duration-200"
+                          style={{
+                            left: `${Math.max(0, faceBounds.leftPct - 3)}%`,
+                            top: `${Math.max(0, faceBounds.topPct - 3)}%`,
+                            width: `${Math.min(100, faceBounds.widthPct * 0.74)}%`,
+                            height: `${Math.min(100, faceBounds.heightPct * 1.22)}%`,
+                            borderRadius: '999px',
+                            transform: 'translateX(16%)',
+                          }}
                         >
-                          <ellipse
-                            cx="50"
-                            cy="50"
-                            rx="36"
-                            ry="46"
-                            fill="none"
-                            stroke="rgba(255,255,255,0.28)"
-                            strokeWidth="3"
-                          />
-                          <ellipse
-                            cx="50"
-                            cy="50"
-                            rx="36"
-                            ry="46"
-                            fill="none"
-                            stroke="rgb(34 197 94)"
-                            strokeWidth="4"
-                            strokeLinecap="round"
-                            strokeDasharray={ringCircumference}
-                            strokeDashoffset={ringDashOffset}
-                            style={{ transition: submitting ? 'stroke-dashoffset 0.25s linear' : 'stroke-dashoffset 0.18s ease' }}
-                          />
-                        </svg>
-                      </div>
-                    ) : null}
+                          <svg
+                            className="absolute inset-[-10px] h-[calc(100%+20px)] w-[calc(100%+20px)]"
+                            viewBox="0 0 100 100"
+                            preserveAspectRatio="none"
+                          >
+                            <ellipse
+                              cx="50"
+                              cy="50"
+                              rx="36"
+                              ry="46"
+                              fill="none"
+                              stroke="rgba(255,255,255,0.28)"
+                              strokeWidth="3"
+                            />
+                            <ellipse
+                              cx="50"
+                              cy="50"
+                              rx="36"
+                              ry="46"
+                              fill="none"
+                              stroke="rgb(34 197 94)"
+                              strokeWidth="4"
+                              strokeLinecap="round"
+                              strokeDasharray={ringCircumference}
+                              strokeDashoffset={ringDashOffset}
+                              style={{ transition: submitting ? 'stroke-dashoffset 0.25s linear' : 'stroke-dashoffset 0.18s ease' }}
+                            />
+                          </svg>
+                        </div>
+                      ) : null}
+                    </div>
                     <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/80 to-transparent px-4 py-3 text-xs text-white">
                       {faceGuideDetected
                         ? (submitting
