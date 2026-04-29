@@ -255,7 +255,6 @@ const DailyPPEIssuedPage = () => {
                     <th className="px-4 py-3 text-left font-semibold">Сотрудник</th>
                     <th className="px-4 py-3 text-left font-semibold">Продукт СИЗ</th>
                     <th className="px-4 py-3 text-left font-semibold">Дата выдачи</th>
-                    <th className="px-4 py-3 text-left font-semibold">Подтверждающая подпись</th>
                     <th className="px-4 py-3 text-left font-semibold">QR код</th>
                   </tr>
                 </thead>
@@ -279,19 +278,6 @@ const DailyPPEIssuedPage = () => {
                       <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.productsLabel}</td>
                       <td className="px-4 py-4 text-slate-700 dark:text-slate-200 whitespace-nowrap">{row.issuedAt}</td>
                       <td className="px-4 py-4">
-                        {row.signatureImage ? (
-                          <a href={row.signatureImage} target="_blank" rel="noreferrer" className="block w-fit">
-                            <img
-                              src={row.signatureImage}
-                              alt={row.fullName}
-                              className="h-20 w-28 rounded border border-stroke object-cover dark:border-strokedark"
-                            />
-                          </a>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4">
                         {row.qrCodeImage ? (
                           <div className="space-y-2">
                             <a href={row.qrCodeImage} target="_blank" rel="noreferrer" className="block w-fit">
@@ -308,7 +294,7 @@ const DailyPPEIssuedPage = () => {
                                 rel="noreferrer"
                                 className="text-xs font-medium text-primary hover:underline"
                               >
-                                QR havolasi
+                                Открыть
                               </a>
                             )}
                           </div>
