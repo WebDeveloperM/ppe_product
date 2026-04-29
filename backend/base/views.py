@@ -3555,7 +3555,12 @@ class ItemHistoryCreateApiView(APIView):
         if issued_at is None:
             issued_date = parse_date(raw_value)
             if issued_date is None:
-                return None, Response({"error": "Дата указана некорректно."}, status=status.HTTP_400_BAD_REQUEST)
+                try:
+                    issued_date = datetime.datetime.strptime(raw_value, '%d/%m/%Y').date()
+                except ValueError:
+                    issued_date = None
+            if issued_date is None:
+                return None, Response({"error": "Дата указана некорректно. Используйте формат dd/mm/yyyy."}, status=status.HTTP_400_BAD_REQUEST)
             issued_at = datetime.datetime.combine(issued_date, datetime.time.min)
 
         if timezone.is_naive(issued_at):

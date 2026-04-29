@@ -40,9 +40,13 @@ type PPECatalogItem = {
 
 const getCurrentDateInputValue = () => {
     const now = new Date();
-    const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-    return localNow.toISOString().slice(0, 10);
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = String(now.getFullYear());
+    return `${day}/${month}/${year}`;
 };
+
+const normalizeDateInputValue = (value: string) => value.replace(/[^\d/]/g, '').slice(0, 10);
 
 type ItemDetail = {
     id?: number;
@@ -1229,10 +1233,12 @@ export default function ViewPO() {
                                                 <div className="mt-3">
                                                     <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Дата выдачи</label>
                                                     <input
-                                                        type="date"
+                                                        type="text"
                                                         value={historyProductDates[product.id] || ''}
-                                                        onChange={(event) => setHistoryProductDate(product.id, event.target.value)}
+                                                        onChange={(event) => setHistoryProductDate(product.id, normalizeDateInputValue(event.target.value))}
                                                         disabled={!historyProductIds.includes(product.id)}
+                                                        placeholder="dd/mm/yyyy"
+                                                        inputMode="numeric"
                                                         className="w-full rounded border border-stroke px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-strokedark dark:bg-boxdark-2 dark:disabled:bg-slate-800"
                                                     />
                                                 </div>
