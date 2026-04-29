@@ -1253,7 +1253,7 @@ export default function ViewPO() {
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-3 border-t border-stroke px-5 py-4 dark:border-strokedark">
+                        <div className="mt-auto flex shrink-0 justify-end gap-3 border-t border-stroke px-5 py-4 dark:border-strokedark">
                             <button
                                 type="button"
                                 onClick={resetHistoryForm}
