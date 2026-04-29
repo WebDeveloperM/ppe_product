@@ -3672,6 +3672,23 @@ class ItemHistoryCreateApiView(APIView):
             item.next_due_date = add_calendar_months(issued_at, max_renewal_months - 1)
             item.save(update_fields=['next_due_date'])
 
+        pending_issue = PendingItemIssue(
+            ppeproduct_ids=[product.id for product in products],
+            ppe_sizes=normalized_sizes,
+            status=PendingItemIssue.STATUS_CONFIRMED,
+            created_by=request.user,
+            employee_signed_at=issued_at,
+            warehouse_signed_at=issued_at,
+            confirmed_at=issued_at,
+            confirmed_item=item,
+        )
+        pending_issue.set_employee_snapshot(source_employee)
+        try:
+            pending_issue.generate_qr_code(request.build_absolute_uri(pending_issue.get_qr_frontend_path()))
+        except Exception:
+            pass
+        pending_issue.save()
+
         update_change_reason(item, f"История выдачи добавлена пользователем {request.user.username}")
         attach_employee_snapshots([item])
 
