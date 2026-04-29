@@ -38,10 +38,10 @@ type PPECatalogItem = {
     renewal_months?: number | null;
 };
 
-const getCurrentDateTimeInputValue = () => {
+const getCurrentDateInputValue = () => {
     const now = new Date();
     const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-    return localNow.toISOString().slice(0, 16);
+    return localNow.toISOString().slice(0, 10);
 };
 
 type ItemDetail = {
@@ -117,7 +117,7 @@ export default function ViewPO() {
     const canAddHistory = role === 'admin' || role === 'warehouse_staff';
 
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
-    const [historyIssuedAt, setHistoryIssuedAt] = useState(getCurrentDateTimeInputValue());
+    const [historyIssuedAt, setHistoryIssuedAt] = useState(getCurrentDateInputValue());
     const [historyProductIds, setHistoryProductIds] = useState<number[]>([]);
     const [historySaving, setHistorySaving] = useState(false);
     const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
@@ -136,7 +136,7 @@ export default function ViewPO() {
 
     const resetHistoryForm = () => {
         setHistoryProductIds([]);
-        setHistoryIssuedAt(getCurrentDateTimeInputValue());
+        setHistoryIssuedAt(getCurrentDateInputValue());
         setHistoryModalOpen(false);
         setHistorySaving(false);
     };
@@ -1180,9 +1180,9 @@ export default function ViewPO() {
 
                         <div className="space-y-4 px-5 py-4">
                             <div>
-                                <label className="mb-2 block text-sm font-medium text-black dark:text-white">Дата и время выдачи</label>
+                                <label className="mb-2 block text-sm font-medium text-black dark:text-white">Дата выдачи</label>
                                 <input
-                                    type="datetime-local"
+                                    type="date"
                                     value={historyIssuedAt}
                                     onChange={(event) => setHistoryIssuedAt(event.target.value)}
                                     className="w-full rounded border border-stroke px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark-2"

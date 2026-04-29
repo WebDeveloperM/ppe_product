@@ -3594,7 +3594,10 @@ class ItemHistoryCreateApiView(APIView):
 
         issued_at = parse_datetime(issued_at_raw)
         if issued_at is None:
-            return Response({"error": "Дата и время указаны некорректно."}, status=status.HTTP_400_BAD_REQUEST)
+            issued_date = parse_date(issued_at_raw)
+            if issued_date is None:
+                return Response({"error": "Дата указана некорректно."}, status=status.HTTP_400_BAD_REQUEST)
+            issued_at = datetime.datetime.combine(issued_date, datetime.time.min)
         if timezone.is_naive(issued_at):
             issued_at = timezone.make_aware(issued_at, timezone.get_current_timezone())
 
