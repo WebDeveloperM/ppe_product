@@ -128,7 +128,7 @@ const DailyPPEIssuedPage = () => {
   const isAdmin = role === 'admin';
   const canSeeDailyPpeIssued = role === 'admin' || role === 'warehouse_manager';
 
-  const [selectedDate, setSelectedDate] = useState(() => formatDateInput(new Date()));
+  const [selectedDate, setSelectedDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<DailyIssueRow[]>([]);
 
@@ -139,9 +139,7 @@ const DailyPPEIssuedPage = () => {
       setLoading(true);
       try {
         const response = await axioss.get('/daily-issued-items/', {
-          params: {
-            issued_at: selectedDate,
-          },
+          params: selectedDate ? { issued_at: selectedDate } : {},
         });
 
         const payload: DailyIssuedApiRow[] = Array.isArray(response.data) ? response.data : [];
@@ -205,19 +203,31 @@ const DailyPPEIssuedPage = () => {
           <div>
             <h3 className="text-lg font-semibold text-black dark:text-white">Общий ежедневный журнал выдачи</h3>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Отчет за {formatReportDate(selectedDate)}. Всего получателей: {rows.length}
+              {selectedDate ? `Отчет за ${formatReportDate(selectedDate)}. ` : 'Все записи. '}Всего получателей: {rows.length}
             </p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <label className="flex flex-col text-sm text-slate-700 dark:text-slate-200">
               <span className="mb-1 font-medium">Дата выдачи</span>
-              <input
-                type="date"
-                value={selectedDate}
-                onChange={(event) => setSelectedDate(event.target.value)}
-                className="rounded border border-stroke px-3 py-2 outline-none focus:border-primary dark:border-strokedark dark:bg-boxdark-2"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) => setSelectedDate(event.target.value)}
+                  className="rounded border border-stroke px-3 py-2 outline-none focus:border-primary dark:border-strokedark dark:bg-boxdark-2"
+                />
+                {selectedDate && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate('')}
+                    className="rounded border border-stroke px-3 py-2 text-xs hover:bg-gray-100 dark:border-strokedark dark:hover:bg-gray-700"
+                    title="Сбросить фильтр"
+                  >
+                    × Все даты
+                  </button>
+                )}
+              </div>
             </label>
 
             <button
@@ -234,7 +244,7 @@ const DailyPPEIssuedPage = () => {
             <div className="p-5 text-sm">Загрузка...</div>
           ) : rows.length === 0 ? (
             <div className="p-5 text-sm text-slate-500 dark:text-slate-300">
-              На выбранную дату подтвержденных выдач не найдено.
+              {selectedDate ? 'На выбранную дату подтвержденных выдач не найдено.' : 'Подтвержденных выдач не найдено.'}
             </div>
           ) : (
             <div className="overflow-x-auto">

@@ -3372,17 +3372,25 @@ class DailyIssuedItemsApiView(APIView):
 
     def get(self, request, *args, **kwargs):
         issued_at_raw = str(request.GET.get('issued_at') or request.GET.get('date') or '').strip()
-        target_date = parse_date(issued_at_raw) if issued_at_raw else timezone.localdate()
-        if target_date is None:
-            return Response({'error': 'Дата указана некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        items = list(
-            Item.objects
-            .filter(is_deleted=False, issued_at__date=target_date)
-            .select_related('issued_by')
-            .prefetch_related('ppeproduct', 'pending_source')
-            .order_by('-issued_at', '-id')
-        )
+        if issued_at_raw:
+            target_date = parse_date(issued_at_raw)
+            if target_date is None:
+                return Response({'error': 'Дата указана некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
+            items = list(
+                Item.objects
+                .filter(is_deleted=False, issued_at__date=target_date)
+                .select_related('issued_by')
+                .prefetch_related('ppeproduct', 'pending_source')
+                .order_by('-issued_at', '-id')
+            )
+        else:
+            items = list(
+                Item.objects
+                .filter(is_deleted=False)
+                .select_related('issued_by')
+                .prefetch_related('ppeproduct', 'pending_source')
+                .order_by('-issued_at', '-id')
+            )
         attach_employee_snapshots(items)
 
         rows = []
