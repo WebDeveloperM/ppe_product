@@ -34,7 +34,14 @@ type PPECatalogItem = {
     id: number;
     name?: string | null;
     type_product?: string | null;
+    type_product_display?: string | null;
     renewal_months?: number | null;
+};
+
+const getCurrentDateTimeInputValue = () => {
+    const now = new Date();
+    const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return localNow.toISOString().slice(0, 16);
 };
 
 type ItemDetail = {
@@ -107,6 +114,13 @@ export default function ViewPO() {
     const canViewEmployeePPETab = getStoredFeatureAccess(role).employee_ppe_tab;
     const canExportExcel = getStoredFeatureAccess(role).dashboard_export_excel;
     const canAddItem = role === 'admin' || role === 'it_center' || role === 'warehouse_staff';
+    const canAddHistory = role === 'admin' || role === 'warehouse_staff';
+
+    const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [historyIssuedAt, setHistoryIssuedAt] = useState(getCurrentDateTimeInputValue());
+    const [historyProductIds, setHistoryProductIds] = useState<number[]>([]);
+    const [historySaving, setHistorySaving] = useState(false);
+    const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
     const [pendingIssue, setPendingIssue] = useState<{ id: number; timeRemainingSeconds: number } | null>(null);
 
@@ -119,6 +133,13 @@ export default function ViewPO() {
     }
 
     const resolveImageUrl = (value?: string | null) => resolveEmployeeImageUrl(value);
+
+    const resetHistoryForm = () => {
+        setHistoryProductIds([]);
+        setHistoryIssuedAt(getCurrentDateTimeInputValue());
+        setHistoryModalOpen(false);
+        setHistorySaving(false);
+    };
 
     const formatDate = (value?: string | null) => {
         if (!value) return '-';
@@ -719,7 +740,7 @@ export default function ViewPO() {
                 }
             })
             .catch((err) => console.log(err));
-    }, [slug]);
+    }, [slug, historyRefreshKey]);
 
     // Load active pending issue for this employee to show timer + "Imzolash" button
     useEffect(() => {
@@ -779,6 +800,44 @@ export default function ViewPO() {
         return `${minutesStr}:${secondsStr}`;
     };
 
+    const historyCatalogProducts = itemDetailData?.ppe_products ?? [];
+
+    const toggleHistoryProduct = (productId: number) => {
+        setHistoryProductIds((prev) => (
+            prev.includes(productId)
+                ? prev.filter((id) => id !== productId)
+                : [...prev, productId]
+        ));
+    };
+
+    const handleCreateHistory = async () => {
+        if (!slug || historySaving) return;
+
+        if (!historyIssuedAt) {
+            toast.error('Укажите дату и время выдачи');
+            return;
+        }
+
+        if (historyProductIds.length === 0) {
+            toast.error('Выберите хотя бы одно средство защиты');
+            return;
+        }
+
+        setHistorySaving(true);
+        try {
+            await axioss.post(`${BASE_URL}/item-view/${slug}/history/`, {
+                ppeproduct: historyProductIds,
+                issued_at: historyIssuedAt,
+            });
+            toast.success('История выдачи добавлена');
+            resetHistoryForm();
+            setHistoryRefreshKey((prev) => prev + 1);
+        } catch (error: any) {
+            toast.error(error?.response?.data?.error || 'Не удалось добавить историю выдачи');
+            setHistorySaving(false);
+        }
+    };
+
     return (
         <div className="grid grid-cols-1 sm:grid-cols-12">
             <div className="col-span-12 mx-3">
@@ -820,6 +879,16 @@ export default function ViewPO() {
                                     <GrAddCircle className='text-base' />
                                     Добавить
                                 </Link>
+                            ) : null}
+                            {canAddHistory ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setHistoryModalOpen(true)}
+                                    className="flex items-center justify-center gap-2 rounded-md bg-primary py-2 px-3 text-center text-sm font-medium text-white hover:bg-opacity-90 lg:px-5"
+                                >
+                                    <GrAddCircle className='text-base' />
+                                    Добавить историю
+                                </button>
                             ) : null}
                         </div>
                     </div>
@@ -1089,6 +1158,90 @@ export default function ViewPO() {
                     </div>
                 </div>
             </div>
+
+            {historyModalOpen ? (
+                <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/50 px-4 py-6">
+                    <div className="w-full max-w-3xl rounded-md bg-white shadow-2xl dark:bg-boxdark">
+                        <div className="flex items-center justify-between border-b border-stroke px-5 py-4 dark:border-strokedark">
+                            <div>
+                                <h3 className="text-lg font-semibold text-black dark:text-white">Добавить историю</h3>
+                                <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
+                                    Выберите СИЗ и дату, когда сотрудник их получил.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={resetHistoryForm}
+                                className="rounded border border-stroke px-3 py-2 text-sm hover:bg-slate-50 dark:border-strokedark dark:hover:bg-boxdark-2"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="space-y-4 px-5 py-4">
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-black dark:text-white">Дата и время выдачи</label>
+                                <input
+                                    type="datetime-local"
+                                    value={historyIssuedAt}
+                                    onChange={(event) => setHistoryIssuedAt(event.target.value)}
+                                    className="w-full rounded border border-stroke px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark-2"
+                                />
+                            </div>
+
+                            <div>
+                                <div className="mb-2 text-sm font-medium text-black dark:text-white">Средства защиты</div>
+                                {historyCatalogProducts.length > 0 ? (
+                                    <div className="grid max-h-80 grid-cols-1 gap-3 overflow-y-auto rounded border border-stroke p-3 dark:border-strokedark md:grid-cols-2">
+                                        {historyCatalogProducts.map((product) => (
+                                            <label
+                                                key={product.id}
+                                                className="flex cursor-pointer items-start gap-3 rounded border border-stroke px-3 py-2 hover:bg-slate-50 dark:border-strokedark dark:hover:bg-boxdark-2"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={historyProductIds.includes(product.id)}
+                                                    onChange={() => toggleHistoryProduct(product.id)}
+                                                    className="mt-1"
+                                                />
+                                                <span className="text-sm text-slate-700 dark:text-slate-200">
+                                                    <span className="block font-medium text-black dark:text-white">{product.name || '-'}</span>
+                                                    <span className="block text-xs text-slate-500 dark:text-slate-400">
+                                                        {product.type_product_display || product.type_product || '—'}
+                                                        {product.renewal_months ? ` • ${product.renewal_months} мес.` : ''}
+                                                    </span>
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="rounded border border-dashed border-stroke px-3 py-4 text-sm text-slate-500 dark:border-strokedark dark:text-slate-300">
+                                        Для сотрудника нет доступных СИЗ.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-3 border-t border-stroke px-5 py-4 dark:border-strokedark">
+                            <button
+                                type="button"
+                                onClick={resetHistoryForm}
+                                className="rounded border border-stroke px-4 py-2 text-sm hover:bg-slate-50 dark:border-strokedark dark:hover:bg-boxdark-2"
+                            >
+                                Отмена
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCreateHistory}
+                                disabled={historySaving || historyCatalogProducts.length === 0}
+                                className="rounded bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {historySaving ? 'Сохранение...' : 'Сохранить'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             {previewImage ? (
                 <div

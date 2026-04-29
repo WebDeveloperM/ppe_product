@@ -37,7 +37,7 @@ from users.authentication import ExpiringTokenAuthentication as TokenAuthenticat
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
 from .utils import import_computers_from_excel
 from django.shortcuts import get_object_or_404
 from django.db.models import Count
@@ -541,6 +541,16 @@ def ensure_can_modify(request):
         return None
     return Response(
         {"error": "У вас есть только права на просмотр."},
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def ensure_can_add_issue_history(request):
+    role = get_effective_user_role(request.user)
+    if role in [UserRole.ADMIN, UserRole.WAREHOUSE_STAFF]:
+        return None
+    return Response(
+        {"error": "У вас нет прав на добавление истории выдачи."},
         status=status.HTTP_403_FORBIDDEN,
     )
 
@@ -3529,6 +3539,148 @@ class ItemDetailApiView(APIView):
             ],
             "ppe_products": ppe_products_payload,
         })
+
+
+class ItemHistoryCreateApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def post(request, *args, **kwargs):
+        permission_error = ensure_can_add_issue_history(request)
+        if permission_error:
+            return permission_error
+
+        slug = kwargs.get('slug')
+        if not slug:
+            return Response({"error": "Slug not found"}, status=status.HTTP_400_BAD_REQUEST)
+
+        source_item = Item.objects.filter(slug=slug, is_deleted=False).first()
+        source_employee = None
+        if source_item:
+            attach_employee_snapshots([source_item])
+            source_employee = build_employee_snapshot(
+                getattr(source_item, '_employee_snapshot_override', None) or source_item.employee_snapshot
+            )
+
+        if source_employee is None:
+            source_employee = fetch_employee_by_slug_or_404(slug)
+
+        if source_employee is None:
+            return Response({"error": "Slug bo'yicha ma'lumot topilmadi"}, status=status.HTTP_404_NOT_FOUND)
+
+        raw_product_ids = request.data.get('ppeproduct', [])
+        if not isinstance(raw_product_ids, list):
+            return Response({"error": "ppeproduct list bo'lishi kerak"}, status=status.HTTP_400_BAD_REQUEST)
+
+        product_ids = []
+        seen_product_ids = set()
+        for raw_id in raw_product_ids:
+            try:
+                product_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if product_id in seen_product_ids:
+                continue
+            seen_product_ids.add(product_id)
+            product_ids.append(product_id)
+
+        if not product_ids:
+            return Response({"error": "Kamida bitta Средство защиты tanlang"}, status=status.HTTP_400_BAD_REQUEST)
+
+        issued_at_raw = str(request.data.get('issued_at') or '').strip()
+        if not issued_at_raw:
+            return Response({"error": "Дата выдачи обязательна."}, status=status.HTTP_400_BAD_REQUEST)
+
+        issued_at = parse_datetime(issued_at_raw)
+        if issued_at is None:
+            return Response({"error": "Дата и время указаны некорректно."}, status=status.HTTP_400_BAD_REQUEST)
+        if timezone.is_naive(issued_at):
+            issued_at = timezone.make_aware(issued_at, timezone.get_current_timezone())
+
+        products = list(PPEProduct.objects.filter(id__in=product_ids, is_active=True))
+        if len(products) != len(product_ids):
+            return Response({"error": "Часть выбранных СИЗ не найдена."}, status=status.HTTP_400_BAD_REQUEST)
+
+        employee_gender = get_employee_gender_code(source_employee)
+        incompatible_products = []
+        disallowed_products = []
+
+        for product in products:
+            if not is_product_allowed_for_employee(product, source_employee):
+                disallowed_products.append(product.name)
+                continue
+
+            if employee_gender:
+                target_gender = str(product.target_gender or PPEProduct.TARGET_GENDER_ALL).strip().upper()
+                if target_gender not in {PPEProduct.TARGET_GENDER_ALL, employee_gender}:
+                    incompatible_products.append(product.name)
+
+        if disallowed_products:
+            return Response(
+                {
+                    "error": "Выбраны СИЗ, не разрешённые для должности сотрудника: " + ", ".join(disallowed_products),
+                    "products": disallowed_products,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if incompatible_products:
+            return Response(
+                {
+                    "error": "Выбраны СИЗ, не подходящие по полу сотрудника: " + ", ".join(incompatible_products),
+                    "products": incompatible_products,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        raw_sizes = request.data.get('ppe_sizes', {})
+        if raw_sizes is None:
+            raw_sizes = {}
+        if not isinstance(raw_sizes, dict):
+            return Response({"error": "ppe_sizes object bo'lishi kerak"}, status=status.HTTP_400_BAD_REQUEST)
+
+        selected_product_ids = {str(product.id) for product in products}
+        normalized_sizes = {}
+        for key, value in raw_sizes.items():
+            product_id = str(key)
+            if product_id not in selected_product_ids:
+                continue
+            size_value = str(value).strip()
+            if size_value:
+                normalized_sizes[product_id] = size_value[:64]
+
+        item = Item(
+            issued_at=issued_at,
+            issued_by=request.user,
+            addedUser=request.user,
+            updatedUser=request.user,
+            ppe_sizes=normalized_sizes,
+        )
+        item.set_employee_snapshot(source_employee)
+        item._history_user = request.user
+        item.save()
+        item.ppeproduct.set(products)
+
+        max_renewal_months = max(
+            [get_effective_product_renewal_months(product, source_employee) for product in products] or [0]
+        )
+        if max_renewal_months > 0:
+            item.next_due_date = add_calendar_months(issued_at, max_renewal_months - 1)
+            item.save(update_fields=['next_due_date'])
+
+        update_change_reason(item, f"История выдачи добавлена пользователем {request.user.username}")
+        attach_employee_snapshots([item])
+
+        return Response(
+            {
+                'success': True,
+                'message': 'История выдачи добавлена',
+                'item_slug': item.slug,
+                'item': ItemSerializer(item, context={'request': request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 

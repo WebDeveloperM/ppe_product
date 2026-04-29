@@ -19,6 +19,7 @@ urlpatterns = [
     path("daily-issued-items/", DailyIssuedItemsApiView.as_view()),
     path("item-history-users/", ItemHistoryUsersApiView.as_view()),
     path("item-view/<slug:slug>", ItemDetailApiView.as_view()),
+    path("item-view/<slug:slug>/history/", ItemHistoryCreateApiView.as_view()),
     path("add-item/<slug:slug>", ItemAddApiView.as_view()),
     path("item-stock-check/", ItemStockCheckApiView.as_view()),
     path("item-available-sizes/<int:product_id>/", ItemAvailableSizesApiView.as_view()),
