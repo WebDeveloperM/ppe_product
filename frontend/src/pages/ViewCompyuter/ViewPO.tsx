@@ -117,8 +117,8 @@ export default function ViewPO() {
     const canAddHistory = role === 'admin' || role === 'warehouse_staff';
 
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
-    const [historyIssuedAt, setHistoryIssuedAt] = useState(getCurrentDateInputValue());
     const [historyProductIds, setHistoryProductIds] = useState<number[]>([]);
+    const [historyProductDates, setHistoryProductDates] = useState<Record<number, string>>({});
     const [historySaving, setHistorySaving] = useState(false);
     const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
@@ -136,7 +136,7 @@ export default function ViewPO() {
 
     const resetHistoryForm = () => {
         setHistoryProductIds([]);
-        setHistoryIssuedAt(getCurrentDateInputValue());
+        setHistoryProductDates({});
         setHistoryModalOpen(false);
         setHistorySaving(false);
     };
@@ -803,31 +803,54 @@ export default function ViewPO() {
     const historyCatalogProducts = itemDetailData?.ppe_products ?? [];
 
     const toggleHistoryProduct = (productId: number) => {
-        setHistoryProductIds((prev) => (
-            prev.includes(productId)
-                ? prev.filter((id) => id !== productId)
-                : [...prev, productId]
-        ));
+        setHistoryProductIds((prev) => {
+            if (prev.includes(productId)) {
+                setHistoryProductDates((current) => {
+                    const next = { ...current };
+                    delete next[productId];
+                    return next;
+                });
+                return prev.filter((id) => id !== productId);
+            }
+
+            setHistoryProductDates((current) => ({
+                ...current,
+                [productId]: current[productId] || getCurrentDateInputValue(),
+            }));
+            return [...prev, productId];
+        });
+    };
+
+    const setHistoryProductDate = (productId: number, value: string) => {
+        setHistoryProductDates((prev) => ({
+            ...prev,
+            [productId]: value,
+        }));
     };
 
     const handleCreateHistory = async () => {
         if (!slug || historySaving) return;
-
-        if (!historyIssuedAt) {
-            toast.error('Укажите дату и время выдачи');
-            return;
-        }
 
         if (historyProductIds.length === 0) {
             toast.error('Выберите хотя бы одно средство защиты');
             return;
         }
 
+        const productEntries = historyProductIds.map((productId) => ({
+            product_id: productId,
+            issued_at: historyProductDates[productId] || '',
+        }));
+
+        const missingDateEntry = productEntries.find((entry) => !entry.issued_at);
+        if (missingDateEntry) {
+            toast.error('Укажите дату выдачи для каждого выбранного СИЗ');
+            return;
+        }
+
         setHistorySaving(true);
         try {
             await axioss.post(`${BASE_URL}/item-view/${slug}/history/`, {
-                ppeproduct: historyProductIds,
-                issued_at: historyIssuedAt,
+                product_entries: productEntries,
             });
             toast.success('История выдачи добавлена');
             resetHistoryForm();
@@ -1166,7 +1189,7 @@ export default function ViewPO() {
                             <div>
                                 <h3 className="text-lg font-semibold text-black dark:text-white">Добавить историю</h3>
                                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
-                                    Выберите СИЗ и дату, когда сотрудник их получил.
+                                    Выберите СИЗ и укажите дату выдачи для каждого продукта.
                                 </p>
                             </div>
                             <button
@@ -1180,38 +1203,40 @@ export default function ViewPO() {
 
                         <div className="space-y-4 px-5 py-4">
                             <div>
-                                <label className="mb-2 block text-sm font-medium text-black dark:text-white">Дата выдачи</label>
-                                <input
-                                    type="date"
-                                    value={historyIssuedAt}
-                                    onChange={(event) => setHistoryIssuedAt(event.target.value)}
-                                    className="w-full rounded border border-stroke px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark-2"
-                                />
-                            </div>
-
-                            <div>
                                 <div className="mb-2 text-sm font-medium text-black dark:text-white">Средства защиты</div>
                                 {historyCatalogProducts.length > 0 ? (
                                     <div className="grid max-h-80 grid-cols-1 gap-3 overflow-y-auto rounded border border-stroke p-3 dark:border-strokedark md:grid-cols-2">
                                         {historyCatalogProducts.map((product) => (
-                                            <label
+                                            <div
                                                 key={product.id}
-                                                className="flex cursor-pointer items-start gap-3 rounded border border-stroke px-3 py-2 hover:bg-slate-50 dark:border-strokedark dark:hover:bg-boxdark-2"
+                                                className="rounded border border-stroke px-3 py-3 hover:bg-slate-50 dark:border-strokedark dark:hover:bg-boxdark-2"
                                             >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={historyProductIds.includes(product.id)}
-                                                    onChange={() => toggleHistoryProduct(product.id)}
-                                                    className="mt-1"
-                                                />
-                                                <span className="text-sm text-slate-700 dark:text-slate-200">
-                                                    <span className="block font-medium text-black dark:text-white">{product.name || '-'}</span>
-                                                    <span className="block text-xs text-slate-500 dark:text-slate-400">
-                                                        {product.type_product_display || product.type_product || '—'}
-                                                        {product.renewal_months ? ` • ${product.renewal_months} мес.` : ''}
+                                                <label className="flex cursor-pointer items-start gap-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={historyProductIds.includes(product.id)}
+                                                        onChange={() => toggleHistoryProduct(product.id)}
+                                                        className="mt-1"
+                                                    />
+                                                    <span className="text-sm text-slate-700 dark:text-slate-200">
+                                                        <span className="block font-medium text-black dark:text-white">{product.name || '-'}</span>
+                                                        <span className="block text-xs text-slate-500 dark:text-slate-400">
+                                                            {product.type_product_display || product.type_product || '—'}
+                                                            {product.renewal_months ? ` • ${product.renewal_months} мес.` : ''}
+                                                        </span>
                                                     </span>
-                                                </span>
-                                            </label>
+                                                </label>
+                                                <div className="mt-3">
+                                                    <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Дата выдачи</label>
+                                                    <input
+                                                        type="date"
+                                                        value={historyProductDates[product.id] || ''}
+                                                        onChange={(event) => setHistoryProductDate(product.id, event.target.value)}
+                                                        disabled={!historyProductIds.includes(product.id)}
+                                                        className="w-full rounded border border-stroke px-3 py-2 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-strokedark dark:bg-boxdark-2 dark:disabled:bg-slate-800"
+                                                    />
+                                                </div>
+                                            </div>
                                         ))}
                                     </div>
                                 ) : (

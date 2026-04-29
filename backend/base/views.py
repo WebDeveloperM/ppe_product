@@ -3546,6 +3546,24 @@ class ItemHistoryCreateApiView(APIView):
     permission_classes = [IsAuthenticated]
 
     @staticmethod
+    def _parse_issued_at_or_error(issued_at_raw):
+        raw_value = str(issued_at_raw or '').strip()
+        if not raw_value:
+            return None, Response({"error": "Дата выдачи обязательна."}, status=status.HTTP_400_BAD_REQUEST)
+
+        issued_at = parse_datetime(raw_value)
+        if issued_at is None:
+            issued_date = parse_date(raw_value)
+            if issued_date is None:
+                return None, Response({"error": "Дата указана некорректно."}, status=status.HTTP_400_BAD_REQUEST)
+            issued_at = datetime.datetime.combine(issued_date, datetime.time.min)
+
+        if timezone.is_naive(issued_at):
+            issued_at = timezone.make_aware(issued_at, timezone.get_current_timezone())
+
+        return issued_at, None
+
+    @staticmethod
     def post(request, *args, **kwargs):
         permission_error = ensure_can_add_issue_history(request)
         if permission_error:
@@ -3569,41 +3587,66 @@ class ItemHistoryCreateApiView(APIView):
         if source_employee is None:
             return Response({"error": "Slug bo'yicha ma'lumot topilmadi"}, status=status.HTTP_404_NOT_FOUND)
 
-        raw_product_ids = request.data.get('ppeproduct', [])
-        if not isinstance(raw_product_ids, list):
-            return Response({"error": "ppeproduct list bo'lishi kerak"}, status=status.HTTP_400_BAD_REQUEST)
-
-        product_ids = []
+        raw_product_entries = request.data.get('product_entries')
+        product_entries = []
         seen_product_ids = set()
-        for raw_id in raw_product_ids:
-            try:
-                product_id = int(raw_id)
-            except (TypeError, ValueError):
-                continue
-            if product_id in seen_product_ids:
-                continue
-            seen_product_ids.add(product_id)
-            product_ids.append(product_id)
 
-        if not product_ids:
+        if raw_product_entries is not None:
+            if not isinstance(raw_product_entries, list):
+                return Response({"error": "product_entries list bo'lishi kerak"}, status=status.HTTP_400_BAD_REQUEST)
+
+            for raw_entry in raw_product_entries:
+                if not isinstance(raw_entry, dict):
+                    continue
+
+                try:
+                    product_id = int(raw_entry.get('product_id'))
+                except (TypeError, ValueError):
+                    continue
+
+                if product_id in seen_product_ids:
+                    continue
+
+                issued_at, parse_error = ItemHistoryCreateApiView._parse_issued_at_or_error(raw_entry.get('issued_at'))
+                if parse_error:
+                    return parse_error
+
+                seen_product_ids.add(product_id)
+                product_entries.append({
+                    'product_id': product_id,
+                    'issued_at': issued_at,
+                })
+        else:
+            raw_product_ids = request.data.get('ppeproduct', [])
+            if not isinstance(raw_product_ids, list):
+                return Response({"error": "ppeproduct list bo'lishi kerak"}, status=status.HTTP_400_BAD_REQUEST)
+
+            issued_at, parse_error = ItemHistoryCreateApiView._parse_issued_at_or_error(request.data.get('issued_at'))
+            if parse_error:
+                return parse_error
+
+            for raw_id in raw_product_ids:
+                try:
+                    product_id = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                if product_id in seen_product_ids:
+                    continue
+                seen_product_ids.add(product_id)
+                product_entries.append({
+                    'product_id': product_id,
+                    'issued_at': issued_at,
+                })
+
+        if not product_entries:
             return Response({"error": "Kamida bitta Средство защиты tanlang"}, status=status.HTTP_400_BAD_REQUEST)
 
-        issued_at_raw = str(request.data.get('issued_at') or '').strip()
-        if not issued_at_raw:
-            return Response({"error": "Дата выдачи обязательна."}, status=status.HTTP_400_BAD_REQUEST)
-
-        issued_at = parse_datetime(issued_at_raw)
-        if issued_at is None:
-            issued_date = parse_date(issued_at_raw)
-            if issued_date is None:
-                return Response({"error": "Дата указана некорректно."}, status=status.HTTP_400_BAD_REQUEST)
-            issued_at = datetime.datetime.combine(issued_date, datetime.time.min)
-        if timezone.is_naive(issued_at):
-            issued_at = timezone.make_aware(issued_at, timezone.get_current_timezone())
+        product_ids = [entry['product_id'] for entry in product_entries]
 
         products = list(PPEProduct.objects.filter(id__in=product_ids, is_active=True))
         if len(products) != len(product_ids):
             return Response({"error": "Часть выбранных СИЗ не найдена."}, status=status.HTTP_400_BAD_REQUEST)
+        products_by_id = {product.id: product for product in products}
 
         employee_gender = get_employee_gender_code(source_employee)
         incompatible_products = []
@@ -3653,51 +3696,80 @@ class ItemHistoryCreateApiView(APIView):
             if size_value:
                 normalized_sizes[product_id] = size_value[:64]
 
-        item = Item(
-            issued_at=issued_at,
-            issued_by=request.user,
-            addedUser=request.user,
-            updatedUser=request.user,
-            ppe_sizes=normalized_sizes,
-        )
-        item.set_employee_snapshot(source_employee)
-        item._history_user = request.user
-        item.save()
-        item.ppeproduct.set(products)
+        grouped_entries = {}
+        for entry in product_entries:
+            product = products_by_id.get(entry['product_id'])
+            if not product:
+                continue
+            group_key = entry['issued_at'].isoformat()
+            if group_key not in grouped_entries:
+                grouped_entries[group_key] = {
+                    'issued_at': entry['issued_at'],
+                    'products': [],
+                }
+            grouped_entries[group_key]['products'].append(product)
 
-        max_renewal_months = max(
-            [get_effective_product_renewal_months(product, source_employee) for product in products] or [0]
-        )
-        if max_renewal_months > 0:
-            item.next_due_date = add_calendar_months(issued_at, max_renewal_months - 1)
-            item.save(update_fields=['next_due_date'])
+        created_items = []
+        for group in sorted(grouped_entries.values(), key=lambda item: item['issued_at']):
+            group_products = group['products']
+            group_issued_at = group['issued_at']
+            group_size_keys = {str(product.id) for product in group_products}
+            group_sizes = {
+                key: value
+                for key, value in normalized_sizes.items()
+                if key in group_size_keys
+            }
 
-        pending_issue = PendingItemIssue(
-            ppeproduct_ids=[product.id for product in products],
-            ppe_sizes=normalized_sizes,
-            status=PendingItemIssue.STATUS_CONFIRMED,
-            created_by=request.user,
-            employee_signed_at=issued_at,
-            warehouse_signed_at=issued_at,
-            confirmed_at=issued_at,
-            confirmed_item=item,
-        )
-        pending_issue.set_employee_snapshot(source_employee)
-        try:
-            pending_issue.generate_qr_code(request.build_absolute_uri(pending_issue.get_qr_frontend_path()))
-        except Exception:
-            pass
-        pending_issue.save()
+            item = Item(
+                issued_at=group_issued_at,
+                issued_by=request.user,
+                addedUser=request.user,
+                updatedUser=request.user,
+                ppe_sizes=group_sizes,
+            )
+            item.set_employee_snapshot(source_employee)
+            item._history_user = request.user
+            item.save()
+            item.ppeproduct.set(group_products)
 
-        update_change_reason(item, f"История выдачи добавлена пользователем {request.user.username}")
-        attach_employee_snapshots([item])
+            max_renewal_months = max(
+                [get_effective_product_renewal_months(product, source_employee) for product in group_products] or [0]
+            )
+            if max_renewal_months > 0:
+                item.next_due_date = add_calendar_months(group_issued_at, max_renewal_months - 1)
+                item.save(update_fields=['next_due_date'])
+
+            pending_issue = PendingItemIssue(
+                ppeproduct_ids=[product.id for product in group_products],
+                ppe_sizes=group_sizes,
+                status=PendingItemIssue.STATUS_CONFIRMED,
+                created_by=request.user,
+                employee_signed_at=group_issued_at,
+                warehouse_signed_at=group_issued_at,
+                confirmed_at=group_issued_at,
+                confirmed_item=item,
+            )
+            pending_issue.set_employee_snapshot(source_employee)
+            try:
+                pending_issue.generate_qr_code(request.build_absolute_uri(pending_issue.get_qr_frontend_path()))
+            except Exception:
+                pass
+            pending_issue.save()
+
+            update_change_reason(item, f"История выдачи добавлена пользователем {request.user.username}")
+            created_items.append(item)
+
+        attach_employee_snapshots(created_items)
+        latest_item = created_items[-1]
 
         return Response(
             {
                 'success': True,
                 'message': 'История выдачи добавлена',
-                'item_slug': item.slug,
-                'item': ItemSerializer(item, context={'request': request}).data,
+                'created_count': len(created_items),
+                'item_slug': latest_item.slug,
+                'item_slugs': [item.slug for item in created_items],
+                'item': ItemSerializer(latest_item, context={'request': request}).data,
             },
             status=status.HTTP_201_CREATED,
         )
