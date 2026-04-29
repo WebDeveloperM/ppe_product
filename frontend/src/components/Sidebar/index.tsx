@@ -20,6 +20,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
   const featureAccess = getStoredFeatureAccess(role);
   const firstAccessibleRoute = getFirstAccessibleRoute(pageAccess) || '/no-access';
   const isAdmin = role === 'admin';
+  const canSeeDailyPpeIssued = role === 'admin' || role === 'warehouse_manager';
   const canSeeDashboard = pageAccess.dashboard;
   const canSeeSettings = pageAccess.settings;
   const canSeePPEArrival = pageAccess.ppe_arrival;
@@ -91,20 +92,6 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="4" y="11" width="16" height="9" rx="2" stroke="currentColor" strokeWidth="1.8"/>
               <path d="M8 11V8C8 5.79086 9.79086 4 12 4C14.2091 4 16 5.79086 16 8V11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-            </svg>
-          ),
-        }
-      : null,
-    isAdmin
-      ? {
-          to: '/nastroyka/daily-ppe-issued',
-          label: 'Ежедневная выдача СИЗ',
-          icon: (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M14 3H7C5.89543 3 5 3.89543 5 5V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V8L14 3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-              <path d="M14 3V8H19" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
-              <path d="M9 13H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-              <path d="M9 17H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
           ),
         }
@@ -281,6 +268,22 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                       />
                     </svg>
                     {sidebarOpen && 'Статистика'}
+                  </NavLink>
+                </li>
+              )}
+              {canSeeDailyPpeIssued && (
+                <li>
+                  <NavLink
+                    to="/nastroyka/daily-ppe-issued"
+                    className={`group relative flex items-center rounded-sm py-2 font-medium text-bodydark1 duration-300 ease-in-out hover:bg-graydark dark:hover:bg-meta-4 ${sidebarOpen ? 'gap-2.5 px-4 justify-start' : 'justify-center px-2'} ${pathname.includes('/nastroyka/daily-ppe-issued') && 'bg-graydark dark:bg-meta-4'}`}
+                  >
+                    <svg className="fill-current" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M14 3H7C5.89543 3 5 3.89543 5 5V19C5 20.1046 5.89543 21 7 21H17C18.1046 21 19 20.1046 19 19V8L14 3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+                      <path d="M14 3V8H19" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round"/>
+                      <path d="M9 13H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      <path d="M9 17H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    </svg>
+                    {sidebarOpen && 'Ежедневная выдача СИЗ'}
                   </NavLink>
                 </li>
               )}

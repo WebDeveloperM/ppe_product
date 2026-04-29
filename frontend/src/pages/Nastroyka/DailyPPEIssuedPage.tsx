@@ -126,13 +126,14 @@ const DailyPPEIssuedPage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
   const isAdmin = role === 'admin';
+  const canSeeDailyPpeIssued = role === 'admin' || role === 'warehouse_manager';
 
   const [selectedDate, setSelectedDate] = useState(() => formatDateInput(new Date()));
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<DailyIssueRow[]>([]);
 
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!canSeeDailyPpeIssued) return;
 
     const loadReport = async () => {
       setLoading(true);
@@ -173,16 +174,16 @@ const DailyPPEIssuedPage = () => {
     };
 
     loadReport();
-  }, [isAdmin, selectedDate]);
+  }, [canSeeDailyPpeIssued, selectedDate]);
 
-  if (!isAdmin) {
+  if (!canSeeDailyPpeIssued) {
     return (
       <>
         <Breadcrumb pageName="Ежедневная выдача СИЗ" />
         <div className="rounded-sm border border-stroke bg-white p-5 shadow-default dark:border-strokedark dark:bg-boxdark">
           <div className="text-base text-red-600">Нет доступа к странице</div>
           <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-            Только администратор может просматривать ежедневный отчет по выдаче СИЗ.
+            Только администратор и кладовщик могут просматривать ежедневный отчет по выдаче СИЗ.
           </div>
           <button
             onClick={() => navigate('/nastroyka')}
