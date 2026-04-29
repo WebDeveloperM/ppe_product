@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
 import axioss from '../../api/axios';
@@ -8,6 +8,7 @@ import { normalizeRole } from '../../utils/pageAccess';
 
 type EmployeeInfo = {
   id?: number | string;
+  slug?: string;
   full_name?: string;
   first_name?: string;
   last_name?: string;
@@ -37,10 +38,9 @@ type DailyIssuedApiRow = {
 
 type DailyIssueRow = {
   key: string;
+  employeeSlug: string;
   tabelNumber: string;
   fullName: string;
-  position: string;
-  departmentSection: string;
   issuedAtRaw: string;
   issuedAt: string;
   productsLabel: string;
@@ -148,10 +148,9 @@ const DailyPPEIssuedPage = () => {
             const employee = item?.employee;
             return {
               key: `${employee?.id || item.id}-${item.id}`,
+              employeeSlug: String(employee?.slug || '').trim(),
               tabelNumber: String(employee?.tabel_number || '').trim() || '—',
               fullName: buildFullName(employee),
-              position: String(employee?.position || '').trim() || '—',
-              departmentSection: buildDepartmentSection(employee),
               issuedAtRaw: String(item?.issued_at || ''),
               issuedAt: formatIssuedAt(item?.issued_at),
               productsLabel: buildProductsLabel(item?.ppeproduct_info),
@@ -266,9 +265,16 @@ const DailyPPEIssuedPage = () => {
                       <td className="px-4 py-4 font-medium text-black dark:text-white">{index + 1}</td>
                       <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.tabelNumber}</td>
                       <td className="px-4 py-4 text-black dark:text-white">
-                        <div className="font-medium">{row.fullName}</div>
-                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{row.position}</div>
-                        <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{row.departmentSection}</div>
+                        {row.employeeSlug ? (
+                          <Link
+                            to={`/add-item/${row.employeeSlug}`}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {row.fullName}
+                          </Link>
+                        ) : (
+                          <span className="font-medium">{row.fullName}</span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.productsLabel}</td>
                       <td className="px-4 py-4 text-slate-700 dark:text-slate-200 whitespace-nowrap">{row.issuedAt}</td>
