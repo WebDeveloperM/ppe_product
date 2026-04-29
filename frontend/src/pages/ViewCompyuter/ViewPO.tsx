@@ -1188,7 +1188,7 @@ export default function ViewPO() {
 
             {historyModalOpen ? (
                 <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/50 px-4 py-6">
-                    <div className="w-full max-w-3xl rounded-md bg-white shadow-2xl dark:bg-boxdark">
+                    <div className="flex h-[70vh] w-[80vw] max-w-[80vw] flex-col rounded-md bg-white shadow-2xl dark:bg-boxdark">
                         <div className="flex items-center justify-between border-b border-stroke px-5 py-4 dark:border-strokedark">
                             <div>
                                 <h3 className="text-lg font-semibold text-black dark:text-white">Добавить историю</h3>
@@ -1205,7 +1205,7 @@ export default function ViewPO() {
                             </button>
                         </div>
 
-                        <div className="space-y-4 px-5 py-4">
+                        <div className="space-y-4 overflow-y-auto px-5 py-4">
                             <div>
                                 <div className="mb-2 text-sm font-medium text-black dark:text-white">Средства защиты</div>
                                 {historyCatalogProducts.length > 0 ? (
