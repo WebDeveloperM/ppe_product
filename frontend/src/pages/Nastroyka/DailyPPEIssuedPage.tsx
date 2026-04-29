@@ -267,7 +267,7 @@ const DailyPPEIssuedPage = () => {
                       <td className="px-4 py-4 text-black dark:text-white">
                         {row.employeeSlug ? (
                           <Link
-                            to={`/add-item/${row.employeeSlug}`}
+                            to={`/item-view/${row.employeeSlug}`}
                             className="font-medium text-primary hover:underline"
                           >
                             {row.fullName}
