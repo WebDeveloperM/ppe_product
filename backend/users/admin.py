@@ -4,7 +4,6 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 
-from employee_service.employees.models import EmployeeBaseImageChangeLog
 from .models import UserRole
 
 User = get_user_model()
@@ -104,6 +103,3 @@ class UserRoleAdmin(admin.ModelAdmin):
 	list_display = ('user', 'role')
 	list_filter = ('role',)
 	search_fields = ('user__username',)
-
-
-admin.site.register(EmployeeBaseImageChangeLog)
