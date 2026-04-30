@@ -1,4 +1,4 @@
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 import requests
 from django.conf import settings
@@ -21,6 +21,7 @@ from .employee_service_client import (
     update_section,
     delete_section,
     list_employees,
+    list_employee_base_image_change_logs,
     get_employee_by_slug,
     upsert_employee_payload,
     update_employee_payload,
@@ -145,6 +146,41 @@ def normalize_employee_service_section(section):
         'department': section.get('department'),
         'created_at': section.get('created_at'),
         'updated_at': section.get('updated_at'),
+    }
+
+
+def normalize_employee_service_log_image(value):
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+    if raw.startswith('/api/v1/employee-service/media-proxy/'):
+        return raw
+    if raw.startswith('/media/'):
+        return f"/api/v1/employee-service/media-proxy/?path={quote(raw, safe='')}"
+    if raw.startswith('http://') or raw.startswith('https://'):
+        parsed = urlsplit(raw)
+        if parsed.path.startswith('/media/'):
+            path = parsed.path or '/'
+            if parsed.query:
+                path = f'{path}?{parsed.query}'
+            return f"/api/v1/employee-service/media-proxy/?path={quote(path, safe='')}"
+    return raw
+
+
+def normalize_employee_service_base_image_change_log(entry):
+    return {
+        'id': entry.get('id'),
+        'employee_slug': entry.get('employee_slug', ''),
+        'employee_full_name': entry.get('employee_full_name', ''),
+        'employee_tabel_number': entry.get('employee_tabel_number', ''),
+        'changed_by_username': entry.get('changed_by_username', ''),
+        'changed_by_user_id': entry.get('changed_by_user_id', ''),
+        'changed_by_role': entry.get('changed_by_role', ''),
+        'old_image': entry.get('old_image', ''),
+        'old_image_url': normalize_employee_service_log_image(entry.get('old_image_url') or entry.get('old_image')),
+        'new_image': entry.get('new_image', ''),
+        'new_image_url': normalize_employee_service_log_image(entry.get('new_image_url') or entry.get('new_image')),
+        'created_at': entry.get('created_at'),
     }
 
 
@@ -402,6 +438,49 @@ class EmployeeServiceEmployeeListApiView(APIView):
             return Response([
                 normalize_employee_service_employee(emp) for emp in employees
             ])
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployeeServiceBaseImageChangeLogListApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        role = get_effective_user_role(request.user)
+        if role not in [UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER]:
+            return Response(
+                {"error": "Only admin and warehouse manager can view employee base image change logs"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            payload = list_employee_base_image_change_logs(
+                search=str(request.query_params.get('search', '') or '').strip() or None,
+                changed_by_username=str(request.query_params.get('changed_by_username', '') or '').strip() or None,
+                employee_slug=str(request.query_params.get('employee_slug', '') or '').strip() or None,
+                date_from=str(request.query_params.get('date_from', '') or '').strip() or None,
+                date_to=str(request.query_params.get('date_to', '') or '').strip() or None,
+                page=request.query_params.get('page') or None,
+                page_size=request.query_params.get('page_size') or None,
+            )
+            results = payload.get('results') if isinstance(payload, dict) else payload
+            if not isinstance(results, list):
+                results = []
+
+            normalized_results = [normalize_employee_service_base_image_change_log(item) for item in results]
+            return Response({
+                'count': int(payload.get('count', len(normalized_results))) if isinstance(payload, dict) else len(normalized_results),
+                'next': payload.get('next') if isinstance(payload, dict) else None,
+                'previous': payload.get('previous') if isinstance(payload, dict) else None,
+                'results': normalized_results,
+            })
         except EmployeeServiceClientError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

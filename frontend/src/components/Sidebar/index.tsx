@@ -21,6 +21,7 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
   const firstAccessibleRoute = getFirstAccessibleRoute(pageAccess) || '/no-access';
   const isAdmin = role === 'admin';
   const canSeeDailyPpeIssued = role === 'admin' || role === 'warehouse_manager';
+  const canSeeBaseImageChangeLogs = role === 'admin' || role === 'warehouse_manager';
   const canSeeDashboard = pageAccess.dashboard;
   const canSeeSettings = pageAccess.settings;
   const canSeePPEArrival = pageAccess.ppe_arrival;
@@ -284,6 +285,22 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
                       <path d="M9 17H15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
                     </svg>
                     {sidebarOpen && 'Ежедневная выдача СИЗ'}
+                  </NavLink>
+                </li>
+              )}
+              {canSeeBaseImageChangeLogs && (
+                <li>
+                  <NavLink
+                    to="/nastroyka/base-image-change-logs"
+                    className={`group relative flex items-center rounded-sm py-2 font-medium text-bodydark1 duration-300 ease-in-out hover:bg-graydark dark:hover:bg-meta-4 ${sidebarOpen ? 'gap-2.5 px-4 justify-start' : 'justify-center px-2'} ${pathname.includes('/nastroyka/base-image-change-logs') && 'bg-graydark dark:bg-meta-4'}`}
+                  >
+                    <svg className="fill-current" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M5 5.75C5 5.33579 5.33579 5 5.75 5H18.25C18.6642 5 19 5.33579 19 5.75V18.25C19 18.6642 18.6642 19 18.25 19H5.75C5.33579 19 5 18.6642 5 18.25V5.75Z" stroke="currentColor" strokeWidth="1.8"/>
+                      <path d="M8 9H16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      <path d="M8 12H13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                      <path d="M8 16L10 14L11.5 15.5L15 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    {sidebarOpen && 'История смены фото'}
                   </NavLink>
                 </li>
               )}

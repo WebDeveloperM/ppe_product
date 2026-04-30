@@ -176,6 +176,89 @@ class EmployeeServiceEmployeeBaseImagePermissionTests(APITestCase):
 		self.assertIsNotNone(self.pending.signature_image)
 		self.assertFalse(bool(self.pending.warehouse_signature_image))
 
+
+class EmployeeServiceBaseImageChangeLogAccessTests(APITestCase):
+	def setUp(self):
+		self.url = '/api/v1/employee-service/base-image-change-logs/'
+		self.admin_user = User.objects.create_user(username='admin_report_user', password='test12345')
+		self.manager_user = User.objects.create_user(username='warehouse_manager_report', password='test12345')
+		self.staff_user = User.objects.create_user(username='warehouse_staff_report', password='test12345')
+
+		admin_profile, _ = UserRole.objects.get_or_create(user=self.admin_user)
+		admin_profile.role = UserRole.ADMIN
+		admin_profile.save(update_fields=['role'])
+
+		manager_profile, _ = UserRole.objects.get_or_create(user=self.manager_user)
+		manager_profile.role = UserRole.WAREHOUSE_MANAGER
+		manager_profile.save(update_fields=['role'])
+
+		staff_profile, _ = UserRole.objects.get_or_create(user=self.staff_user)
+		staff_profile.role = UserRole.WAREHOUSE_STAFF
+		staff_profile.save(update_fields=['role'])
+
+	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
+	@patch('base.employee_service_views.list_employee_base_image_change_logs')
+	def test_admin_can_list_employee_base_image_change_logs(self, list_logs_mock, _enabled_mock):
+		list_logs_mock.return_value = {
+			'count': 1,
+			'next': None,
+			'previous': None,
+			'results': [
+				{
+					'id': 7,
+					'employee_slug': 'default-5413-a',
+					'employee_full_name': 'Matruf Shabonov',
+					'employee_tabel_number': '5413',
+					'changed_by_username': 'warehouse_user',
+					'changed_by_user_id': '42',
+					'changed_by_role': 'warehouse_staff',
+					'old_image': 'employee_base_images/old.jpg',
+					'old_image_url': '/media/employee_base_images/old.jpg',
+					'new_image': 'employee_base_images/new.jpg',
+					'new_image_url': '/media/employee_base_images/new.jpg',
+					'created_at': '2026-04-30T10:15:00Z',
+				}
+			],
+		}
+
+		self.client.force_authenticate(user=self.admin_user)
+		response = self.client.get(self.url, {'search': '5413'})
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['count'], 1)
+		self.assertEqual(
+			response.data['results'][0]['new_image_url'],
+			'/api/v1/employee-service/media-proxy/?path=%2Fmedia%2Femployee_base_images%2Fnew.jpg',
+		)
+		list_logs_mock.assert_called_once_with(
+			search='5413',
+			changed_by_username=None,
+			employee_slug=None,
+			date_from=None,
+			date_to=None,
+			page=None,
+			page_size=None,
+		)
+
+	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
+	@patch('base.employee_service_views.list_employee_base_image_change_logs', return_value={'count': 0, 'next': None, 'previous': None, 'results': []})
+	def test_warehouse_manager_can_list_employee_base_image_change_logs(self, list_logs_mock, _enabled_mock):
+		self.client.force_authenticate(user=self.manager_user)
+		response = self.client.get(self.url)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['count'], 0)
+		list_logs_mock.assert_called_once()
+
+	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
+	@patch('base.employee_service_views.list_employee_base_image_change_logs')
+	def test_warehouse_staff_cannot_list_employee_base_image_change_logs(self, list_logs_mock, _enabled_mock):
+		self.client.force_authenticate(user=self.staff_user)
+		response = self.client.get(self.url)
+
+		self.assertEqual(response.status_code, 403)
+		list_logs_mock.assert_not_called()
+
 	def test_second_step_generates_qr_and_public_detail_payload(self):
 		self.client.force_authenticate(user=self.created_by)
 

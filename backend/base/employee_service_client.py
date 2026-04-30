@@ -156,6 +156,25 @@ def list_face_id_exemptions(*, search=None, page=None, page_size=None, no_pagina
     return _request('GET', '/api/v1/employees/face-id-exemptions/', params=params)
 
 
+def list_employee_base_image_change_logs(*, search=None, changed_by_username=None, employee_slug=None, date_from=None, date_to=None, page=None, page_size=None):
+    params = {}
+    if search:
+        params['search'] = search
+    if changed_by_username:
+        params['changed_by_username'] = changed_by_username
+    if employee_slug:
+        params['employee_slug'] = employee_slug
+    if date_from:
+        params['date_from'] = date_from
+    if date_to:
+        params['date_to'] = date_to
+    if page is not None:
+        params['page'] = str(page)
+    if page_size is not None:
+        params['page_size'] = str(page_size)
+    return _request('GET', '/api/v1/employees/base-image-change-logs/', params=params)
+
+
 def update_face_id_exemption(slug: str, requires_face_id_checkout: bool):
     return _request(
         'PATCH',

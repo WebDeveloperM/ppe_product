@@ -38,6 +38,7 @@ import UserPage from './pages/Nastroyka/UserPage';
 import FaceIDPage from './pages/Nastroyka/FaceIDPage';
 import PageAccessPage from './pages/Nastroyka/PageAccessPage';
 import DailyPPEIssuedPage from './pages/Nastroyka/DailyPPEIssuedPage';
+import BaseImageChangeLogPage from './pages/Nastroyka/BaseImageChangeLogPage';
 import IssueQrDetailPage from './pages/IssueQr/IssueQrDetailPage';
 import 'primeicons/primeicons.css';
 import { isAuthenticated } from './utils/auth';
@@ -74,6 +75,7 @@ function App() {
   const canAccessDueSoonDetails = featureAccess.dashboard_due_cards;
   const canAccessFaceIdControl = featureAccess.face_id_control;
   const isAdmin = trustedRole === 'admin';
+  const canAccessBaseImageChangeLogs = trustedRole === 'admin' || trustedRole === 'warehouse_manager';
   const fallbackRoute = getFirstAccessibleRoute(pageAccess) || '/no-access';
 
   const getDeniedRoute = () => (fallbackRoute === pathname ? '/no-access' : fallbackRoute);
@@ -409,6 +411,19 @@ function App() {
               <>
                 <PageTitle title="Ежедневная выдача СИЗ" />
                 <DailyPPEIssuedPage />
+              </>
+            ) : (
+              <Navigate to={isAuthenticated() ? getDeniedRoute() : '/auth/signin'} replace />
+            )
+          }
+        />
+        <Route
+          path="/nastroyka/base-image-change-logs"
+          element={
+            isAuthenticated() && canAccessSettings && canAccessBaseImageChangeLogs ? (
+              <>
+                <PageTitle title="История смены базового фото" />
+                <BaseImageChangeLogPage />
               </>
             ) : (
               <Navigate to={isAuthenticated() ? getDeniedRoute() : '/auth/signin'} replace />
