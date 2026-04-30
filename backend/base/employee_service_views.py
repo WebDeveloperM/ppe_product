@@ -22,6 +22,7 @@ from .employee_service_client import (
     delete_section,
     list_employees,
     list_employee_base_image_change_logs,
+    delete_employee_base_image_change_log,
     get_employee_by_slug,
     upsert_employee_payload,
     update_employee_payload,
@@ -481,6 +482,31 @@ class EmployeeServiceBaseImageChangeLogListApiView(APIView):
                 'previous': payload.get('previous') if isinstance(payload, dict) else None,
                 'results': normalized_results,
             })
+        except EmployeeServiceClientError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class EmployeeServiceBaseImageChangeLogDetailApiView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, log_id, *args, **kwargs):
+        if not is_employee_service_enabled():
+            return Response(
+                {"error": "Employee service is not enabled"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        role = get_effective_user_role(request.user)
+        if role != UserRole.ADMIN:
+            return Response(
+                {"error": "Only admin can delete employee base image change logs"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            delete_employee_base_image_change_log(log_id)
+            return Response(status=status.HTTP_204_NO_CONTENT)
         except EmployeeServiceClientError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

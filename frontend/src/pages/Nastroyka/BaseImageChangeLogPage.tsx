@@ -77,6 +77,7 @@ const extractFileName = (value?: string) => {
 const BaseImageChangeLogPage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
+  const isAdmin = role === 'admin';
   const canViewPage = role === 'admin' || role === 'warehouse_manager';
 
   const [loading, setLoading] = useState(false);
@@ -86,6 +87,7 @@ const BaseImageChangeLogPage = () => {
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!canViewPage) return;
@@ -121,6 +123,25 @@ const BaseImageChangeLogPage = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, dateFrom, dateTo]);
+
+  const handleDelete = async (row: BaseImageChangeLogEntry) => {
+    if (!isAdmin || deletingId !== null) return;
+    const employeeLabel = row.employee_full_name || row.employee_tabel_number || `#${row.id}`;
+    const confirmed = window.confirm(`Удалить запись истории для "${employeeLabel}"?`);
+    if (!confirmed) return;
+
+    setDeletingId(row.id);
+    try {
+      await axioss.delete(`/employee-service/base-image-change-logs/${row.id}/`);
+      toast.success('Запись истории удалена');
+      setRows((prev) => prev.filter((entry) => entry.id !== row.id));
+      setTotalCount((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      toast.error(getBackendError(error, 'Не удалось удалить запись истории'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
@@ -230,6 +251,7 @@ const BaseImageChangeLogPage = () => {
                     <th className="px-4 py-3 text-left font-semibold">Сотрудник</th>
                     <th className="px-4 py-3 text-left font-semibold">Старое фото</th>
                     <th className="px-4 py-3 text-left font-semibold">Новое фото</th>
+                    {isAdmin && <th className="px-4 py-3 text-left font-semibold">Удалить</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -276,6 +298,18 @@ const BaseImageChangeLogPage = () => {
                             <span className="text-slate-400">—</span>
                           )}
                         </td>
+                        {isAdmin && (
+                          <td className="px-4 py-4">
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(row)}
+                              disabled={deletingId === row.id || deletingId !== null}
+                              className="rounded bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingId === row.id ? 'Удаление...' : 'Delete'}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}

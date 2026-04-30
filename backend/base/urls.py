@@ -53,6 +53,7 @@ urlpatterns = [
     path("employee-service/media-proxy/", EmployeeServiceMediaProxyApiView.as_view()),
     path("employee-service/employees/", EmployeeServiceEmployeeListApiView.as_view()),
     path("employee-service/base-image-change-logs/", EmployeeServiceBaseImageChangeLogListApiView.as_view()),
+    path("employee-service/base-image-change-logs/<int:log_id>/", EmployeeServiceBaseImageChangeLogDetailApiView.as_view()),
     path("employee-service/employees/<slug:slug>/", EmployeeServiceEmployeeDetailApiView.as_view()),
 
 ]

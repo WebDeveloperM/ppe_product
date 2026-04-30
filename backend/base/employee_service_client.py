@@ -175,6 +175,10 @@ def list_employee_base_image_change_logs(*, search=None, changed_by_username=Non
     return _request('GET', '/api/v1/employees/base-image-change-logs/', params=params)
 
 
+def delete_employee_base_image_change_log(log_id):
+    return _request('DELETE', f'/api/v1/employees/base-image-change-logs/{log_id}/')
+
+
 def update_face_id_exemption(slug: str, requires_face_id_checkout: bool):
     return _request(
         'PATCH',
