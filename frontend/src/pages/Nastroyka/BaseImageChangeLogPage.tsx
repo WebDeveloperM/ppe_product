@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
@@ -277,7 +278,16 @@ const BaseImageChangeLogPage = () => {
                           <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatChangedByLabel(row)}</div>
                         </td>
                         <td className="px-4 py-4 text-slate-700 dark:text-slate-200">
-                          <div className="font-medium text-black dark:text-white">{row.employee_full_name || '—'}</div>
+                          {row.employee_slug ? (
+                            <Link
+                              to={`/item-view/${row.employee_slug}`}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              {row.employee_full_name || '—'}
+                            </Link>
+                          ) : (
+                            <div className="font-medium text-black dark:text-white">{row.employee_full_name || '—'}</div>
+                          )}
                           <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Табельный: {row.employee_tabel_number || '—'}</div>
                         
                         </td>
