@@ -796,14 +796,6 @@ export default function ViewPO() {
         };
     }, [pendingIssue?.id]);
 
-    const formatCountdown = (totalSeconds: number) => {
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        const minutesStr = String(minutes).padStart(1, '0');
-        const secondsStr = String(seconds).padStart(2, '0');
-        return `${minutesStr}:${secondsStr}`;
-    };
-
     const historyCatalogProducts = itemDetailData?.ppe_products ?? [];
 
     const toggleHistoryProduct = (productId: number) => {
@@ -1011,7 +1003,7 @@ export default function ViewPO() {
                         </div>
 
                         {historyGroups.length > 0 ? (
-                            displayedHistoryGroups.length > 0 ? displayedHistoryGroups.map((issue, index) => (
+                            displayedHistoryGroups.length > 0 ? displayedHistoryGroups.map((issue) => (
                                 <div
                                     key={`issue-${issue.id}-${issue.displayNumber}`}
                                     className={`rounded-md border border-stroke dark:border-strokedark overflow-hidden ${issue.is_current ? 'ring-1 ring-meta-3/40' : ''}`}
@@ -1187,8 +1179,8 @@ export default function ViewPO() {
             </div>
 
             {historyModalOpen ? (
-                <div className="fixed inset-0 z-99999 flex items-center justify-center bg-black/50 px-4 py-6">
-                    <div className="flex h-[70vh] w-[80vw] max-w-[80vw] flex-col rounded-md bg-white shadow-2xl dark:bg-boxdark">
+                <div className="fixed inset-0 z-99999 flex items-stretch justify-center bg-black/50 px-4 py-0">
+                    <div className="flex h-[100vh] w-[80vw] max-w-[80vw] flex-col rounded-md bg-white shadow-2xl dark:bg-boxdark">
                         <div className="flex items-center justify-between border-b border-stroke px-5 py-4 dark:border-strokedark">
                             <div>
                                 <h3 className="text-lg font-semibold text-black dark:text-white">Добавить историю</h3>

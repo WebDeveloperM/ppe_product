@@ -1385,6 +1385,7 @@ def get_product_available_sizes(product_id: int) -> list:
         .filter(
             ppeproduct__id=product_id,
             is_deleted=False,
+            affects_stock=True,
         )
         .distinct()
     )
@@ -1446,6 +1447,7 @@ def get_product_size_remaining_quantity(product_id: int, size_value: str) -> int
         .filter(
             ppeproduct__id=product_id,
             is_deleted=False,
+            affects_stock=True,
         )
         .distinct()
     )
@@ -3730,6 +3732,7 @@ class ItemHistoryCreateApiView(APIView):
                 issued_by=request.user,
                 addedUser=request.user,
                 updatedUser=request.user,
+                affects_stock=False,
                 ppe_sizes=group_sizes,
             )
             item.set_employee_snapshot(source_employee)
@@ -3937,6 +3940,7 @@ class PPEStatisticsApiView(APIView):
                     ppeproduct__id=product.id,
                     issued_at__lte=to_dt,
                     is_deleted=False,
+                    affects_stock=True,
                 )
                 .distinct()
             )
@@ -4011,6 +4015,7 @@ class PPEStatisticsApiView(APIView):
                 issued_period_qs = through_model.objects.filter(
                     ppeproduct_id=product.id,
                     item__is_deleted=False,
+                    item__affects_stock=True,
                 )
                 if from_dt:
                     issued_period_qs = issued_period_qs.filter(item__issued_at__gte=from_dt)
@@ -4030,6 +4035,7 @@ class PPEStatisticsApiView(APIView):
                         ppeproduct_id=product.id,
                         item__issued_at__lte=to_dt,
                         item__is_deleted=False,
+                        item__affects_stock=True,
                     )
                     .count()
                 )
@@ -4242,6 +4248,7 @@ class PPEStatisticsIssuedDetailsApiView(APIView):
             .filter(
                 ppeproduct__id=product_id,
                 is_deleted=False,
+                affects_stock=True,
             )
             .select_related('issued_by')
             .distinct()

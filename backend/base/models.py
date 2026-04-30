@@ -312,6 +312,7 @@ class Item(models.Model):
     updatedUser = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="updated_employees",
                                     verbose_name="Изменил", null=True, blank=True)
     updatedAt = models.DateTimeField(auto_now=True, verbose_name="Дата изменения", null=True, blank=True)
+    affects_stock = models.BooleanField(default=True, verbose_name='Влияет на остатки склада')
     isActive = models.BooleanField(default=True)
     is_deleted = models.BooleanField(default=False)
     history = HistoricalRecords(
