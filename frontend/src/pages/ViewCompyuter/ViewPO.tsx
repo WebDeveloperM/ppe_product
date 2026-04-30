@@ -1180,7 +1180,7 @@ export default function ViewPO() {
 
             {historyModalOpen ? (
                 <div className="fixed inset-0 z-99999 flex items-stretch justify-center bg-black/50 px-4 py-0">
-                    <div className="flex h-[100vh] w-[80vw] max-w-[80vw] flex-col rounded-md bg-white shadow-2xl dark:bg-boxdark">
+                    <div className="flex h-[70vh] w-[80vw] max-w-[80vw] flex-col rounded-md bg-white shadow-2xl dark:bg-boxdark">
                         <div className="flex items-center justify-between border-b border-stroke px-5 py-4 dark:border-strokedark">
                             <div>
                                 <h3 className="text-lg font-semibold text-black dark:text-white">Добавить историю</h3>
@@ -1201,7 +1201,7 @@ export default function ViewPO() {
                             <div>
                                 <div className="mb-2 text-sm font-medium text-black dark:text-white">Средства защиты</div>
                                 {historyCatalogProducts.length > 0 ? (
-                                    <div className="grid max-h-80 grid-cols-1 gap-3 overflow-y-auto rounded border border-stroke p-3 dark:border-strokedark md:grid-cols-2">
+                                    <div className="grid max-h-100 grid-cols-1 gap-3 overflow-y-auto rounded border border-stroke p-3 dark:border-strokedark md:grid-cols-2">
                                         {historyCatalogProducts.map((product) => (
                                             <div
                                                 key={product.id}
