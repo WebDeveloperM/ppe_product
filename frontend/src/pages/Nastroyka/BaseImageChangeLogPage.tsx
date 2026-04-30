@@ -241,18 +241,12 @@ const BaseImageChangeLogPage = () => {
                         <td className="px-4 py-4 font-medium text-black dark:text-white">{(currentPage - 1) * PAGE_SIZE + index + 1}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-slate-700 dark:text-slate-200">{formatDateTime(row.created_at)}</td>
                         <td className="px-4 py-4 text-slate-700 dark:text-slate-200">
-                          <div className="font-medium text-black dark:text-white">{row.changed_by_username || '—'}</div>
-                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatRoleLabel(row.changed_by_role)}</div>
-                          {row.changed_by_user_id ? (
-                            <div className="mt-1 text-xs text-slate-400">ID: {row.changed_by_user_id}</div>
-                          ) : null}
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatRoleLabel(row.changed_by_role)}</div>    
                         </td>
                         <td className="px-4 py-4 text-slate-700 dark:text-slate-200">
                           <div className="font-medium text-black dark:text-white">{row.employee_full_name || '—'}</div>
                           <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Табельный: {row.employee_tabel_number || '—'}</div>
-                          {row.employee_slug ? (
-                            <div className="mt-1 text-xs text-slate-400">Slug: {row.employee_slug}</div>
-                          ) : null}
+                        
                         </td>
                         <td className="px-4 py-4">
                           {oldImageUrl ? (

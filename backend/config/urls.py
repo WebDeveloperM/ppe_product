@@ -17,5 +17,5 @@ urlpatterns = [
     path('api/v1/users/', include('users.urls')),
 ]
 
-admin.site.site_header = "BNPZ QR_code"
-admin.site.site_title = "Backend qr_code"
+admin.site.site_header = "BNPZ СИЗ Админ"
+admin.site.site_title = "Backend СИЗ Админ"
