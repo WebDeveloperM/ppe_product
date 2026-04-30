@@ -890,15 +890,7 @@ export default function ViewPO() {
                                     <FaFileExcel className="text-lg" />
                                 </button>
                             )}
-                            {canAddItem ? (
-                                <Link
-                                    to={slug ? `/add-item/${slug}` : '/'}
-                                    className="flex items-center justify-center gap-2 rounded-md bg-meta-3 py-2 px-3 text-center text-sm font-medium text-white hover:bg-opacity-90 lg:px-5"
-                                >
-                                    <GrAddCircle className='text-base' />
-                                    Добавить
-                                </Link>
-                            ) : null}
+                           
                             {canAddHistory ? (
                                 <button
                                     type="button"
@@ -908,6 +900,15 @@ export default function ViewPO() {
                                     <GrAddCircle className='text-base' />
                                     Добавить историю
                                 </button>
+                            ) : null}
+                             {canAddItem ? (
+                                <Link
+                                    to={slug ? `/add-item/${slug}` : '/'}
+                                    className="flex items-center justify-center gap-2 rounded-md bg-meta-3 py-2 px-3 text-center text-sm font-medium text-white hover:bg-opacity-90 lg:px-5"
+                                >
+                                    <GrAddCircle className='text-base' />
+                                    Добавить
+                                </Link>
                             ) : null}
                         </div>
                     </div>
