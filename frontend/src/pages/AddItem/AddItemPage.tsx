@@ -243,7 +243,7 @@ const AddItemPage = () => {
 
   const handleUseCapturedImageAsBase = async () => {
     if (!capturedImage || !employeeSlug) {
-      toast.error('Avval kameradan rasm oling');
+      toast.error('Сначала сделайте снимок с камеры');
       return;
     }
 
@@ -252,10 +252,10 @@ const AddItemPage = () => {
       const safeName = String(employee?.tabel_number || employeeSlug || 'employee').replace(/[^a-zA-Z0-9-_]/g, '_');
       const capturedFile = await dataUrlToFile(capturedImage, `employee-base-${safeName}`);
       await uploadEmployeeBaseImage(capturedFile);
-      toast.success('Kameradan olingan rasm bazaviy rasm sifatida saqlandi');
+      toast.success('Сохранено как базовое изображение сотрудника');
     } catch (uploadError: any) {
       const backendError = uploadError?.response?.data?.error;
-      toast.error(backendError || 'Kamera rasmi bazaviy rasm sifatida saqlanmadi');
+      toast.error(backendError || 'Не удалось сохранить изображение с камеры как базовое');
     } finally {
       setUpdatingBaseImage(false);
     }
