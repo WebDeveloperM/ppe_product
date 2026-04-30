@@ -306,7 +306,7 @@ const BaseImageChangeLogPage = () => {
                               disabled={deletingId === row.id || deletingId !== null}
                               className="rounded bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                              {deletingId === row.id ? 'Удаление...' : 'Delete'}
+                              {deletingId === row.id ? 'Удаление...' : 'Удалить'}
                             </button>
                           </td>
                         )}
