@@ -29,15 +29,17 @@ def _get_verify_ssl() -> bool:
     return bool(getattr(settings, 'EMPLOYEE_SERVICE_VERIFY_SSL', False))
 
 
-def _build_headers() -> dict:
+def _build_headers(extra_headers=None) -> dict:
     headers = {'Accept': 'application/json'}
     api_key = str(getattr(settings, 'EMPLOYEE_SERVICE_API_KEY', '')).strip()
     if api_key:
         headers['X-Employee-Service-Key'] = api_key
+    if extra_headers:
+        headers.update({key: value for key, value in extra_headers.items() if value not in [None, '']})
     return headers
 
 
-def _request(method: str, path: str, *, data=None, json=None, files=None, params=None):
+def _request(method: str, path: str, *, data=None, json=None, files=None, params=None, extra_headers=None):
     if not is_employee_service_enabled():
         raise EmployeeServiceClientError('Employee service is not enabled.')
 
@@ -46,7 +48,7 @@ def _request(method: str, path: str, *, data=None, json=None, files=None, params
         response = requests.request(
             method=method,
             url=url,
-            headers=_build_headers(),
+            headers=_build_headers(extra_headers),
             data=data,
             json=json,
             files=files,
@@ -288,6 +290,20 @@ def upsert_employee_payload(payload: dict, files=None):
 
 def update_employee_payload(slug: str, payload: dict, files=None):
     return _request('PATCH', f'/api/v1/employees/{slug}/', data=payload, files=files)
+
+
+def update_employee_base_image(slug: str, file_obj, *, actor_user_id='', actor_username='', actor_role=''):
+    extra_headers = {
+        'X-Actor-User-Id': str(actor_user_id or '').strip(),
+        'X-Actor-Username': str(actor_username or '').strip(),
+        'X-Actor-Role': str(actor_role or '').strip(),
+    }
+    return _request(
+        'PATCH',
+        f'/api/v1/employees/{slug}/base-image/',
+        files={'base_image': file_obj},
+        extra_headers=extra_headers,
+    )
 
 
 def exchange_bnpzid_code(code: str, *, redirect_uri: str = ''):

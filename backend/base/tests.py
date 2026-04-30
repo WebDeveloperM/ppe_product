@@ -107,9 +107,9 @@ class EmployeeServiceEmployeeBaseImagePermissionTests(APITestCase):
 		return SimpleUploadedFile(name, b'fake-image-bytes', content_type='image/png')
 
 	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
-	@patch('base.employee_service_views.update_employee_payload')
-	def test_admin_can_update_employee_base_image(self, update_employee_payload_mock, _enabled_mock):
-		update_employee_payload_mock.return_value = {
+	@patch('base.employee_service_views.update_employee_base_image')
+	def test_admin_can_update_employee_base_image(self, update_employee_base_image_mock, _enabled_mock):
+		update_employee_base_image_mock.return_value = {
 			'id': 1,
 			'slug': self.employee_slug,
 			'first_name': 'Ali',
@@ -122,15 +122,16 @@ class EmployeeServiceEmployeeBaseImagePermissionTests(APITestCase):
 
 		self.assertEqual(response.status_code, 200)
 		self.assertEqual(response.data['base_image_url'], '/media/employee_base_images/new-avatar.png')
-		update_employee_payload_mock.assert_called_once()
-		self.assertEqual(update_employee_payload_mock.call_args.args[0], self.employee_slug)
-		self.assertEqual(update_employee_payload_mock.call_args.args[1], {})
-		self.assertIn('base_image', update_employee_payload_mock.call_args.args[2])
+		update_employee_base_image_mock.assert_called_once()
+		self.assertEqual(update_employee_base_image_mock.call_args.args[0], self.employee_slug)
+		self.assertEqual(update_employee_base_image_mock.call_args.args[1].name, 'avatar.png')
+		self.assertEqual(update_employee_base_image_mock.call_args.kwargs['actor_username'], 'admin_user')
+		self.assertEqual(update_employee_base_image_mock.call_args.kwargs['actor_role'], UserRole.ADMIN)
 
 	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
-	@patch('base.employee_service_views.update_employee_payload')
-	def test_warehouse_staff_can_update_employee_base_image(self, update_employee_payload_mock, _enabled_mock):
-		update_employee_payload_mock.return_value = {
+	@patch('base.employee_service_views.update_employee_base_image')
+	def test_warehouse_staff_can_update_employee_base_image(self, update_employee_base_image_mock, _enabled_mock):
+		update_employee_base_image_mock.return_value = {
 			'id': 1,
 			'slug': self.employee_slug,
 			'base_image': '/media/employee_base_images/staff-avatar.png',
@@ -141,16 +142,16 @@ class EmployeeServiceEmployeeBaseImagePermissionTests(APITestCase):
 		response = self.client.put(self.url, {'base_image': self._build_upload('staff.png')}, format='multipart')
 
 		self.assertEqual(response.status_code, 200)
-		update_employee_payload_mock.assert_called_once()
+		update_employee_base_image_mock.assert_called_once()
 
 	@patch('base.employee_service_views.is_employee_service_enabled', return_value=True)
-	@patch('base.employee_service_views.update_employee_payload')
-	def test_it_center_cannot_update_employee_base_image(self, update_employee_payload_mock, _enabled_mock):
+	@patch('base.employee_service_views.update_employee_base_image')
+	def test_it_center_cannot_update_employee_base_image(self, update_employee_base_image_mock, _enabled_mock):
 		self.client.force_authenticate(user=self.it_center_user)
 		response = self.client.put(self.url, {'base_image': self._build_upload('blocked.png')}, format='multipart')
 
 		self.assertEqual(response.status_code, 403)
-		update_employee_payload_mock.assert_not_called()
+		update_employee_base_image_mock.assert_not_called()
 
 	def test_non_warehouse_user_cannot_complete_second_step(self):
 		self.client.force_authenticate(user=self.user)

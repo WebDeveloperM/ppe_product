@@ -24,6 +24,7 @@ from .employee_service_client import (
     get_employee_by_slug,
     upsert_employee_payload,
     update_employee_payload,
+    update_employee_base_image,
     EmployeeServiceClientError,
     is_employee_service_enabled,
 )
@@ -512,7 +513,17 @@ class EmployeeServiceEmployeeDetailApiView(APIView):
 
         files = None
         if 'base_image' in request.FILES:
-            files = {'base_image': request.FILES['base_image']}
+            try:
+                employee = update_employee_base_image(
+                    slug,
+                    request.FILES['base_image'],
+                    actor_user_id=str(getattr(request.user, 'pk', '') or ''),
+                    actor_username=str(getattr(request.user, 'username', '') or ''),
+                    actor_role=str(get_effective_user_role(request.user) or ''),
+                )
+                return Response(normalize_employee_service_employee(employee))
+            except EmployeeServiceClientError as e:
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             employee = update_employee_payload(slug, payload, files)
