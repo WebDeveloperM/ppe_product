@@ -11,6 +11,7 @@ type BaseImageChangeLogEntry = {
   employee_slug?: string;
   employee_full_name?: string;
   employee_tabel_number?: string;
+  changed_by_full_name?: string;
   changed_by_username?: string;
   changed_by_user_id?: string;
   changed_by_role?: string;
@@ -64,6 +65,15 @@ const formatRoleLabel = (value?: string) => {
   if (normalized === 'it_center') return 'IT Center';
   if (normalized === 'user') return 'Пользователь';
   return value || '—';
+};
+
+const formatChangedByLabel = (row: BaseImageChangeLogEntry) => {
+  const fullName = String(row.changed_by_full_name || '').trim();
+  const username = String(row.changed_by_username || '').trim();
+
+  if (fullName) return fullName;
+  if (username) return username;
+  return '—';
 };
 
 const extractFileName = (value?: string) => {
@@ -263,7 +273,8 @@ const BaseImageChangeLogPage = () => {
                         <td className="px-4 py-4 font-medium text-black dark:text-white">{(currentPage - 1) * PAGE_SIZE + index + 1}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-slate-700 dark:text-slate-200">{formatDateTime(row.created_at)}</td>
                         <td className="px-4 py-4 text-slate-700 dark:text-slate-200">
-                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatRoleLabel(row.changed_by_role)}</div>    
+                          <div className="font-medium text-black dark:text-white">{formatRoleLabel(row.changed_by_role)}</div>
+                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{formatChangedByLabel(row)}</div>
                         </td>
                         <td className="px-4 py-4 text-slate-700 dark:text-slate-200">
                           <div className="font-medium text-black dark:text-white">{row.employee_full_name || '—'}</div>

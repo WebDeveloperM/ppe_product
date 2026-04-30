@@ -2,6 +2,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 import requests
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -30,6 +31,9 @@ from .employee_service_client import (
     EmployeeServiceClientError,
     is_employee_service_enabled,
 )
+
+
+User = get_user_model()
 
 
 class EmployeeServicePagination(PageNumberPagination):
@@ -168,14 +172,35 @@ def normalize_employee_service_log_image(value):
     return raw
 
 
-def normalize_employee_service_base_image_change_log(entry):
+def build_employee_service_actor_full_name(user):
+    if user is None:
+        return ''
+
+    full_name = ' '.join(part for part in [str(getattr(user, 'first_name', '')).strip(), str(getattr(user, 'last_name', '')).strip()] if part)
+    return full_name.strip()
+
+
+def normalize_employee_service_base_image_change_log(entry, users_by_id=None, users_by_username=None):
+    users_by_id = users_by_id or {}
+    users_by_username = users_by_username or {}
+
+    changed_by_user_id = str(entry.get('changed_by_user_id', '') or '').strip()
+    changed_by_username = str(entry.get('changed_by_username', '') or '').strip()
+
+    actor = None
+    if changed_by_user_id:
+        actor = users_by_id.get(changed_by_user_id)
+    if actor is None and changed_by_username:
+        actor = users_by_username.get(changed_by_username)
+
     return {
         'id': entry.get('id'),
         'employee_slug': entry.get('employee_slug', ''),
         'employee_full_name': entry.get('employee_full_name', ''),
         'employee_tabel_number': entry.get('employee_tabel_number', ''),
-        'changed_by_username': entry.get('changed_by_username', ''),
-        'changed_by_user_id': entry.get('changed_by_user_id', ''),
+        'changed_by_username': changed_by_username,
+        'changed_by_user_id': changed_by_user_id,
+        'changed_by_full_name': build_employee_service_actor_full_name(actor),
         'changed_by_role': entry.get('changed_by_role', ''),
         'old_image': entry.get('old_image', ''),
         'old_image_url': normalize_employee_service_log_image(entry.get('old_image_url') or entry.get('old_image')),
@@ -447,6 +472,32 @@ class EmployeeServiceBaseImageChangeLogListApiView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
+    @staticmethod
+    def _build_actor_maps(results):
+        raw_user_ids = {
+            str(item.get('changed_by_user_id', '') or '').strip()
+            for item in results
+            if str(item.get('changed_by_user_id', '') or '').strip()
+        }
+        raw_usernames = {
+            str(item.get('changed_by_username', '') or '').strip()
+            for item in results
+            if str(item.get('changed_by_username', '') or '').strip()
+        }
+
+        users_by_id = {}
+        if raw_user_ids:
+            for user in User.objects.filter(pk__in=raw_user_ids).only('id', 'username', 'first_name', 'last_name'):
+                users_by_id[str(user.pk)] = user
+
+        users_by_username = {}
+        unresolved_usernames = raw_usernames - {str(user.username).strip() for user in users_by_id.values() if str(user.username).strip()}
+        if unresolved_usernames:
+            for user in User.objects.filter(username__in=unresolved_usernames).only('id', 'username', 'first_name', 'last_name'):
+                users_by_username[str(user.username).strip()] = user
+
+        return users_by_id, users_by_username
+
     def get(self, request, *args, **kwargs):
         if not is_employee_service_enabled():
             return Response(
@@ -475,7 +526,11 @@ class EmployeeServiceBaseImageChangeLogListApiView(APIView):
             if not isinstance(results, list):
                 results = []
 
-            normalized_results = [normalize_employee_service_base_image_change_log(item) for item in results]
+            users_by_id, users_by_username = self._build_actor_maps(results)
+            normalized_results = [
+                normalize_employee_service_base_image_change_log(item, users_by_id=users_by_id, users_by_username=users_by_username)
+                for item in results
+            ]
             return Response({
                 'count': int(payload.get('count', len(normalized_results))) if isinstance(payload, dict) else len(normalized_results),
                 'next': payload.get('next') if isinstance(payload, dict) else None,
