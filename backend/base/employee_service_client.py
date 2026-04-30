@@ -175,8 +175,16 @@ def list_employee_base_image_change_logs(*, search=None, changed_by_username=Non
     return _request('GET', '/api/v1/employees/base-image-change-logs/', params=params)
 
 
-def delete_employee_base_image_change_log(log_id):
-    return _request('DELETE', f'/api/v1/employees/base-image-change-logs/{log_id}/')
+def delete_employee_base_image_change_log(log_id, *, actor_user_id=None, actor_username=None, actor_role=None):
+    return _request(
+        'DELETE',
+        f'/api/v1/employees/base-image-change-logs/{log_id}/',
+        extra_headers={
+            'X-Actor-User-Id': str(actor_user_id or '').strip(),
+            'X-Actor-Username': str(actor_username or '').strip(),
+            'X-Actor-Role': str(actor_role or '').strip(),
+        },
+    )
 
 
 def update_face_id_exemption(slug: str, requires_face_id_checkout: bool):

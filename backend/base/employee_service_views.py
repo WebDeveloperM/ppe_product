@@ -560,7 +560,12 @@ class EmployeeServiceBaseImageChangeLogDetailApiView(APIView):
             )
 
         try:
-            delete_employee_base_image_change_log(log_id)
+            delete_employee_base_image_change_log(
+                log_id,
+                actor_user_id=request.user.pk,
+                actor_username=getattr(request.user, 'username', ''),
+                actor_role=role,
+            )
             return Response(status=status.HTTP_204_NO_CONTENT)
         except EmployeeServiceClientError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
