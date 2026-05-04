@@ -23,6 +23,9 @@ type PpeOption = {
   next_due_date?: string | null;
   default_size?: string | null;
   size_type?: 'shoe' | 'headdress' | 'clothe' | null;
+  default_size_remaining?: number | null;
+  stock_available?: boolean | null;
+  stock_message?: string | null;
 };
 
 type EmployeeSizes = {
@@ -1211,7 +1214,7 @@ const AddItemPage = () => {
                                     type="text"
                                     value={ppeSizes[item.id] || ''}
                                     onChange={(e) => setPpeSizeValue(item.id, e.target.value)}
-                                    placeholder={item.default_size ? `Введите размер (${item.default_size})` : 'Введите размер'}
+                                    placeholder={item.default_size ? `Ваш размер: ${item.default_size}` : 'Введите размер'}
                                     className={`w-full rounded border px-2 py-1 text-sm ${
                                       !(ppeSizes[item.id] || '').trim() ? 'border-red-300' : ''
                                     }`}

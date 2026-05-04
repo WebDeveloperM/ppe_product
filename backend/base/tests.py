@@ -6,9 +6,10 @@ from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APITestCase
 
-from .models import Department, Section, Employee, EmployeeFaceIdOverride, PPEProduct, PositionPPERenewalRule, PendingItemIssue, Item
+from .models import Department, Section, Employee, EmployeeFaceIdOverride, PPEProduct, PositionPPERenewalRule, PendingItemIssue, Item, PPEArrival
 from .employee_data import build_employee_snapshot
 from .employee_service_client import EmployeeServiceClientError
+from .views import build_employee_ppe_products_payload
 from users.models import RolePageAccess, UserRole
 from unittest.mock import patch
 from requests import RequestException
@@ -270,6 +271,9 @@ class TelegramBotEmployeePPELookupApiTests(APITestCase):
 		self.helmet = PPEProduct.objects.create(name='Helmet', type_product='unit', renewal_months=12)
 		self.boots = PPEProduct.objects.create(name='Safety Boots', type_product='unit', renewal_months=6)
 		self.gloves = PPEProduct.objects.create(name='Gloves', type_product='unit', renewal_months=0)
+		self.jacket = PPEProduct.objects.create(name='Куртка', type_product='unit', renewal_months=12)
+		self.tshirt = PPEProduct.objects.create(name='Футболка', type_product='unit', renewal_months=6)
+		self.suit = PPEProduct.objects.create(name='Костюм с брюками (мужское)', type_product='unit', renewal_months=12)
 
 		self.employee_payload = {
 			'id': 501,
@@ -285,7 +289,10 @@ class TelegramBotEmployeePPELookupApiTests(APITestCase):
 			'phone_number_2': '',
 			'gender': 'M',
 			'clothe_size': '54',
+			'special_clothing_size': '52',
 			'shoe_size': '42',
+			'jacket_size': '56',
+			'tshirt_size': 'L',
 			'position': 'Engineer',
 			'department': {
 				'id': self.department.id,
@@ -335,6 +342,33 @@ class TelegramBotEmployeePPELookupApiTests(APITestCase):
 			renewal_months=0,
 			is_allowed=True,
 		)
+		PositionPPERenewalRule.objects.create(
+			department_service_id=self.department.id,
+			department_name=self.department.name,
+			position_name='Engineer',
+			position_key='engineer',
+			ppeproduct=self.jacket,
+			renewal_months=12,
+			is_allowed=True,
+		)
+		PositionPPERenewalRule.objects.create(
+			department_service_id=self.department.id,
+			department_name=self.department.name,
+			position_name='Engineer',
+			position_key='engineer',
+			ppeproduct=self.tshirt,
+			renewal_months=6,
+			is_allowed=True,
+		)
+		PositionPPERenewalRule.objects.create(
+			department_service_id=self.department.id,
+			department_name=self.department.name,
+			position_name='Engineer',
+			position_key='engineer',
+			ppeproduct=self.suit,
+			renewal_months=12,
+			is_allowed=True,
+		)
 
 	@patch('base.views.list_employees')
 	def test_returns_last_received_and_next_available_products_for_matching_phone_and_tabel(self, list_employees_mock):
@@ -367,6 +401,21 @@ class TelegramBotEmployeePPELookupApiTests(APITestCase):
 		)
 
 		self.assertEqual(response.status_code, 404)
+
+	def test_build_employee_ppe_products_payload_uses_specific_employee_service_size_fields(self):
+		PPEArrival.objects.create(ppeproduct=self.boots, quantity=5, size='41')
+		PPEArrival.objects.create(ppeproduct=self.jacket, quantity=3, size='56')
+		PPEArrival.objects.create(ppeproduct=self.tshirt, quantity=4, size='l')
+
+		rows = build_employee_ppe_products_payload(self.employee_payload)
+		rows_by_name = {row['name']: row for row in rows}
+
+		self.assertEqual(rows_by_name['Safety Boots']['default_size'], '42')
+		self.assertEqual(rows_by_name['Куртка']['default_size'], '56')
+		self.assertEqual(rows_by_name['Футболка']['default_size'], 'L')
+		self.assertEqual(rows_by_name['Костюм с брюками (мужское)']['default_size'], '52')
+		self.assertFalse(rows_by_name['Safety Boots']['stock_available'])
+		self.assertEqual(rows_by_name['Safety Boots']['stock_message'], 'Нет на складе')
 
 	def test_second_step_generates_qr_and_public_detail_payload(self):
 		self.client.force_authenticate(user=self.created_by)

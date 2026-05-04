@@ -585,10 +585,14 @@ def get_default_size_for_product(product_obj, employee_payload):
         return None
     employee = build_employee_namespace(employee_payload)
     name_lower = (product_obj.name or '').lower()
+    if any(kw in name_lower for kw in ['футболка', 'майка', 'tshirt', 't-shirt']):
+        return getattr(employee, 'tshirt_size', None) or getattr(employee, 'clothe_size', None) or None
+    if any(kw in name_lower for kw in ['куртка', 'jacket']):
+        return getattr(employee, 'jacket_size', None) or getattr(employee, 'clothe_size', None) or None
     if any(kw in name_lower for kw in ['обувь', 'ботинки', 'сапоги', 'туфли', 'кроссовки', 'oyoq', 'poyabzal']):
         return getattr(employee, 'shoe_size', None) or None
-    if any(kw in name_lower for kw in ['куртка', 'брюки', 'комбинезон', 'костюм', 'жилет', 'футболка', 'рубашка', 'халат', 'спецодежда', 'kiyim']):
-        return getattr(employee, 'clothe_size', None) or None
+    if any(kw in name_lower for kw in ['брюки', 'комбинезон', 'костюм', 'жилет', 'рубашка', 'халат', 'спецодежда', 'kiyim']):
+        return getattr(employee, 'special_clothing_size', None) or getattr(employee, 'clothe_size', None) or None
     return None
 
 
@@ -648,6 +652,16 @@ def build_employee_ppe_products_payload(employee_payload):
         if renewal_months > 0 and last_issue_dt and not can_issue:
             not_due_message = f"Для получения этого продукта осталось {remaining_text}"
 
+        default_size = get_default_size_for_product(product, employee_payload)
+        default_size_remaining = None
+        stock_available = None
+        stock_message = None
+        if str(default_size or '').strip():
+            default_size_remaining = get_product_size_remaining_quantity(product.id, default_size)
+            stock_available = default_size_remaining > 0
+            if not stock_available:
+                stock_message = 'Нет на складе'
+
         ppe_products_payload.append({
             'id': product.id,
             'name': product.name,
@@ -660,8 +674,11 @@ def build_employee_ppe_products_payload(employee_payload):
             'not_due_message': not_due_message,
             'last_issued_at': format_local_date_value(last_issue_dt),
             'next_due_date': format_local_date_value(next_due_dt),
-            'default_size': get_default_size_for_product(product, employee_payload),
+            'default_size': default_size,
             'size_type': get_size_label_for_product(product),
+            'default_size_remaining': default_size_remaining,
+            'stock_available': stock_available,
+            'stock_message': stock_message,
         })
 
     return ppe_products_payload
@@ -4811,6 +4828,9 @@ class TelegramBotPPEProductSerializer(serializers.Serializer):
     next_due_date = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     default_size = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     size_type = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    default_size_remaining = serializers.IntegerField(allow_null=True, required=False)
+    stock_available = serializers.BooleanField(allow_null=True, required=False)
+    stock_message = serializers.CharField(allow_blank=True, allow_null=True, required=False)
 
 
 class TelegramBotLookupErrorSerializer(serializers.Serializer):
@@ -4875,10 +4895,10 @@ class TelegramBotEmployeePPELookupApiView(APIView):
                         {'id': 1, 'name': 'Helmet', 'type_product': 'unit', 'type_product_display': 'Штучный', 'renewal_months': 12, 'size': '', 'is_new': False}
                     ],
                     'available_now_products': [
-                        {'id': 3, 'name': 'Gloves', 'type_product': 'unit', 'type_product_display': 'Штучный', 'renewal_months': 0, 'can_issue': True, 'months_left': 0, 'remaining_text': None, 'not_due_message': None, 'last_issued_at': None, 'next_due_date': None, 'default_size': None, 'size_type': None}
+                        {'id': 3, 'name': 'Gloves', 'type_product': 'unit', 'type_product_display': 'Штучный', 'renewal_months': 0, 'can_issue': True, 'months_left': 0, 'remaining_text': None, 'not_due_message': None, 'last_issued_at': None, 'next_due_date': None, 'default_size': None, 'size_type': None, 'default_size_remaining': None, 'stock_available': None, 'stock_message': None}
                     ],
                     'upcoming_products': [
-                        {'id': 2, 'name': 'Safety Boots', 'type_product': 'unit', 'type_product_display': 'Штучный', 'renewal_months': 6, 'can_issue': False, 'months_left': 4, 'remaining_text': '4 мес.', 'not_due_message': 'Для получения этого продукта осталось 4 мес.', 'last_issued_at': '05.03.2026', 'next_due_date': '05.08.2026', 'default_size': '42', 'size_type': 'shoe'}
+                        {'id': 2, 'name': 'Safety Boots', 'type_product': 'unit', 'type_product_display': 'Штучный', 'renewal_months': 6, 'can_issue': False, 'months_left': 4, 'remaining_text': '4 мес.', 'not_due_message': 'Для получения этого продукта осталось 4 мес.', 'last_issued_at': '05.03.2026', 'next_due_date': '05.08.2026', 'default_size': '42', 'size_type': 'shoe', 'default_size_remaining': 0, 'stock_available': False, 'stock_message': 'Нет на складе'}
                     ],
                     'all_ppe_products': [],
                     'item': {'id': 10, 'issued_at': '2026-03-05T10:00:00Z'},
