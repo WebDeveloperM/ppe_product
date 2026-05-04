@@ -170,9 +170,12 @@ const DailyPPEIssuedPage = () => {
   const [rows, setRows] = useState<DailyIssueRow[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [productFilter, setProductFilter] = useState('');
+  const [tabelSearch, setTabelSearch] = useState('');
   const [fromDate, setFromDate] = useState<Date | null>(null);
   const [toDate, setToDate] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   useEffect(() => {
     if (!canSeeDailyPpeIssued) return;
@@ -221,6 +224,10 @@ const DailyPPEIssuedPage = () => {
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
+      if (tabelSearch && !row.tabelNumber.toLowerCase().includes(tabelSearch.toLowerCase().trim())) {
+        return false;
+      }
+
       if (productFilter && !row.productNames.some((name) => name.toLowerCase() === productFilter.toLowerCase())) {
         return false;
       }
@@ -242,7 +249,22 @@ const DailyPPEIssuedPage = () => {
 
       return true;
     });
-  }, [rows, productFilter, fromDate, toDate]);
+  }, [rows, tabelSearch, productFilter, fromDate, toDate]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [tabelSearch, productFilter, fromDate, toDate, rowsPerPage]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / rowsPerPage));
+
+  useEffect(() => {
+    setCurrentPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    return filteredRows.slice(startIndex, startIndex + rowsPerPage);
+  }, [filteredRows, currentPage, rowsPerPage]);
 
   const reportSummary = useMemo(() => {
     const dateBits = [] as string[];
@@ -429,6 +451,16 @@ const DailyPPEIssuedPage = () => {
                   ))}
                 </select>
               </div>
+              <div className="md:w-64">
+                <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">Табельный номер</label>
+                <input
+                  type="text"
+                  value={tabelSearch}
+                  onChange={(event) => setTabelSearch(event.target.value)}
+                  placeholder="Введите табельный номер"
+                  className="h-[42px] w-full rounded border border-stroke bg-white px-3 text-base text-slate-700 outline-none focus:border-primary dark:border-strokedark dark:bg-boxdark-2 dark:text-slate-200"
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-3 md:flex-row md:items-end">
@@ -456,10 +488,11 @@ const DailyPPEIssuedPage = () => {
                   wrapperClassName="statistics-date-filter"
                 />
               </div>
-              {(productFilter || fromDate || toDate) && (
+              {(tabelSearch || productFilter || fromDate || toDate) && (
                 <button
                   type="button"
                   onClick={() => {
+                    setTabelSearch('');
                     setProductFilter('');
                     setFromDate(null);
                     setToDate(null);
@@ -478,71 +511,117 @@ const DailyPPEIssuedPage = () => {
             <div className="p-5 text-sm">Загрузка...</div>
           ) : filteredRows.length === 0 ? (
             <div className="p-5 text-sm text-slate-500 dark:text-slate-300">
-              {(productFilter || fromDate || toDate)
+              {(tabelSearch || productFilter || fromDate || toDate)
                 ? 'По выбранным фильтрам подтвержденных выдач не найдено.'
                 : 'Подтвержденных выдач не найдено.'}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-100 dark:bg-slate-800">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-semibold">№</th>
-                    <th className="px-4 py-3 text-left font-semibold">Табельный номер</th>
-                    <th className="px-4 py-3 text-left font-semibold">Сотрудник</th>
-                    <th className="px-4 py-3 text-left font-semibold">Продукт СИЗ</th>
-                    <th className="px-4 py-3 text-left font-semibold">Дата выдачи</th>
-                    <th className="px-4 py-3 text-left font-semibold">QR код</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRows.map((row, index) => (
-                    <tr key={row.key} className="border-t border-stroke align-top dark:border-strokedark">
-                      <td className="px-4 py-4 font-medium text-black dark:text-white">{index + 1}</td>
-                      <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.tabelNumber}</td>
-                      <td className="px-4 py-4 text-black dark:text-white">
-                        {row.employeeSlug ? (
-                          <Link
-                            to={`/item-view/${row.employeeSlug}`}
-                            className="font-medium text-primary hover:underline"
-                          >
-                            {row.fullName}
-                          </Link>
-                        ) : (
-                          <span className="font-medium">{row.fullName}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.productsLabel}</td>
-                      <td className="px-4 py-4 text-slate-700 dark:text-slate-200 whitespace-nowrap">{row.issuedAt}</td>
-                      <td className="px-4 py-4">
-                        {row.qrCodeImage ? (
-                          <div className="space-y-2">
-                            <a href={row.qrCodeImage} target="_blank" rel="noreferrer" className="block w-fit">
-                              <img
-                                src={row.qrCodeImage}
-                                alt={`QR ${row.tabelNumber}`}
-                                className="h-20 w-20 rounded border border-stroke object-contain p-1 dark:border-strokedark"
-                              />
-                            </a>
-                            {row.qrScanUrl && (
-                              <a
-                                href={row.qrScanUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-xs font-medium text-primary hover:underline"
-                              >
-                                Открыть
-                              </a>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
-                      </td>
+            <div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-100 dark:bg-slate-800">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold">№</th>
+                      <th className="px-4 py-3 text-left font-semibold">Табельный номер</th>
+                      <th className="px-4 py-3 text-left font-semibold">Сотрудник</th>
+                      <th className="px-4 py-3 text-left font-semibold">Продукт СИЗ</th>
+                      <th className="px-4 py-3 text-left font-semibold">Дата выдачи</th>
+                      <th className="px-4 py-3 text-left font-semibold">QR код</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {paginatedRows.map((row, index) => (
+                      <tr key={row.key} className="border-t border-stroke align-top dark:border-strokedark">
+                        <td className="px-4 py-4 font-medium text-black dark:text-white">{(currentPage - 1) * rowsPerPage + index + 1}</td>
+                        <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.tabelNumber}</td>
+                        <td className="px-4 py-4 text-black dark:text-white">
+                          {row.employeeSlug ? (
+                            <Link
+                              to={`/item-view/${row.employeeSlug}`}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              {row.fullName}
+                            </Link>
+                          ) : (
+                            <span className="font-medium">{row.fullName}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-slate-700 dark:text-slate-200">{row.productsLabel}</td>
+                        <td className="px-4 py-4 text-slate-700 dark:text-slate-200 whitespace-nowrap">{row.issuedAt}</td>
+                        <td className="px-4 py-4">
+                          {row.qrCodeImage ? (
+                            <div className="space-y-2">
+                              <a href={row.qrCodeImage} target="_blank" rel="noreferrer" className="block w-fit">
+                                <img
+                                  src={row.qrCodeImage}
+                                  alt={`QR ${row.tabelNumber}`}
+                                  className="h-20 w-20 rounded border border-stroke object-contain p-1 dark:border-strokedark"
+                                />
+                              </a>
+                              {row.qrScanUrl && (
+                                <a
+                                  href={row.qrScanUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs font-medium text-primary hover:underline"
+                                >
+                                  Открыть
+                                </a>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-stroke px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-strokedark">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600 dark:text-gray-300">Показать:</span>
+                    <select
+                      value={rowsPerPage}
+                      onChange={(event) => setRowsPerPage(Number(event.target.value))}
+                      className="h-9 rounded-md border border-stroke bg-white px-2 text-sm dark:border-strokedark dark:bg-boxdark dark:text-white"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                  <div className="text-sm text-slate-600 dark:text-slate-300">
+                    Показано {filteredRows.length === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1}-
+                    {Math.min(currentPage * rowsPerPage, filteredRows.length)} из {filteredRows.length}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className={`rounded border px-3 py-1.5 ${currentPage === 1 ? 'cursor-not-allowed border-slate-200 text-slate-400 dark:border-strokedark dark:text-slate-500' : 'border-stroke text-black hover:bg-gray-100 dark:border-strokedark dark:text-white dark:hover:bg-gray-700'}`}
+                  >
+                    Назад
+                  </button>
+                  <div className="rounded border border-stroke px-3 py-1.5 text-sm dark:border-strokedark">
+                    {currentPage} / {totalPages}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className={`rounded border px-3 py-1.5 ${currentPage === totalPages ? 'cursor-not-allowed border-slate-200 text-slate-400 dark:border-strokedark dark:text-slate-500' : 'border-stroke text-black hover:bg-gray-100 dark:border-strokedark dark:text-white dark:hover:bg-gray-700'}`}
+                  >
+                    Вперёд
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
