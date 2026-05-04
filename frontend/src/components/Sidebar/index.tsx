@@ -20,8 +20,8 @@ const Sidebar = ({ sidebarOpen, setSidebarOpen }: SidebarProps) => {
   const featureAccess = getStoredFeatureAccess(role);
   const firstAccessibleRoute = getFirstAccessibleRoute(pageAccess) || '/no-access';
   const isAdmin = role === 'admin';
-  const canSeeDailyPpeIssued = role === 'admin' || role === 'warehouse_manager';
-  const canSeeBaseImageChangeLogs = role === 'admin' || role === 'warehouse_manager';
+  const canSeeDailyPpeIssued = role === 'admin' || role === 'warehouse_manager' || role === 'warehouse_staff';
+  const canSeeBaseImageChangeLogs = role === 'admin' || role === 'warehouse_manager' || role === 'warehouse_staff';
   const canSeeDashboard = pageAccess.dashboard;
   const canSeeSettings = pageAccess.settings;
   const canSeePPEArrival = pageAccess.ppe_arrival;

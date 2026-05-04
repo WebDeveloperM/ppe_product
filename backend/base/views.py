@@ -5,7 +5,8 @@ from django.contrib.auth import authenticate
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
-from rest_framework import status, generics
+from rest_framework import status, generics, serializers
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from .models import *
 from .serializers import *
 from .employee_service_client import (
@@ -32,7 +33,7 @@ from .employee_service_client import (
     upsert_employee_payload,
     verify_employee_face as verify_employee_face_remote,
 )
-from .employee_data import build_employee_snapshot
+from .employee_data import build_employee_namespace, build_employee_snapshot
 from users.authentication import ExpiringTokenAuthentication as TokenAuthentication
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import render, redirect, get_object_or_404
@@ -514,6 +515,47 @@ def get_employee_service_reference(employee_payload):
     return ''
 
 
+def normalize_phone_for_lookup(value):
+    digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
+    if not digits:
+        return ''
+    if digits.startswith('998') and len(digits) == 12:
+        return digits
+    if len(digits) == 9:
+        return f'998{digits}'
+    return digits
+
+
+def employee_phone_matches(employee_payload, phone_number):
+    expected_phone = normalize_phone_for_lookup(phone_number)
+    if not expected_phone:
+        return False
+
+    phone_candidates = [
+        employee_payload.get('phone_number_1'),
+        employee_payload.get('phone_number_2'),
+    ]
+    normalized_candidates = {
+        normalized
+        for normalized in (normalize_phone_for_lookup(value) for value in phone_candidates)
+        if normalized
+    }
+    return expected_phone in normalized_candidates
+
+
+def find_employee_for_telegram_lookup(phone_number, tabel_number):
+    payload = list_employees(
+        tabel_number=tabel_number,
+        source_system=None,
+        no_pagination=True,
+    )
+    employees = extract_employee_results(payload)
+    for employee in employees:
+        if employee_phone_matches(employee, phone_number):
+            return build_employee_snapshot(employee)
+    return None
+
+
 def get_employee_items_queryset(employee_payload):
     employee_slug = get_employee_lookup_slug(employee_payload)
     if employee_slug:
@@ -528,6 +570,118 @@ def get_employee_items_queryset(employee_payload):
         return Item.objects.filter(employee_service_id=employee_id, is_deleted=False)
 
     return Item.objects.none()
+
+
+def format_local_date_value(value):
+    if not value:
+        return None
+    if timezone.is_naive(value):
+        value = timezone.make_aware(value, timezone.get_current_timezone())
+    return timezone.localtime(value).strftime('%d.%m.%Y')
+
+
+def get_default_size_for_product(product_obj, employee_payload):
+    if not employee_payload:
+        return None
+    employee = build_employee_namespace(employee_payload)
+    name_lower = (product_obj.name or '').lower()
+    if any(kw in name_lower for kw in ['обувь', 'ботинки', 'сапоги', 'туфли', 'кроссовки', 'oyoq', 'poyabzal']):
+        return getattr(employee, 'shoe_size', None) or None
+    if any(kw in name_lower for kw in ['куртка', 'брюки', 'комбинезон', 'костюм', 'жилет', 'футболка', 'рубашка', 'халат', 'спецодежда', 'kiyim']):
+        return getattr(employee, 'clothe_size', None) or None
+    return None
+
+
+def get_size_label_for_product(product_obj):
+    name_lower = (product_obj.name or '').lower()
+    if any(kw in name_lower for kw in ['обувь', 'ботинки', 'сапоги', 'туфли', 'кроссовки', 'oyoq', 'poyabzal']):
+        return 'shoe'
+    if any(kw in name_lower for kw in ['каска', 'шлем', 'шапка', 'берет', 'головн', 'bosh kiyim']):
+        return 'headdress'
+    if any(kw in name_lower for kw in ['куртка', 'брюки', 'комбинезон', 'костюм', 'жилет', 'футболка', 'рубашка', 'халат', 'спецодежда', 'kiyim']):
+        return 'clothe'
+    return None
+
+
+def build_employee_ppe_products_payload(employee_payload):
+    ppe_products = filter_ppe_products_for_employee_gender(
+        PPEProduct.objects.filter(is_active=True).order_by('name'),
+        employee_payload,
+    )
+    latest_rows = (
+        get_employee_items_queryset(employee_payload)
+        .filter(ppeproduct__is_active=True)
+        .values('ppeproduct')
+        .annotate(latest_issued_at=Max('issued_at'))
+    )
+    latest_issue_dates_by_product = {
+        row['ppeproduct']: row['latest_issued_at']
+        for row in latest_rows
+        if row.get('ppeproduct')
+    }
+
+    now_dt = timezone.now()
+    ppe_products_payload = []
+    for product in ppe_products:
+        rule = get_effective_position_ppe_rule(product, employee_payload)
+        if rule is not None and not rule.is_allowed:
+            continue
+
+        renewal_months = int(rule.renewal_months or 0) if rule is not None else int(product.renewal_months or 0)
+        last_issue_dt = latest_issue_dates_by_product.get(product.id)
+        next_due_dt = (
+            add_calendar_months(last_issue_dt, renewal_months - 1)
+            if renewal_months > 0 and last_issue_dt
+            else None
+        )
+
+        if renewal_months <= 0 or not last_issue_dt:
+            can_issue = True
+            months_left = 0
+            remaining_text = None
+        else:
+            months_left = get_months_remaining(now_dt, next_due_dt)
+            remaining_text = format_remaining_period_ru(months_left)
+            can_issue = now_dt >= next_due_dt
+
+        not_due_message = None
+        if renewal_months > 0 and last_issue_dt and not can_issue:
+            not_due_message = f"Для получения этого продукта осталось {remaining_text}"
+
+        ppe_products_payload.append({
+            'id': product.id,
+            'name': product.name,
+            'type_product': product.type_product,
+            'type_product_display': product.get_type_product_display() if product.type_product else None,
+            'renewal_months': renewal_months,
+            'can_issue': can_issue,
+            'months_left': months_left,
+            'remaining_text': remaining_text,
+            'not_due_message': not_due_message,
+            'last_issued_at': format_local_date_value(last_issue_dt),
+            'next_due_date': format_local_date_value(next_due_dt),
+            'default_size': get_default_size_for_product(product, employee_payload),
+            'size_type': get_size_label_for_product(product),
+        })
+
+    return ppe_products_payload
+
+
+def build_latest_item_payload_for_employee(employee_payload, request=None):
+    latest_item = (
+        get_employee_items_queryset(employee_payload)
+        .select_related('issued_by')
+        .prefetch_related('ppeproduct')
+        .order_by('-issued_at', '-id')
+        .first()
+    )
+    if latest_item:
+        attach_employee_snapshots([latest_item])
+        serializer_context = {'include_ppe_split': True, 'include_issue_history': True}
+        if request is not None:
+            serializer_context['request'] = request
+        return latest_item, ItemSerializer(latest_item, context=serializer_context).data
+    return None, build_employee_only_item_payload(employee_payload)
 
 
 def ensure_can_modify(request):
@@ -4383,117 +4537,9 @@ class ItemAddApiView(APIView):
                 return Response({"error": "Slug bo'yicha ma'lumot topilmadi"}, status=status.HTTP_404_NOT_FOUND)
 
             source_employee = employee
+            _, payload_item = build_latest_item_payload_for_employee(employee)
 
-            latest_item = (
-                get_employee_items_queryset(employee)
-                .select_related('issued_by')
-                .prefetch_related('ppeproduct')
-                .order_by('-issued_at', '-id')
-                .first()
-            )
-            if latest_item:
-                attach_employee_snapshots([latest_item])
-                payload_item = ItemSerializer(
-                    latest_item,
-                    context={'include_ppe_split': True, 'include_issue_history': True}
-                ).data
-            else:
-                payload_item = build_employee_only_item_payload(employee)
-
-        ppe_products = filter_ppe_products_for_employee_gender(
-            PPEProduct.objects.filter(is_active=True).order_by('name'),
-            source_employee,
-        )
-
-        latest_issue_dates_by_product = {}
-        if source_employee:
-            latest_rows = (
-                get_employee_items_queryset(source_employee)
-                .filter(ppeproduct__is_active=True)
-                .values('ppeproduct')
-                .annotate(latest_issued_at=Max('issued_at'))
-            )
-            latest_issue_dates_by_product = {
-                row['ppeproduct']: row['latest_issued_at']
-                for row in latest_rows
-                if row.get('ppeproduct')
-            }
-
-        now_dt = timezone.now()
-
-        def format_local_date(value):
-            if not value:
-                return None
-            if timezone.is_naive(value):
-                value = timezone.make_aware(value, timezone.get_current_timezone())
-            return timezone.localtime(value).strftime('%d.%m.%Y')
-
-        def get_default_size_for_product(product_obj, emp):
-            """Determine which employee size field applies to a PPE product."""
-            if not emp:
-                return None
-            name_lower = (product_obj.name or '').lower()
-            # Footwear keywords
-            if any(kw in name_lower for kw in ['обувь', 'ботинки', 'сапоги', 'туфли', 'кроссовки', 'oyoq', 'poyabzal']):
-                return getattr(emp, 'shoe_size', None) or None
-            # Clothing keywords (default for most other items)
-            if any(kw in name_lower for kw in ['куртка', 'брюки', 'комбинезон', 'костюм', 'жилет', 'футболка', 'рубашка', 'халат', 'спецодежда', 'kiyim']):
-                return getattr(emp, 'clothe_size', None) or None
-            return None
-
-        def get_size_label_for_product(product_obj):
-            """Determine which size type label to show for a PPE product."""
-            name_lower = (product_obj.name or '').lower()
-            if any(kw in name_lower for kw in ['обувь', 'ботинки', 'сапоги', 'туфли', 'кроссовки', 'oyoq', 'poyabzal']):
-                return 'shoe'
-            if any(kw in name_lower for kw in ['каска', 'шлем', 'шапка', 'берет', 'головн', 'bosh kiyim']):
-                return 'headdress'
-            if any(kw in name_lower for kw in ['куртка', 'брюки', 'комбинезон', 'костюм', 'жилет', 'футболка', 'рубашка', 'халат', 'спецодежда', 'kiyim']):
-                return 'clothe'
-            return None
-
-        ppe_products_payload = []
-        for product in ppe_products:
-            rule = get_effective_position_ppe_rule(product, source_employee)
-            if rule is not None and not rule.is_allowed:
-                continue
-
-            renewal_months = int(rule.renewal_months or 0) if rule is not None else int(product.renewal_months or 0)
-            last_issue_dt = latest_issue_dates_by_product.get(product.id)
-            next_due_dt = (
-                add_calendar_months(last_issue_dt, renewal_months - 1)
-                if renewal_months > 0 and last_issue_dt
-                else None
-            )
-
-            if renewal_months <= 0 or not last_issue_dt:
-                can_issue = True
-                months_left = 0
-                remaining_text = None
-            else:
-                months_left = get_months_remaining(now_dt, next_due_dt)
-                remaining_text = format_remaining_period_ru(months_left)
-                can_issue = now_dt >= next_due_dt
-
-            not_due_message = None
-            if renewal_months > 0 and last_issue_dt and not can_issue:
-                not_due_message = f"Для получения этого продукта осталось {remaining_text}"
-
-            ppe_products_payload.append({
-                "id": product.id,
-                "name": product.name,
-                "type_product": product.type_product,
-                "type_product_display": product.get_type_product_display() if product.type_product else None,
-                "renewal_months": renewal_months,
-                "can_issue": can_issue,
-                "months_left": months_left,
-                "remaining_text": remaining_text,
-                "not_due_message": not_due_message,
-                "last_issued_at": format_local_date(last_issue_dt),
-                "next_due_date": format_local_date(next_due_dt),
-                "default_size": get_default_size_for_product(product, build_employee_namespace(source_employee)),
-                "size_type": get_size_label_for_product(product),
-            })
+        ppe_products_payload = build_employee_ppe_products_payload(source_employee)
 
         employee_sizes = None
         if source_employee:
@@ -4512,6 +4558,7 @@ class ItemAddApiView(APIView):
             "departments": departments,
             "sections": sections,
         })
+
 
     @staticmethod
     def post(request, *args, **kwargs):
@@ -4708,6 +4755,189 @@ class ItemAddApiView(APIView):
             'expires_at': pending_issue.expires_at.isoformat(),
             'redirect_url': f'/signature/{pending_issue.id}',
         }, status=status.HTTP_201_CREATED)
+
+
+class TelegramBotLookupRequestSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(help_text='Xodim Telegram orqali share qilgan telefon raqami.')
+    tabel_number = serializers.CharField(help_text='Xodim kiritgan tabel raqami.')
+
+
+class TelegramBotDepartmentSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField(allow_blank=True)
+    boss_fullName = serializers.CharField(allow_blank=True, required=False)
+
+
+class TelegramBotSectionSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField(allow_blank=True)
+    department_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class TelegramBotEmployeeSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
+    external_id = serializers.CharField(allow_blank=True)
+    slug = serializers.CharField(allow_blank=True)
+    full_name = serializers.CharField(allow_blank=True)
+    tabel_number = serializers.CharField(allow_blank=True)
+    phone_number_1 = serializers.CharField(allow_blank=True)
+    phone_number_2 = serializers.CharField(allow_blank=True)
+    position = serializers.CharField(allow_blank=True)
+    department = TelegramBotDepartmentSerializer(required=False)
+    section = TelegramBotSectionSerializer(required=False)
+
+
+class TelegramBotLastReceivedProductSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    type_product = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    type_product_display = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    renewal_months = serializers.IntegerField(required=False)
+    size = serializers.CharField(allow_blank=True, required=False)
+    is_new = serializers.BooleanField(allow_null=True, required=False)
+
+
+class TelegramBotPPEProductSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    type_product = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    type_product_display = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    renewal_months = serializers.IntegerField()
+    can_issue = serializers.BooleanField()
+    months_left = serializers.IntegerField()
+    remaining_text = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    not_due_message = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    last_issued_at = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    next_due_date = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    default_size = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    size_type = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+
+
+class TelegramBotLookupErrorSerializer(serializers.Serializer):
+    error = serializers.CharField()
+
+
+class TelegramBotLookupResponseSerializer(serializers.Serializer):
+    employee = TelegramBotEmployeeSerializer()
+    last_received_at = serializers.CharField(allow_blank=True, allow_null=True, required=False)
+    last_received_products = TelegramBotLastReceivedProductSerializer(many=True)
+    available_now_products = TelegramBotPPEProductSerializer(many=True)
+    upcoming_products = TelegramBotPPEProductSerializer(many=True)
+    all_ppe_products = TelegramBotPPEProductSerializer(many=True)
+    item = serializers.JSONField()
+
+
+class TelegramBotEmployeePPELookupApiView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        tags=['Telegram Bot'],
+        operation_id='telegram_bot_employee_ppe_lookup',
+        summary='Telefon va tabel bo‘yicha xodimning PPE holatini olish',
+        description=(
+            'Telegram bot integratsiyasi uchun endpoint. '\
+            'Xodim avval telefon raqamini share qiladi, keyin tabel raqamini yuboradi. '\
+            'Endpoint xodimni employee_service dan topadi va quyidagilarni qaytaradi: '\
+            'oxirgi olingan PPE mahsulotlari, hozir olish mumkin bo‘lgan mahsulotlar, '\
+            'hamda keyinroq olish mumkin bo‘ladigan mahsulotlar va ularning muddatlari.'
+        ),
+        request=TelegramBotLookupRequestSerializer,
+        responses={
+            200: OpenApiResponse(response=TelegramBotLookupResponseSerializer, description='Xodim topildi va PPE maʼlumotlari qaytarildi.'),
+            400: OpenApiResponse(response=TelegramBotLookupErrorSerializer, description='So‘rov noto‘g‘ri: phone_number yoki tabel_number yuborilmagan.'),
+            404: OpenApiResponse(response=TelegramBotLookupErrorSerializer, description='Xodim topilmadi yoki telefon raqami mos kelmadi.'),
+            503: OpenApiResponse(response=TelegramBotLookupErrorSerializer, description='employee_service vaqtincha ishlamayapti.'),
+        },
+        examples=[
+            OpenApiExample(
+                'Request example',
+                value={'phone_number': '+998901234567', 'tabel_number': 'TG-501'},
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Success example',
+                value={
+                    'employee': {
+                        'id': 501,
+                        'external_id': '501',
+                        'slug': 'telegram-employee-501',
+                        'full_name': 'Valiyev Ali Botovich',
+                        'tabel_number': 'TG-501',
+                        'phone_number_1': '+998 90 123 45 67',
+                        'phone_number_2': '',
+                        'position': 'Engineer',
+                        'department': {'id': 12, 'name': '12-Telegram Department', 'boss_fullName': 'Chief User'},
+                        'section': {'id': 3, 'name': 'Bot Section', 'department_id': 12},
+                    },
+                    'last_received_at': '05.03.2026',
+                    'last_received_products': [
+                        {'id': 1, 'name': 'Helmet', 'type_product': 'unit', 'type_product_display': 'Штучный', 'renewal_months': 12, 'size': '', 'is_new': False}
+                    ],
+                    'available_now_products': [
+                        {'id': 3, 'name': 'Gloves', 'type_product': 'unit', 'type_product_display': 'Штучный', 'renewal_months': 0, 'can_issue': True, 'months_left': 0, 'remaining_text': None, 'not_due_message': None, 'last_issued_at': None, 'next_due_date': None, 'default_size': None, 'size_type': None}
+                    ],
+                    'upcoming_products': [
+                        {'id': 2, 'name': 'Safety Boots', 'type_product': 'unit', 'type_product_display': 'Штучный', 'renewal_months': 6, 'can_issue': False, 'months_left': 4, 'remaining_text': '4 мес.', 'not_due_message': 'Для получения этого продукта осталось 4 мес.', 'last_issued_at': '05.03.2026', 'next_due_date': '05.08.2026', 'default_size': '42', 'size_type': 'shoe'}
+                    ],
+                    'all_ppe_products': [],
+                    'item': {'id': 10, 'issued_at': '2026-03-05T10:00:00Z'},
+                },
+                response_only=True,
+                status_codes=['200'],
+            ),
+        ],
+    )
+    @staticmethod
+    def post(request, *args, **kwargs):
+        phone_number = str(request.data.get('phone_number') or '').strip()
+        tabel_number = str(request.data.get('tabel_number') or '').strip()
+
+        if not phone_number:
+            return Response({'error': 'phone_number majburiy'}, status=status.HTTP_400_BAD_REQUEST)
+        if not tabel_number:
+            return Response({'error': 'tabel_number majburiy'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            employee = find_employee_for_telegram_lookup(phone_number, tabel_number)
+        except EmployeeServiceClientError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        if not employee:
+            return Response({'error': 'Xodim topilmadi yoki telefon raqami mos emas'}, status=status.HTTP_404_NOT_FOUND)
+
+        latest_item, item_payload = build_latest_item_payload_for_employee(employee, request=request)
+        ppe_products = build_employee_ppe_products_payload(employee)
+
+        last_received_products = []
+        last_received_at = None
+        if latest_item is not None:
+            last_received_at = format_local_date_value(latest_item.issued_at)
+            last_received_products = item_payload.get('ppeproduct_info') or []
+
+        available_now_products = [row for row in ppe_products if row.get('can_issue')]
+        upcoming_products = [row for row in ppe_products if not row.get('can_issue')]
+
+        return Response({
+            'employee': {
+                'id': employee.get('id'),
+                'external_id': employee.get('external_id'),
+                'slug': employee.get('slug'),
+                'full_name': employee.get('full_name'),
+                'tabel_number': employee.get('tabel_number'),
+                'phone_number_1': employee.get('phone_number_1') or '',
+                'phone_number_2': employee.get('phone_number_2') or '',
+                'position': employee.get('position') or '',
+                'department': employee.get('department') or {},
+                'section': employee.get('section') or {},
+            },
+            'last_received_at': last_received_at,
+            'last_received_products': last_received_products,
+            'available_now_products': available_now_products,
+            'upcoming_products': upcoming_products,
+            'all_ppe_products': ppe_products,
+            'item': item_payload,
+        })
 
 
 class ItemStockCheckApiView(APIView):

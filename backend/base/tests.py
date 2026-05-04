@@ -259,6 +259,115 @@ class EmployeeServiceBaseImageChangeLogAccessTests(APITestCase):
 		self.assertEqual(response.status_code, 403)
 		list_logs_mock.assert_not_called()
 
+
+class TelegramBotEmployeePPELookupApiTests(APITestCase):
+	def setUp(self):
+		self.url = '/api/v1/telegram-bot/employee-ppe-lookup/'
+		self.department = Department.objects.create(name='12-Telegram Department', boss_fullName='Chief User')
+		self.section = Section.objects.create(name='Bot Section', department=self.department)
+		self.user = User.objects.create_user(username='ppe_issuer', password='test12345')
+
+		self.helmet = PPEProduct.objects.create(name='Helmet', type_product='unit', renewal_months=12)
+		self.boots = PPEProduct.objects.create(name='Safety Boots', type_product='unit', renewal_months=6)
+		self.gloves = PPEProduct.objects.create(name='Gloves', type_product='unit', renewal_months=0)
+
+		self.employee_payload = {
+			'id': 501,
+			'external_id': '501',
+			'source_system': 'employee-service',
+			'slug': 'telegram-employee-501',
+			'first_name': 'Ali',
+			'last_name': 'Valiyev',
+			'surname': 'Botovich',
+			'full_name': 'Valiyev Ali Botovich',
+			'tabel_number': 'TG-501',
+			'phone_number_1': '+998 90 123 45 67',
+			'phone_number_2': '',
+			'gender': 'M',
+			'clothe_size': '54',
+			'shoe_size': '42',
+			'position': 'Engineer',
+			'department': {
+				'id': self.department.id,
+				'name': self.department.name,
+				'boss_fullName': self.department.boss_fullName,
+			},
+			'section': {
+				'id': self.section.id,
+				'name': self.section.name,
+				'department_id': self.department.id,
+			},
+		}
+
+		self.latest_item = Item.objects.create(
+			employee_service_id=501,
+			employee_slug='telegram-employee-501',
+			employee_snapshot=build_employee_snapshot(self.employee_payload),
+			issued_at=timezone.now() - timedelta(days=60),
+			issued_by=self.user,
+		)
+		self.latest_item.ppeproduct.set([self.helmet, self.boots])
+
+		PositionPPERenewalRule.objects.create(
+			department_service_id=self.department.id,
+			department_name=self.department.name,
+			position_name='Engineer',
+			position_key='engineer',
+			ppeproduct=self.helmet,
+			renewal_months=12,
+			is_allowed=True,
+		)
+		PositionPPERenewalRule.objects.create(
+			department_service_id=self.department.id,
+			department_name=self.department.name,
+			position_name='Engineer',
+			position_key='engineer',
+			ppeproduct=self.boots,
+			renewal_months=6,
+			is_allowed=True,
+		)
+		PositionPPERenewalRule.objects.create(
+			department_service_id=self.department.id,
+			department_name=self.department.name,
+			position_name='Engineer',
+			position_key='engineer',
+			ppeproduct=self.gloves,
+			renewal_months=0,
+			is_allowed=True,
+		)
+
+	@patch('base.views.list_employees')
+	def test_returns_last_received_and_next_available_products_for_matching_phone_and_tabel(self, list_employees_mock):
+		list_employees_mock.return_value = [self.employee_payload]
+
+		response = self.client.post(
+			self.url,
+			{'phone_number': '+998901234567', 'tabel_number': 'TG-501'},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.data['employee']['tabel_number'], 'TG-501')
+		self.assertEqual(len(response.data['last_received_products']), 2)
+		self.assertEqual({row['name'] for row in response.data['last_received_products']}, {'Helmet', 'Safety Boots'})
+		self.assertEqual({row['name'] for row in response.data['available_now_products']}, {'Gloves'})
+		self.assertEqual({row['name'] for row in response.data['upcoming_products']}, {'Helmet', 'Safety Boots'})
+		boots_row = next(row for row in response.data['upcoming_products'] if row['name'] == 'Safety Boots')
+		self.assertFalse(boots_row['can_issue'])
+		self.assertIsNotNone(boots_row['next_due_date'])
+
+	@patch('base.views.list_employees')
+	def test_returns_404_when_phone_does_not_match_employee(self, list_employees_mock):
+		list_employees_mock.return_value = [self.employee_payload]
+
+		response = self.client.post(
+			self.url,
+			{'phone_number': '+998 91 000 00 00', 'tabel_number': 'TG-501'},
+			format='json',
+		)
+
+		self.assertEqual(response.status_code, 404)
+
 	def test_second_step_generates_qr_and_public_detail_payload(self):
 		self.client.force_authenticate(user=self.created_by)
 

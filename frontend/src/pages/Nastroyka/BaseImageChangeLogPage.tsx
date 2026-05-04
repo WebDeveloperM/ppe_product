@@ -89,7 +89,7 @@ const BaseImageChangeLogPage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
   const isAdmin = role === 'admin';
-  const canViewPage = role === 'admin' || role === 'warehouse_manager';
+  const canViewPage = role === 'admin' || role === 'warehouse_manager' || role === 'warehouse_staff';
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<BaseImageChangeLogEntry[]>([]);
@@ -163,7 +163,7 @@ const BaseImageChangeLogPage = () => {
         <div className="rounded-sm border border-stroke bg-white p-5 shadow-default dark:border-strokedark dark:bg-boxdark">
           <div className="text-base text-red-600">Нет доступа к странице</div>
           <div className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-            Только администратор и складской менеджер могут просматривать этот отчет.
+            Только администратор, складской менеджер и складской рабочий могут просматривать этот отчет.
           </div>
           <button
             onClick={() => navigate('/nastroyka')}

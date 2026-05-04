@@ -506,9 +506,9 @@ class EmployeeServiceBaseImageChangeLogListApiView(APIView):
             )
 
         role = get_effective_user_role(request.user)
-        if role not in [UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER]:
+        if role not in [UserRole.ADMIN, UserRole.WAREHOUSE_MANAGER, UserRole.WAREHOUSE_STAFF]:
             return Response(
-                {"error": "Only admin and warehouse manager can view employee base image change logs"},
+                {"error": "Only admin, warehouse manager, and warehouse staff can view employee base image change logs"},
                 status=status.HTTP_403_FORBIDDEN,
             )
 

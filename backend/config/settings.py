@@ -138,6 +138,15 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 50,
 }
 
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'TB Project Backend API',
+    'DESCRIPTION': (
+        'TB Project backend OpenAPI hujjati. Telegram bot integratsiyasi uchun '
+        'telefon+tabel asosidagi PPE lookup endpoint ham shu hujjatda mavjud.'
+    ),
+    'VERSION': '1.0.0',
+}
+
 TOKEN_SESSION_TTL_SECONDS = int(os.environ.get('TOKEN_SESSION_TTL_SECONDS', '7200'))
 SESSION_COOKIE_AGE = TOKEN_SESSION_TTL_SECONDS
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False

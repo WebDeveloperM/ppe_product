@@ -4,6 +4,7 @@ from base.employee_service_views import *
 # from .models import register_computer
 
 urlpatterns = [
+    path("telegram-bot/employee-ppe-lookup/", TelegramBotEmployeePPELookupApiView.as_view()),
     path("all_employees/", AllEmployeeApiView.as_view()),
     path("info-employee/", InfoEmployeeApiView.as_view()),
     path("due-soon-employees/", DueSoonEmployeePPEApiView.as_view()),

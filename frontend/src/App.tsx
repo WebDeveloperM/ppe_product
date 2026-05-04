@@ -75,7 +75,8 @@ function App() {
   const canAccessDueSoonDetails = featureAccess.dashboard_due_cards;
   const canAccessFaceIdControl = featureAccess.face_id_control;
   const isAdmin = trustedRole === 'admin';
-  const canAccessBaseImageChangeLogs = trustedRole === 'admin' || trustedRole === 'warehouse_manager';
+  const canAccessDailyPpeIssued = trustedRole === 'admin' || trustedRole === 'warehouse_manager' || trustedRole === 'warehouse_staff';
+  const canAccessBaseImageChangeLogs = trustedRole === 'admin' || trustedRole === 'warehouse_manager' || trustedRole === 'warehouse_staff';
   const fallbackRoute = getFirstAccessibleRoute(pageAccess) || '/no-access';
 
   const getDeniedRoute = () => (fallbackRoute === pathname ? '/no-access' : fallbackRoute);
@@ -407,7 +408,7 @@ function App() {
         <Route
           path="/nastroyka/daily-ppe-issued"
           element={
-            isAuthenticated() && canAccessSettings && isAdmin ? (
+            isAuthenticated() && canAccessSettings && canAccessDailyPpeIssued ? (
               <>
                 <PageTitle title="Ежедневная выдача СИЗ" />
                 <DailyPPEIssuedPage />
