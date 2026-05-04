@@ -4,10 +4,11 @@ import { toast } from 'react-toastify';
 import { FaRegCalendarAlt } from 'react-icons/fa';
 import { FiFilter } from 'react-icons/fi';
 import DatePicker from 'react-datepicker';
+import * as XLSX from 'xlsx-js-style';
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
 import axioss from '../../api/axios';
 import { resolveEmployeeImageUrl } from '../../utils/urls';
-import { normalizeRole } from '../../utils/pageAccess';
+import { getStoredFeatureAccess, normalizeRole } from '../../utils/pageAccess';
 
 type EmployeeInfo = {
   id?: number | string;
@@ -163,6 +164,7 @@ const DailyPPEIssuedPage = () => {
   const navigate = useNavigate();
   const role = useMemo(() => normalizeRole(localStorage.getItem('role')), []);
   const canSeeDailyPpeIssued = role === 'admin' || role === 'warehouse_manager' || role === 'warehouse_staff';
+  const canExportExcel = getStoredFeatureAccess(role).dashboard_export_excel;
 
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<DailyIssueRow[]>([]);
@@ -170,6 +172,7 @@ const DailyPPEIssuedPage = () => {
   const [productFilter, setProductFilter] = useState('');
   const [fromDate, setFromDate] = useState<Date | null>(null);
   const [toDate, setToDate] = useState<Date | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     if (!canSeeDailyPpeIssued) return;
@@ -251,6 +254,83 @@ const DailyPPEIssuedPage = () => {
     return `Все записи. Всего получателей: ${filteredRows.length}`;
   }, [filteredRows.length, fromDate, toDate]);
 
+  const exportFilteredRowsToExcel = () => {
+    if (!filteredRows.length) {
+      toast.info('Экспортировать нечего');
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      const headers = ['№', 'Табельный номер', 'Сотрудник', 'Продукт СИЗ', 'Дата выдачи', 'QR ссылка'];
+      const body = filteredRows.map((row, index) => ([
+        index + 1,
+        row.tabelNumber || '-',
+        row.fullName || '-',
+        row.productsLabel || '-',
+        row.issuedAt || '-',
+        row.qrScanUrl || '-',
+      ]));
+
+      const worksheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
+      worksheet['!cols'] = [
+        { wch: 6 },
+        { wch: 18 },
+        { wch: 30 },
+        { wch: 48 },
+        { wch: 20 },
+        { wch: 36 },
+      ];
+
+      const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+      for (let row = range.s.r; row <= range.e.r; row += 1) {
+        for (let col = range.s.c; col <= range.e.c; col += 1) {
+          const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+          const existingCell = worksheet[cellAddress] as any;
+          if (!existingCell) continue;
+
+          const isHeader = row === 0;
+          existingCell.s = {
+            font: {
+              bold: isHeader,
+              color: { rgb: isHeader ? 'FFFFFF' : '1E293B' },
+            },
+            fill: {
+              fgColor: { rgb: isHeader ? '217346' : row % 2 === 0 ? 'FFFFFF' : 'F8FAFC' },
+            },
+            alignment: {
+              vertical: 'center',
+              horizontal: col === 0 ? 'center' : 'left',
+              wrapText: true,
+            },
+            border: {
+              top: { style: 'thin', color: { rgb: 'CBD5E1' } },
+              bottom: { style: 'thin', color: { rgb: 'CBD5E1' } },
+              left: { style: 'thin', color: { rgb: 'CBD5E1' } },
+              right: { style: 'thin', color: { rgb: 'CBD5E1' } },
+            },
+          };
+        }
+      }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Daily PPE Issued');
+
+      const today = formatDateInput(new Date());
+      const fromPart = fromDate ? formatDateInput(fromDate) : 'all';
+      const toPart = toDate ? formatDateInput(toDate) : 'all';
+      const productPart = productFilter ? productFilter.replace(/[^a-zA-Z0-9а-яА-Я-_]+/g, '_').slice(0, 40) : 'all';
+      XLSX.writeFile(workbook, `daily_ppe_issued_${productPart}_${fromPart}_${toPart}_${today}.xlsx`);
+      toast.success(`Экспортировано ${filteredRows.length} записей`);
+    } catch (error) {
+      console.error('Ошибка экспорта daily PPE issued Excel:', error);
+      toast.error('Не удалось скачать Excel');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (!canSeeDailyPpeIssued) {
     return (
       <>
@@ -285,6 +365,33 @@ const DailyPPEIssuedPage = () => {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {canExportExcel && (
+              <button
+                type="button"
+                onClick={exportFilteredRowsToExcel}
+                disabled={filteredRows.length === 0 || isExporting}
+                title="Скачать Excel"
+                aria-label="Скачать Excel"
+                className={`flex h-10 w-12 items-center justify-center rounded-md transition-colors duration-200 ${
+                  isExporting
+                    ? 'cursor-not-allowed bg-gray-400'
+                    : 'bg-green-600 hover:bg-green-700'
+                } text-white disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="2" y="2" width="20" height="20" rx="4" fill="#217346" />
+                  <path
+                    d="M9 6.5C8.44772 6.5 8 6.94772 8 7.5V16.5C8 17.0523 8.44772 17.5 9 17.5H15C15.5523 17.5 16 17.0523 16 16.5V10L12.5 6.5H9Z"
+                    fill="white"
+                  />
+                  <path d="M12.5 6.5L16 10H13.25C12.6977 10 12.25 9.55228 12.25 9V6.5H12.5Z" fill="#e6f2e8" />
+                  <path
+                    d="M10.4 14.2L11.6 13L10.4 11.8C10.1828 11.5828 10.1828 11.2314 10.4 11.0142C10.6172 10.797 10.9686 10.797 11.1858 11.0142L12.4 12.2284L13.6142 11.0142C13.8314 10.797 14.1828 10.797 14.4 11.0142C14.6172 11.2314 14.6172 11.5828 14.4 11.8L13.2 13L14.4 14.2C14.6172 14.4172 14.6172 14.7686 14.4 14.9858C14.1828 15.203 13.8314 15.203 13.6142 14.9858L12.4 13.7716L11.1858 14.9858C10.9686 15.203 10.6172 15.203 10.4 14.9858C10.1828 14.7686 10.1828 14.4172 10.4 14.2Z"
+                    fill="#217346"
+                  />
+                </svg>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowFilters((prev) => !prev)}
