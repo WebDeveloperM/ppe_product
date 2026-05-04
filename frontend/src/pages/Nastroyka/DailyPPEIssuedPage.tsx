@@ -263,14 +263,13 @@ const DailyPPEIssuedPage = () => {
     setIsExporting(true);
 
     try {
-      const headers = ['№', 'Табельный номер', 'Сотрудник', 'Продукт СИЗ', 'Дата выдачи', 'QR ссылка'];
+      const headers = ['№', 'Табельный номер', 'Сотрудник', 'Продукт СИЗ', 'Дата выдачи'];
       const body = filteredRows.map((row, index) => ([
         index + 1,
         row.tabelNumber || '-',
         row.fullName || '-',
         row.productsLabel || '-',
         row.issuedAt || '-',
-        row.qrScanUrl || '-',
       ]));
 
       const worksheet = XLSX.utils.aoa_to_sheet([headers, ...body]);
@@ -280,7 +279,6 @@ const DailyPPEIssuedPage = () => {
         { wch: 30 },
         { wch: 48 },
         { wch: 20 },
-        { wch: 36 },
       ];
 
       const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
