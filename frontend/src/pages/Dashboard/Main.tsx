@@ -236,7 +236,8 @@ const Main: React.FC = () => {
                         <ComputerTable checkedComputer={computerData} setDeleteCompForChecked={setDeleteCompForChecked}
                             isFiltered={!!selectKey} loadingFilter={loadingFilter || isCardFilterLoading}
                             allEmployeeCount={infoCompData?.all_employee_count ?? 0}
-                            onShowAllEmployees={() => handleSelectKey(null)} />
+                            onShowAllEmployees={() => handleSelectKey(null)}
+                            filterKey={selectKey || ''} />
                     </div>
                 </> :
 

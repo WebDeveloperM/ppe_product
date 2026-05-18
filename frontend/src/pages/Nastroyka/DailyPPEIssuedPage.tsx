@@ -86,13 +86,6 @@ const formatIssuedAt = (value?: string | null) => {
   }).format(date);
 };
 
-const parseIssuedAt = (value?: string | null) => {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
-};
-
 const formatReportDate = (value: string) => {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
@@ -183,7 +176,11 @@ const DailyPPEIssuedPage = () => {
     const loadReport = async () => {
       setLoading(true);
       try {
-        const response = await axioss.get('/daily-issued-items/');
+        const params: Record<string, string> = {};
+        if (fromDate) params.from_date = formatDateInput(fromDate);
+        if (toDate) params.to_date = formatDateInput(toDate);
+
+        const response = await axioss.get('/daily-issued-items/', { params });
 
         const payload: DailyIssuedApiRow[] = Array.isArray(response.data) ? response.data : [];
         const nextRows = payload
@@ -215,7 +212,7 @@ const DailyPPEIssuedPage = () => {
     };
 
     loadReport();
-  }, [canSeeDailyPpeIssued]);
+  }, [canSeeDailyPpeIssued, fromDate, toDate]);
 
   const productOptions = useMemo(() => {
     const names = rows.flatMap((row) => row.productNames);
@@ -227,29 +224,12 @@ const DailyPPEIssuedPage = () => {
       if (tabelSearch && !row.tabelNumber.toLowerCase().includes(tabelSearch.toLowerCase().trim())) {
         return false;
       }
-
       if (productFilter && !row.productNames.some((name) => name.toLowerCase() === productFilter.toLowerCase())) {
         return false;
       }
-
-      const issuedAtDate = parseIssuedAt(row.issuedAtRaw);
-      if (fromDate) {
-        if (!issuedAtDate) return false;
-        const startDate = new Date(fromDate);
-        startDate.setHours(0, 0, 0, 0);
-        if (issuedAtDate < startDate) return false;
-      }
-
-      if (toDate) {
-        if (!issuedAtDate) return false;
-        const endDate = new Date(toDate);
-        endDate.setHours(23, 59, 59, 999);
-        if (issuedAtDate > endDate) return false;
-      }
-
       return true;
     });
-  }, [rows, tabelSearch, productFilter, fromDate, toDate]);
+  }, [rows, tabelSearch, productFilter]);
 
   useEffect(() => {
     setCurrentPage(1);

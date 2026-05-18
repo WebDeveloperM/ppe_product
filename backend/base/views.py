@@ -49,7 +49,7 @@ from simple_history.utils import update_change_reason
 from django.contrib.auth.models import User
 from django.db.models import Case, When, Value, IntegerField, Max, Sum
 from django.db.models import Count, Q, F, DateTimeField
-from django.db.models import OuterRef, Subquery
+from django.db.models import OuterRef, Subquery, Prefetch
 from django.utils import timezone
 from django.conf import settings
 from calendar import monthrange
@@ -3695,32 +3695,64 @@ class DailyIssuedItemsApiView(APIView):
 
     def get(self, request, *args, **kwargs):
         issued_at_raw = str(request.GET.get('issued_at') or request.GET.get('date') or '').strip()
+        from_date_raw = str(request.GET.get('from_date') or '').strip()
+        to_date_raw = str(request.GET.get('to_date') or '').strip()
+
+        qs = Item.objects.filter(is_deleted=False)
+
         if issued_at_raw:
             target_date = parse_date(issued_at_raw)
             if target_date is None:
                 return Response({'error': 'Дата указана некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
-            items = list(
-                Item.objects
-                .filter(is_deleted=False, issued_at__date=target_date)
-                .select_related('issued_by')
-                .prefetch_related('ppeproduct', 'pending_source')
-                .order_by('-issued_at', '-id')
-            )
+            qs = qs.filter(issued_at__date=target_date)
+        elif from_date_raw or to_date_raw:
+            if from_date_raw:
+                from_date = parse_date(from_date_raw)
+                if from_date is None:
+                    return Response({'error': 'from_date указана некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
+                qs = qs.filter(issued_at__date__gte=from_date)
+            if to_date_raw:
+                to_date = parse_date(to_date_raw)
+                if to_date is None:
+                    return Response({'error': 'to_date указана некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
+                qs = qs.filter(issued_at__date__lte=to_date)
         else:
-            items = list(
-                Item.objects
-                .filter(is_deleted=False)
-                .select_related('issued_by')
-                .prefetch_related('ppeproduct', 'pending_source')
-                .order_by('-issued_at', '-id')
-            )
+            # Default to today — never load the entire table unfiltered
+            qs = qs.filter(issued_at__date=timezone.localdate())
+
+        confirmed_pending_prefetch = Prefetch(
+            'pending_source',
+            queryset=PendingItemIssue.objects.filter(
+                status=PendingItemIssue.STATUS_CONFIRMED
+            ).order_by('-confirmed_at'),
+            to_attr='_confirmed_pending',
+        )
+
+        items = list(
+            qs
+            .prefetch_related('ppeproduct', confirmed_pending_prefetch)
+            .only('id', 'issued_at', 'employee_service_id', 'employee_slug', 'employee_snapshot', 'ppe_sizes')
+            .order_by('-issued_at', '-id')
+        )
+
         attach_employee_snapshots(items)
 
         rows = []
         for item in items:
-            serialized = ItemSerializer(item, context={'request': request}).data
-            pending_obj = item.pending_source.filter(status=PendingItemIssue.STATUS_CONFIRMED).order_by('-confirmed_at').first()
+            emp = getattr(item, '_employee_snapshot_override', None) or build_employee_snapshot(item.employee_snapshot)
 
+            size_map = item.ppe_sizes or {}
+            ppeproduct_info = [
+                {
+                    'id': p.id,
+                    'name': p.name,
+                    'size': size_map.get(str(p.id), ''),
+                    'type_product_display': p.get_type_product_display() if p.type_product else None,
+                }
+                for p in item.ppeproduct.all()
+            ]
+
+            pending_obj = item._confirmed_pending[0] if item._confirmed_pending else None
             signature_url = None
             qr_code_image_url = None
             qr_scan_url = None
@@ -3743,7 +3775,10 @@ class DailyIssuedItemsApiView(APIView):
                         qr_scan_url = qr_frontend_path
 
             rows.append({
-                **serialized,
+                'id': item.id,
+                'issued_at': item.issued_at.isoformat() if item.issued_at else None,
+                'employee': emp,
+                'ppeproduct_info': ppeproduct_info,
                 'signature_image': signature_url,
                 'qr_code_image': qr_code_image_url,
                 'qr_scan_url': qr_scan_url,

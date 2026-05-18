@@ -45,11 +45,35 @@ type Props = {
     loadingFilter: boolean
     allEmployeeCount?: number
     onShowAllEmployees?: () => void
+    filterKey?: string
 };
+
+function addCalendarMonths(date: Date, months: number): Date {
+    const result = new Date(date);
+    result.setMonth(result.getMonth() + months);
+    return result;
+}
+
+function getOverdueProducts(rowData: any): string[] {
+    const issuedAt = rowData?.issued_at;
+    const products: any[] = rowData?.ppeproduct_info ?? [];
+    if (!issuedAt || products.length === 0) return [];
+    const issued = new Date(issuedAt);
+    if (Number.isNaN(issued.getTime())) return [];
+    const now = new Date();
+    return products
+        .filter((p) => {
+            const months = Number(p?.renewal_months ?? 0);
+            if (months <= 0) return false;
+            return addCalendarMonths(issued, months) < now;
+        })
+        .map((p) => String(p?.name ?? '').trim())
+        .filter(Boolean);
+}
 
 export default function ComputerTable({
     checkedComputer,
-    setDeleteCompForChecked, isFiltered, loadingFilter = false, allEmployeeCount = 0, onShowAllEmployees
+    setDeleteCompForChecked, isFiltered, loadingFilter = false, allEmployeeCount = 0, onShowAllEmployees, filterKey = ''
 }: Props) {
     const [computers, setComputers] = useState<Compyuter[]>([]);
     const [openDeleteModal, setDeleteOpenModal] = useState(false);
@@ -1072,6 +1096,43 @@ export default function ComputerTable({
                             minWidth: '220px',
                         }}
                     />
+                    {filterKey === 'overdue' && (
+                        <Column
+                            header="Просроченные СИЗ"
+                            className="hidden lg:table-cell"
+                            headerClassName="hidden lg:table-cell"
+                            body={(rowData) => {
+                                const overdue = getOverdueProducts(rowData);
+                                if (overdue.length === 0) return <span className="text-gray-400">—</span>;
+                                return (
+                                    <div className="flex flex-col gap-1">
+                                        {overdue.map((name) => (
+                                            <span
+                                                key={name}
+                                                className="inline-block rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700"
+                                            >
+                                                {name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                );
+                            }}
+                            bodyStyle={{
+                                whiteSpace: 'normal',
+                                wordBreak: 'break-word',
+                                padding: '10px',
+                                minWidth: '200px',
+                            }}
+                            headerStyle={{
+                                fontWeight: 'bold',
+                                border: '1px solid #c8c5c4',
+                                textAlign: 'center',
+                                padding: '10px',
+                                color: 'black',
+                                minWidth: '200px',
+                            }}
+                        />
+                    )}
                     <Column
                         field="issued_at"
                         header={ipHeader}
