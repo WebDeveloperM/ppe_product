@@ -101,6 +101,7 @@ export default function ComputerTable({
     const [changeDateSearch, setChangeDateSearch] = useState<Date | null>(null);
     const [changeUserSearch, setChangeUserSearch] = useState('');
     const [historyUserOptions, setHistoryUserOptions] = useState<string[]>([]);
+    const [overdueProductFilter, setOverdueProductFilter] = useState('');
 
     const role = normalizeStoredRole(localStorage.getItem('role'));
 
@@ -194,6 +195,10 @@ export default function ComputerTable({
             });
     }, []);
 
+
+    useEffect(() => {
+        setOverdueProductFilter('');
+    }, [filterKey]);
 
     useEffect(() => {
         setDeleteCompForChecked(deleteCompData);
@@ -590,6 +595,7 @@ export default function ComputerTable({
         const issuedAtValue = issuedAtSearch ? formatDateKey(issuedAtSearch) : '';
         const changeDateValue = changeDateSearch ? formatDateKey(changeDateSearch) : '';
         const changeUserValue = changeUserSearch.trim().toLowerCase();
+        const overdueProductValue = overdueProductFilter.trim().toLowerCase();
 
         const globalSearch = isFiltered ? searchText.trim().toLowerCase() : '';
 
@@ -624,7 +630,10 @@ export default function ComputerTable({
                 historyUser,
             ].some((value) => value.includes(globalSearch));
 
-                return ( 
+            const matchesOverdueProduct = !overdueProductValue ||
+                getOverdueProducts(computer).some((name) => name.toLowerCase() === overdueProductValue);
+
+            return (
                 (!departmentIdValue || departmentId === departmentIdValue) &&
                 (!departmentValue || department.includes(departmentValue)) &&
                 (!sectionValue || section.includes(sectionValue)) &&
@@ -634,6 +643,7 @@ export default function ComputerTable({
                 (!issuedAtValue || issuedAt === issuedAtValue) &&
                 (!changeDateValue || historyDate === changeDateValue) &&
                 (!changeUserValue || historyUser.includes(changeUserValue)) &&
+                matchesOverdueProduct &&
                 matchesGlobalSearch
             );
         });
@@ -724,7 +734,16 @@ export default function ComputerTable({
     const baseFilteredComputers = useMemo(() => {
         if (!isFiltered) return computers;
         return applyLocalTableFilters(sortedCheckedComputers);
-    }, [isFiltered, computers, sortedCheckedComputers, selectedDepartmentId, departmentSearch, sectionSearch, tabelNumberSearch, userSearch, positionSearch, issuedAtSearch, changeDateSearch, changeUserSearch, searchText]);
+    }, [isFiltered, computers, sortedCheckedComputers, selectedDepartmentId, departmentSearch, sectionSearch, tabelNumberSearch, userSearch, positionSearch, issuedAtSearch, changeDateSearch, changeUserSearch, searchText, overdueProductFilter]);
+
+    const overdueProductOptions = useMemo(() => {
+        if (filterKey !== 'overdue') return [];
+        const names = new Set<string>();
+        sortedCheckedComputers.forEach((row) => {
+            getOverdueProducts(row).forEach((name) => names.add(name));
+        });
+        return Array.from(names).sort((a, b) => a.localeCompare(b, 'ru'));
+    }, [filterKey, sortedCheckedComputers]);
 
     const hasLocalFilters = isFiltered && Boolean(
         selectedDepartmentId ||
@@ -735,7 +754,8 @@ export default function ComputerTable({
         positionSearch.trim() ||
         issuedAtSearch ||
         changeDateSearch ||
-        changeUserSearch.trim()
+        changeUserSearch.trim() ||
+        overdueProductFilter.trim()
     );
 
     const totalRecordsForPaginator = hasLocalFilters
@@ -1098,7 +1118,24 @@ export default function ComputerTable({
                     />
                     {filterKey === 'overdue' && (
                         <Column
-                            header="Просроченные СИЗ"
+                            header={
+                                <div className="flex flex-col items-center gap-2">
+                                    <span>Просроченные СИЗ</span>
+                                    <select
+                                        value={overdueProductFilter}
+                                        onChange={(e) => {
+                                            setOverdueProductFilter(e.target.value);
+                                            setFirst(0);
+                                        }}
+                                        className="w-[170px] h-8 text-xs bg-white px-2.5 py-1 border border-gray-300 rounded-md"
+                                    >
+                                        <option value="">Все</option>
+                                        {overdueProductOptions.map((name) => (
+                                            <option key={name} value={name}>{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            }
                             className="hidden lg:table-cell"
                             headerClassName="hidden lg:table-cell"
                             body={(rowData) => {

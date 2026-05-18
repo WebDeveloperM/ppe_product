@@ -164,7 +164,12 @@ const DailyPPEIssuedPage = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [productFilter, setProductFilter] = useState('');
   const [tabelSearch, setTabelSearch] = useState('');
-  const [fromDate, setFromDate] = useState<Date | null>(null);
+  const [fromDate, setFromDate] = useState<Date | null>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  });
   const [toDate, setToDate] = useState<Date | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -474,7 +479,10 @@ const DailyPPEIssuedPage = () => {
                   onClick={() => {
                     setTabelSearch('');
                     setProductFilter('');
-                    setFromDate(null);
+                    const defaultFrom = new Date();
+                    defaultFrom.setDate(defaultFrom.getDate() - 30);
+                    defaultFrom.setHours(0, 0, 0, 0);
+                    setFromDate(defaultFrom);
                     setToDate(null);
                   }}
                   className="h-[42px] rounded border border-stroke bg-white px-6 text-base text-slate-700 hover:bg-slate-50 dark:border-strokedark dark:bg-boxdark dark:text-slate-300"
