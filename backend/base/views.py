@@ -3716,10 +3716,7 @@ class DailyIssuedItemsApiView(APIView):
                 if to_date is None:
                     return Response({'error': 'to_date указана некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
                 qs = qs.filter(issued_at__date__lte=to_date)
-        else:
-            # Default to last 30 days — never load the entire table unfiltered
-            default_from = timezone.localdate() - dt.timedelta(days=30)
-            qs = qs.filter(issued_at__date__gte=default_from)
+        # else: no date filter — return all items
 
         confirmed_pending_prefetch = Prefetch(
             'pending_source',
