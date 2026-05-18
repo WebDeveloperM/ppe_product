@@ -3697,6 +3697,18 @@ class DailyIssuedItemsApiView(APIView):
         issued_at_raw = str(request.GET.get('issued_at') or request.GET.get('date') or '').strip()
         from_date_raw = str(request.GET.get('from_date') or '').strip()
         to_date_raw = str(request.GET.get('to_date') or '').strip()
+        tabel_number = str(request.GET.get('tabel_number') or '').strip()
+        product_name = str(request.GET.get('product_name') or '').strip()
+        no_pagination = str(request.GET.get('no_pagination') or '').strip().lower() == 'true'
+
+        try:
+            page = max(1, int(request.GET.get('page', 1)))
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = min(200, max(10, int(request.GET.get('page_size', 25))))
+        except (TypeError, ValueError):
+            page_size = 25
 
         qs = Item.objects.filter(is_deleted=False)
 
@@ -3716,7 +3728,14 @@ class DailyIssuedItemsApiView(APIView):
                 if to_date is None:
                     return Response({'error': 'to_date указана некорректно.'}, status=status.HTTP_400_BAD_REQUEST)
                 qs = qs.filter(issued_at__date__lte=to_date)
-        # else: no date filter — return all items
+
+        if tabel_number:
+            qs = qs.filter(employee_snapshot__tabel_number__icontains=tabel_number)
+
+        if product_name:
+            qs = qs.filter(ppeproduct__name__icontains=product_name)
+
+        total_count = qs.count()
 
         confirmed_pending_prefetch = Prefetch(
             'pending_source',
@@ -3726,18 +3745,23 @@ class DailyIssuedItemsApiView(APIView):
             to_attr='_confirmed_pending',
         )
 
-        items = list(
+        base_qs = (
             qs
             .prefetch_related('ppeproduct', confirmed_pending_prefetch)
-            .only('id', 'issued_at', 'employee_service_id', 'employee_slug', 'employee_snapshot', 'ppe_sizes')
+            .only('id', 'issued_at', 'employee_snapshot', 'ppe_sizes')
             .order_by('-issued_at', '-id')
+            .distinct()
         )
 
-        attach_employee_snapshots(items)
+        if no_pagination:
+            items = list(base_qs)
+        else:
+            offset = (page - 1) * page_size
+            items = list(base_qs[offset:offset + page_size])
 
         rows = []
         for item in items:
-            emp = getattr(item, '_employee_snapshot_override', None) or build_employee_snapshot(item.employee_snapshot)
+            emp = build_employee_snapshot(item.employee_snapshot)
 
             size_map = item.ppe_sizes or {}
             ppeproduct_info = [
@@ -3782,7 +3806,7 @@ class DailyIssuedItemsApiView(APIView):
                 'qr_scan_url': qr_scan_url,
             })
 
-        return Response(rows)
+        return Response({'count': total_count, 'results': rows})
 
 
 class ItemHistoryUsersApiView(APIView):
