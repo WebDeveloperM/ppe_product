@@ -2412,6 +2412,35 @@ def format_remaining_period_ru(months: int) -> str:
     return " ".join(parts)
 
 
+def _build_rules_dict_for_product(product_id):
+    """Pre-fetch renewal rules for one product into a (dept_id, pos_key) → months dict."""
+    rules = {}
+    for rule in PositionPPERenewalRule.objects.filter(ppeproduct_id=product_id).only(
+        'department_service_id', 'position_key', 'renewal_months'
+    ):
+        rules[(rule.department_service_id, rule.position_key)] = int(rule.renewal_months or 0)
+    return rules
+
+
+def _renewal_months_from_snapshot(snapshot, rules_by_key, default_months):
+    """O(1) renewal-months lookup using pre-fetched rules dict."""
+    dept = (snapshot or {}).get('department') or {}
+    try:
+        dept_id = int(dept.get('id') or 0) or None
+    except (TypeError, ValueError):
+        dept_id = None
+    pos_key = normalize_employee_position((snapshot or {}).get('position', ''))
+    if pos_key:
+        if dept_id is not None:
+            v = rules_by_key.get((dept_id, pos_key))
+            if v is not None:
+                return v
+        v = rules_by_key.get((None, pos_key))
+        if v is not None:
+            return v
+    return default_months
+
+
 def get_due_soon_product_latest_item_ids(days: int = 30, product_name: str = 'Spez odejda', product_id: int | None = None):
     now_dt = timezone.now()
     deadline = now_dt + dt.timedelta(days=days)
@@ -2425,6 +2454,10 @@ def get_due_soon_product_latest_item_ids(days: int = 30, product_name: str = 'Sp
     if not target_product:
         return []
 
+    # 1 query: all rules for this product → dict
+    rules_by_key = _build_rules_dict_for_product(target_product.id)
+    default_months = int(target_product.renewal_months or 0)
+
     latest_item_with_product_subquery = (
         Item.objects
         .filter(employee_service_id=OuterRef('employee_service_id'), ppeproduct__id=target_product.id, is_deleted=False)
@@ -2437,27 +2470,17 @@ def get_due_soon_product_latest_item_ids(days: int = 30, product_name: str = 'Sp
         .filter(ppeproduct__id=target_product.id, is_deleted=False)
         .annotate(_latest_item_with_product_id=Subquery(latest_item_with_product_subquery))
         .filter(id=F('_latest_item_with_product_id'))
-        .prefetch_related('ppeproduct')
+        .only('id', 'issued_at', 'employee_snapshot')
         .distinct()
     )
 
     result_ids = []
     for item in latest_items_with_product:
-        target_products = [
-            product
-            for product in item.ppeproduct.all()
-            if product.id == target_product.id
-        ]
-        if not target_products:
+        if not item.issued_at:
             continue
-
-        renewal_months = max(
-            get_effective_product_renewal_months(product, item.employee)
-            for product in target_products
-        )
-        if renewal_months <= 0 or not item.issued_at:
+        renewal_months = _renewal_months_from_snapshot(item.employee_snapshot, rules_by_key, default_months)
+        if renewal_months <= 0:
             continue
-
         due_date = add_calendar_months(item.issued_at, renewal_months)
         if now_dt <= due_date < deadline:
             result_ids.append(item.id)
@@ -2474,6 +2497,10 @@ def get_overdue_product_latest_item_ids(product_id: int | None = None):
         if not target_product:
             return []
 
+        # 1 query: all rules for this product → dict
+        rules_by_key = _build_rules_dict_for_product(target_product.id)
+        default_months = int(target_product.renewal_months or 0)
+
         latest_item_with_product_subquery = (
             Item.objects
             .filter(employee_service_id=OuterRef('employee_service_id'), ppeproduct__id=target_product.id, is_deleted=False)
@@ -2486,27 +2513,17 @@ def get_overdue_product_latest_item_ids(product_id: int | None = None):
             .filter(ppeproduct__id=target_product.id, is_deleted=False)
             .annotate(_latest_item_with_product_id=Subquery(latest_item_with_product_subquery))
             .filter(id=F('_latest_item_with_product_id'))
-            .prefetch_related('ppeproduct')
+            .only('id', 'issued_at', 'employee_snapshot')
             .distinct()
         )
 
         result_ids = []
         for item in latest_items_with_product:
-            target_products = [
-                product
-                for product in item.ppeproduct.all()
-                if product.id == target_product.id
-            ]
-            if not target_products:
+            if not item.issued_at:
                 continue
-
-            renewal_months = max(
-                get_effective_product_renewal_months(product, item.employee)
-                for product in target_products
-            )
-            if renewal_months <= 0 or not item.issued_at:
+            renewal_months = _renewal_months_from_snapshot(item.employee_snapshot, rules_by_key, default_months)
+            if renewal_months <= 0:
                 continue
-
             due_date = add_calendar_months(item.issued_at, renewal_months)
             if due_date < now_dt:
                 result_ids.append(item.id)
@@ -2514,6 +2531,37 @@ def get_overdue_product_latest_item_ids(product_id: int | None = None):
         return result_ids
     else:
         # Get all overdue items (any product)
+        # 2 queries: all rules + all active products → dicts
+        rules_by_key = {}
+        for rule in PositionPPERenewalRule.objects.only(
+            'department_service_id', 'position_key', 'ppeproduct_id', 'renewal_months'
+        ):
+            key = (rule.department_service_id, rule.position_key, rule.ppeproduct_id)
+            rules_by_key[key] = int(rule.renewal_months or 0)
+
+        product_default_months = {
+            p.id: int(p.renewal_months or 0)
+            for p in PPEProduct.objects.filter(is_active=True).only('id', 'renewal_months')
+        }
+        active_product_ids = set(product_default_months.keys())
+
+        def _renewal_months_global(product_id, snapshot):
+            dept = (snapshot or {}).get('department') or {}
+            try:
+                dept_id = int(dept.get('id') or 0) or None
+            except (TypeError, ValueError):
+                dept_id = None
+            pos_key = normalize_employee_position((snapshot or {}).get('position', ''))
+            if pos_key:
+                if dept_id is not None:
+                    v = rules_by_key.get((dept_id, pos_key, product_id))
+                    if v is not None:
+                        return v
+                v = rules_by_key.get((None, pos_key, product_id))
+                if v is not None:
+                    return v
+            return product_default_months.get(product_id, 0)
+
         latest_item_subquery = (
             Item.objects
             .filter(employee_service_id=OuterRef('employee_service_id'), is_deleted=False)
@@ -2527,20 +2575,20 @@ def get_overdue_product_latest_item_ids(product_id: int | None = None):
             .annotate(_latest_item_id=Subquery(latest_item_subquery))
             .filter(id=F('_latest_item_id'))
             .prefetch_related('ppeproduct')
+            .only('id', 'issued_at', 'employee_snapshot')
             .distinct()
         )
 
         result_ids = []
         for item in latest_items:
-            products = list(item.ppeproduct.all())
-            if not products:
+            if not item.issued_at:
                 continue
-
-            for product in products:
-                renewal_months = get_effective_product_renewal_months(product, item.employee)
-                if renewal_months <= 0 or not item.issued_at:
+            for product in item.ppeproduct.all():
+                if product.id not in active_product_ids:
                     continue
-
+                renewal_months = _renewal_months_global(product.id, item.employee_snapshot)
+                if renewal_months <= 0:
+                    continue
                 due_date = add_calendar_months(item.issued_at, renewal_months)
                 if due_date < now_dt:
                     result_ids.append(item.id)
@@ -2802,6 +2850,107 @@ class AllEmployeeApiView(APIView):
         return paginator.get_paginated_response(result_page)
 
 
+def _compute_info_employee_counts(due_days: int):
+    """
+    Computes due-soon and overdue PPE counts in 3 DB queries instead of N*M queries.
+
+    Previously: N products × (1 PPEProduct query + 1 subquery + M items × 2 rule queries).
+    Now: 1 rules query + 1 products query + 1 items query with prefetch = done.
+    """
+    now_dt = timezone.now()
+    deadline = now_dt + dt.timedelta(days=due_days)
+
+    # Query 1: all renewal rules — prefetch into memory
+    rules_by_key = {}
+    for rule in PositionPPERenewalRule.objects.only(
+        'department_service_id', 'position_key', 'ppeproduct_id', 'renewal_months'
+    ):
+        key = (rule.department_service_id, rule.position_key, rule.ppeproduct_id)
+        rules_by_key[key] = int(rule.renewal_months or 0)
+
+    # Query 2: all active products
+    products = list(PPEProduct.objects.filter(is_active=True).order_by('name'))
+    active_product_ids = {p.id for p in products}
+    product_default_months = {p.id: int(p.renewal_months or 0) for p in products}
+
+    def _renewal_months(product_id, dept_id, pos_key):
+        """O(1) lookup — no DB query."""
+        if pos_key:
+            if dept_id is not None:
+                v = rules_by_key.get((dept_id, pos_key, product_id))
+                if v is not None:
+                    return v
+            v = rules_by_key.get((None, pos_key, product_id))
+            if v is not None:
+                return v
+        return product_default_months.get(product_id, 0)
+
+    def _parse_snapshot(item):
+        snapshot = item.employee_snapshot or {}
+        dept = snapshot.get('department') or {}
+        try:
+            dept_id = int(dept.get('id') or 0) or None
+        except (TypeError, ValueError):
+            dept_id = None
+        pos_key = normalize_employee_position(snapshot.get('position', ''))
+        return dept_id, pos_key
+
+    # Query 3: all non-deleted items + prefetch products (2 SQL queries total)
+    all_items = list(
+        Item.objects
+        .filter(is_deleted=False)
+        .prefetch_related('ppeproduct')
+        .only('id', 'employee_service_id', 'issued_at', 'employee_snapshot')
+        .order_by('employee_service_id', '-issued_at', '-id')
+    )
+
+    # Single pass: build latest-item maps
+    latest_by_emp_product = {}  # (emp_id, prod_id) → latest item for due-soon
+    latest_by_emp = {}          # emp_id → globally latest item for overdue
+
+    for item in all_items:
+        if not item.issued_at:
+            continue
+        emp_id = item.employee_service_id
+        if emp_id not in latest_by_emp:
+            latest_by_emp[emp_id] = item
+        for product in item.ppeproduct.all():  # uses prefetch cache, no extra query
+            if product.id not in active_product_ids:
+                continue
+            key = (emp_id, product.id)
+            if key not in latest_by_emp_product:
+                latest_by_emp_product[key] = item
+
+    # Compute due-soon counts per product
+    product_due_counts = {}
+    for (emp_id, prod_id), item in latest_by_emp_product.items():
+        dept_id, pos_key = _parse_snapshot(item)
+        months = _renewal_months(prod_id, dept_id, pos_key)
+        if months <= 0:
+            continue
+        due_date = add_calendar_months(item.issued_at, months)
+        if now_dt <= due_date < deadline:
+            product_due_counts[prod_id] = product_due_counts.get(prod_id, 0) + 1
+
+    # Compute overdue count
+    overdue_count = 0
+    for emp_id, item in latest_by_emp.items():
+        if not item.issued_at:
+            continue
+        dept_id, pos_key = _parse_snapshot(item)
+        for product in item.ppeproduct.all():  # uses prefetch cache
+            if product.id not in active_product_ids:
+                continue
+            months = _renewal_months(product.id, dept_id, pos_key)
+            if months <= 0:
+                continue
+            if add_calendar_months(item.issued_at, months) < now_dt:
+                overdue_count += 1
+                break
+
+    return products, product_due_counts, overdue_count
+
+
 class InfoEmployeeApiView(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -2824,40 +2973,31 @@ class InfoEmployeeApiView(APIView):
             due_days = 30
         due_days = max(1, due_days)
 
-        ppe_product_name = request.query_params.get('ppe_product_name', 'Spez odejda')
-        due_item_ids = get_due_soon_product_latest_item_ids(days=due_days, product_name=ppe_product_name)
+        products, product_due_counts, overdue_count = _compute_info_employee_counts(due_days)
 
-        requested_names_raw = request.query_params.get('ppe_product_names', '')
-        requested_names = [name.strip() for name in requested_names_raw.split(',') if name.strip()]
-        products_queryset = PPEProduct.objects.filter(is_active=True).order_by('name')
-        if requested_names:
-            products_queryset = products_queryset.filter(name__in=requested_names)
+        ppe_product_name = request.query_params.get('ppe_product_name', '')
+        due_spez_count = 0
+        if ppe_product_name:
+            spez = next((p for p in products if p.name.lower() == ppe_product_name.lower()), None)
+            if spez:
+                due_spez_count = product_due_counts.get(spez.id, 0)
 
-        products = list(products_queryset)
-        due_counts = {}
-        due_products = []
-        for product in products:
-            due_count = len(get_due_soon_product_latest_item_ids(days=due_days, product_id=product.id))
-            due_counts[product.name] = due_count
-            due_products.append({
-                "id": product.id,
-                "name": product.name,
-                "due_count": due_count,
-            })
-
-        # Calculate overdue count (items with Следующая выдача in the past)
-        overdue_count = len(get_overdue_product_latest_item_ids(product_id=None))
+        due_products = [
+            {"id": p.id, "name": p.name, "due_count": product_due_counts.get(p.id, 0)}
+            for p in products
+        ]
+        due_counts = {p.name: product_due_counts.get(p.id, 0) for p in products}
 
         return Response({
             "due_days": due_days,
             "all_employee_count": all_employees_count,
-            "all_active_employee_count": len(due_item_ids),
-            "due_spez_item_count": len(due_item_ids),
+            "all_active_employee_count": due_spez_count,
+            "due_spez_item_count": due_spez_count,
             "due_product_counts": due_counts,
             "due_products": due_products,
             "overdue_count": overdue_count,
             "all_compyuters_count": all_employees_count,
-            "all_worked_compyuters_count": len(due_item_ids),
+            "all_worked_compyuters_count": due_spez_count,
         })
 
 
