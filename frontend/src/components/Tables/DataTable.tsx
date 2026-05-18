@@ -172,14 +172,14 @@ export default function ComputerTable({
 
 
     useEffect(() => {
+        setDeleteCompForChecked(deleteCompData);
+        if (isFiltered) return;
         if (checkedComputer && checkedComputer.length > 0) {
-            const cloned = checkedComputer.map((comp) => ({ ...comp }));
-            setComputers(sortByDepartment(cloned));
+            setComputers(sortByDepartment(checkedComputer.map(c => ({ ...c }))));
         } else {
             setComputers([]);
         }
-        setDeleteCompForChecked(deleteCompData);
-    }, [checkedComputer, deleteCompData, setDeleteCompForChecked]);
+    }, [checkedComputer, deleteCompData, setDeleteCompForChecked, isFiltered]);
 
     const [filters, setFilters] = useState<IFilters>({
         global: { value: '', matchMode: FilterMatchMode.CONTAINS },
@@ -689,15 +689,18 @@ export default function ComputerTable({
         });
     };
 
+    // Sort only when checkedComputer changes, not on every local filter change
+    const sortedCheckedComputers = useMemo(
+        () => (isFiltered && checkedComputer && checkedComputer.length > 0
+            ? sortByDepartment(checkedComputer)
+            : []),
+        [isFiltered, checkedComputer]
+    );
+
     const baseFilteredComputers = useMemo(() => {
-        const source = isFiltered
-            ? (checkedComputer && checkedComputer.length > 0 ? sortByDepartment(checkedComputer) : [])
-            : computers;
-        if (!isFiltered) {
-            return source;
-        }
-        return applyLocalTableFilters(source);
-    }, [isFiltered, computers, checkedComputer, selectedDepartmentId, departmentSearch, sectionSearch, tabelNumberSearch, userSearch, positionSearch, issuedAtSearch, changeDateSearch, changeUserSearch, searchText]);
+        if (!isFiltered) return computers;
+        return applyLocalTableFilters(sortedCheckedComputers);
+    }, [isFiltered, computers, sortedCheckedComputers, selectedDepartmentId, departmentSearch, sectionSearch, tabelNumberSearch, userSearch, positionSearch, issuedAtSearch, changeDateSearch, changeUserSearch, searchText]);
 
     const hasLocalFilters = isFiltered && Boolean(
         selectedDepartmentId ||
@@ -900,7 +903,7 @@ export default function ComputerTable({
             )}
 
 
-            {!loadingFilter && (
+            <div className={loadingFilter ? 'hidden' : ''}>
                 <DataTable
                     value={filteredComputers}
                     paginator
@@ -1121,7 +1124,7 @@ export default function ComputerTable({
                         }}
                     />
                 </DataTable>
-            )}
+            </div>
 
 
             <ModalDeleteComponent
