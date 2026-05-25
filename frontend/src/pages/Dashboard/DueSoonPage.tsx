@@ -74,6 +74,18 @@ const parseMonthParam = (raw: string | null) => {
   return MONTH_OPTIONS.includes(parsed) ? parsed : 1;
 };
 
+const buildDueSoonSearchText = (row: DueSoonRow) => {
+  return [
+    row.employee_name,
+    row.tabel_number,
+    row.department_name,
+    row.section_name,
+    row.position,
+    row.product_name,
+    row.size,
+  ].join(' ').toLowerCase();
+};
+
 const DueSoonPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -108,7 +120,15 @@ const DueSoonPage = () => {
     setSearchParams(nextParams, { replace: true });
   }, [dueMonths, debouncedSearch, selectedProductId, setSearchParams]);
 
-  // Fetch with abort controller — cancels previous in-flight request on filter change
+  useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Fetch once per period; product/search filters are applied locally for instant feedback.
   useEffect(() => {
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
@@ -120,8 +140,6 @@ const DueSoonPage = () => {
       try {
         const params = new URLSearchParams();
         params.set('due_days', String(dueMonths * 30));
-        if (selectedProductId) params.set('product_id', selectedProductId);
-        if (debouncedSearch) params.set('search', debouncedSearch);
 
         const response = await axioss.get(`${BASE_URL}/due-soon-employees/?${params.toString()}`, { signal });
         setPayload(response.data as DueSoonResponse);
@@ -139,17 +157,33 @@ const DueSoonPage = () => {
     return () => {
       abortRef.current?.abort();
     };
-  }, [dueMonths, debouncedSearch, selectedProductId]);
+  }, [dueMonths]);
+
+  const filteredRows = useMemo(() => {
+    const normalizedSearch = debouncedSearch.trim().toLowerCase();
+
+    return (payload?.results || []).filter((row) => {
+      if (selectedProductId && String(row.product_id) !== selectedProductId) {
+        return false;
+      }
+
+      if (normalizedSearch && !buildDueSoonSearchText(row).includes(normalizedSearch)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [payload?.results, debouncedSearch, selectedProductId]);
 
   const subtitle = useMemo(() => {
-    const count = payload?.total_count ?? 0;
+    const count = filteredRows.length;
     return `Найдено ${count} записей по сотрудникам, которым скоро потребуется выдача СИЗ.`;
-  }, [payload?.total_count]);
+  }, [filteredRows]);
 
   const summaryRows = useMemo<DueSoonSummaryRow[]>(() => {
     const grouped = new Map<string, DueSoonSummaryRow>();
 
-    (payload?.results || []).forEach((row) => {
+    filteredRows.forEach((row) => {
       const normalizedSize = String(row.size || '').trim() || '-';
       const key = `${row.product_id}::${normalizedSize}`;
 
@@ -179,10 +213,10 @@ const DueSoonPage = () => {
 
       return left.label.localeCompare(right.label, 'ru');
     });
-  }, [payload?.results]);
+  }, [filteredRows]);
 
   const exportDueSoonToExcel = () => {
-    const detailRows = payload?.results || [];
+    const detailRows = filteredRows;
     const hasData = activeTab === 'employees' ? detailRows.length > 0 : summaryRows.length > 0;
 
     if (!hasData) {
@@ -403,7 +437,7 @@ const DueSoonPage = () => {
 
         {loading ? (
           <div className="py-10 text-center text-sm text-slate-500">Загрузка...</div>
-        ) : activeTab === 'employees' && payload?.results?.length ? (
+        ) : activeTab === 'employees' && filteredRows.length ? (
           <div className="overflow-x-auto rounded border border-stroke dark:border-strokedark">
             <table className="w-full text-sm">
               <thead>
@@ -423,7 +457,7 @@ const DueSoonPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {payload.results.map((row, index) => (
+                {filteredRows.map((row, index) => (
                   <tr key={`${row.item_id}-${row.product_id}`} className="border-b border-stroke dark:border-strokedark">
                     <td className="px-3 py-2">{index + 1}</td>
                     <td className="px-3 py-2">{row.tabel_number || '-'}</td>

@@ -63,6 +63,7 @@ from io import BytesIO
 from PIL import Image
 from urllib.parse import parse_qs, unquote, urlsplit
 from functools import lru_cache
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -2720,6 +2721,11 @@ def get_due_soon_employee_ppe_rows(days: int = 30):
     Performance: PositionPPERenewalRule is fetched ONCE into memory via
     build_position_ppe_rules_lookup() — eliminates N+1 DB queries.
     """
+    cache_key = f'due_soon_employee_ppe_rows:{int(days)}'
+    cached_rows = cache.get(cache_key)
+    if cached_rows is not None:
+        return cached_rows
+
     now_dt = timezone.now()
     deadline = now_dt + dt.timedelta(days=days)
 
@@ -2803,6 +2809,7 @@ def get_due_soon_employee_ppe_rows(days: int = 30):
             row['product_name'],
         )
     )
+    cache.set(cache_key, rows, timeout=120)
     return rows
 
 
