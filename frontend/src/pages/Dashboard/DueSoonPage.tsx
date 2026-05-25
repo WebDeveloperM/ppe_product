@@ -38,7 +38,13 @@ type DueSoonResponse = {
   selected_product_id: number | null;
   search: string;
   total_count: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  has_next: boolean;
+  has_previous: boolean;
   products: DueSoonProduct[];
+  summary: DueSoonSummaryRow[];
   results: DueSoonRow[];
 };
 
@@ -55,6 +61,7 @@ type DueSoonSummaryRow = {
 };
 
 const MONTH_OPTIONS = [1, 2, 3, 6, 12];
+const DEFAULT_PAGE_SIZE = 50;
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '-';
@@ -74,16 +81,9 @@ const parseMonthParam = (raw: string | null) => {
   return MONTH_OPTIONS.includes(parsed) ? parsed : 1;
 };
 
-const buildDueSoonSearchText = (row: DueSoonRow) => {
-  return [
-    row.employee_name,
-    row.tabel_number,
-    row.department_name,
-    row.section_name,
-    row.position,
-    row.product_name,
-    row.size,
-  ].join(' ').toLowerCase();
+const parsePageParam = (raw: string | null) => {
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
 };
 
 const DueSoonPage = () => {
@@ -95,6 +95,7 @@ const DueSoonPage = () => {
   const [dueMonths, setDueMonths] = useState<number>(() => parseMonthParam(searchParams.get('dueMonths')));
   const [selectedProductId, setSelectedProductId] = useState<string>(() => searchParams.get('productId') || '');
   const [search, setSearch] = useState<string>(() => searchParams.get('search') || '');
+  const [page, setPage] = useState<number>(() => parsePageParam(searchParams.get('page')));
   const [loading, setLoading] = useState<boolean>(true);
   const [payload, setPayload] = useState<DueSoonResponse | null>(null);
 
@@ -105,6 +106,7 @@ const DueSoonPage = () => {
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
+    setPage(1);
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     searchTimerRef.current = setTimeout(() => {
       setDebouncedSearch(value.trim());
@@ -117,8 +119,9 @@ const DueSoonPage = () => {
     nextParams.set('dueMonths', String(dueMonths));
     if (selectedProductId) nextParams.set('productId', selectedProductId);
     if (debouncedSearch) nextParams.set('search', debouncedSearch);
+    nextParams.set('page', String(page));
     setSearchParams(nextParams, { replace: true });
-  }, [dueMonths, debouncedSearch, selectedProductId, setSearchParams]);
+  }, [dueMonths, debouncedSearch, selectedProductId, page, setSearchParams]);
 
   useEffect(() => {
     return () => {
@@ -140,6 +143,10 @@ const DueSoonPage = () => {
       try {
         const params = new URLSearchParams();
         params.set('due_days', String(dueMonths * 30));
+        params.set('page', String(page));
+        params.set('page_size', String(DEFAULT_PAGE_SIZE));
+        if (selectedProductId) params.set('product_id', selectedProductId);
+        if (debouncedSearch) params.set('search', debouncedSearch);
 
         const response = await axioss.get(`${BASE_URL}/due-soon-employees/?${params.toString()}`, { signal });
         setPayload(response.data as DueSoonResponse);
@@ -157,66 +164,17 @@ const DueSoonPage = () => {
     return () => {
       abortRef.current?.abort();
     };
-  }, [dueMonths]);
-
-  const filteredRows = useMemo(() => {
-    const normalizedSearch = debouncedSearch.trim().toLowerCase();
-
-    return (payload?.results || []).filter((row) => {
-      if (selectedProductId && String(row.product_id) !== selectedProductId) {
-        return false;
-      }
-
-      if (normalizedSearch && !buildDueSoonSearchText(row).includes(normalizedSearch)) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [payload?.results, debouncedSearch, selectedProductId]);
+  }, [dueMonths, page, debouncedSearch, selectedProductId]);
 
   const subtitle = useMemo(() => {
-    const count = filteredRows.length;
+    const count = payload?.total_count ?? 0;
     return `Найдено ${count} записей по сотрудникам, которым скоро потребуется выдача СИЗ.`;
-  }, [filteredRows]);
+  }, [payload?.total_count]);
 
-  const summaryRows = useMemo<DueSoonSummaryRow[]>(() => {
-    const grouped = new Map<string, DueSoonSummaryRow>();
-
-    filteredRows.forEach((row) => {
-      const normalizedSize = String(row.size || '').trim() || '-';
-      const key = `${row.product_id}::${normalizedSize}`;
-
-      if (!grouped.has(key)) {
-        grouped.set(key, {
-          product_id: row.product_id,
-          product_name: row.product_name,
-          size: normalizedSize,
-          count: 1,
-          label: `${row.product_name} (Размер ${normalizedSize})`,
-          quantity_text: '1',
-          requirement_text: `${row.product_name} (Размер ${normalizedSize}) 1`,
-        });
-        return;
-      }
-
-      const existing = grouped.get(key)!;
-      existing.count += 1;
-      existing.quantity_text = `${existing.count}`;
-      existing.requirement_text = `${existing.product_name} (Размер ${existing.size}) ${existing.count}`;
-    });
-
-    return Array.from(grouped.values()).sort((left, right) => {
-      if (right.count !== left.count) {
-        return right.count - left.count;
-      }
-
-      return left.label.localeCompare(right.label, 'ru');
-    });
-  }, [filteredRows]);
+  const summaryRows = payload?.summary || [];
 
   const exportDueSoonToExcel = () => {
-    const detailRows = filteredRows;
+    const detailRows = payload?.results || [];
     const hasData = activeTab === 'employees' ? detailRows.length > 0 : summaryRows.length > 0;
 
     if (!hasData) {
@@ -372,7 +330,10 @@ const DueSoonPage = () => {
             Период
             <select
               value={dueMonths}
-              onChange={(event) => setDueMonths(Number(event.target.value))}
+              onChange={(event) => {
+                setDueMonths(Number(event.target.value));
+                setPage(1);
+              }}
               className="rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
             >
               {MONTH_OPTIONS.map((month) => (
@@ -387,7 +348,10 @@ const DueSoonPage = () => {
             Средство защиты
             <select
               value={selectedProductId}
-              onChange={(event) => setSelectedProductId(event.target.value)}
+              onChange={(event) => {
+                setSelectedProductId(event.target.value);
+                setPage(1);
+              }}
               className="rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
             >
               <option value="">Все СИЗ</option>
@@ -437,7 +401,7 @@ const DueSoonPage = () => {
 
         {loading ? (
           <div className="py-10 text-center text-sm text-slate-500">Загрузка...</div>
-        ) : activeTab === 'employees' && filteredRows.length ? (
+        ) : activeTab === 'employees' && payload?.results?.length ? (
           <div className="overflow-x-auto rounded border border-stroke dark:border-strokedark">
             <table className="w-full text-sm">
               <thead>
@@ -457,9 +421,9 @@ const DueSoonPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.map((row, index) => (
+                {(payload?.results || []).map((row, index) => (
                   <tr key={`${row.item_id}-${row.product_id}`} className="border-b border-stroke dark:border-strokedark">
-                    <td className="px-3 py-2">{index + 1}</td>
+                    <td className="px-3 py-2">{((payload?.page || 1) - 1) * (payload?.page_size || DEFAULT_PAGE_SIZE) + index + 1}</td>
                     <td className="px-3 py-2">{row.tabel_number || '-'}</td>
                     <td className="px-3 py-2 font-medium text-slate-900 dark:text-white">{row.employee_name || '-'}</td>
                     <td className="px-3 py-2">{row.product_name || '-'}</td>
@@ -492,6 +456,10 @@ const DueSoonPage = () => {
               </tbody>
             </table>
           </div>
+        ) : activeTab === 'employees' ? (
+          <div className="rounded border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
+            В выбранном периоде нет сотрудников с приближающимся сроком выдачи СИЗ.
+          </div>
         ) : activeTab === 'summary' && summaryRows.length ? (
           <div className="overflow-x-auto rounded border border-stroke dark:border-strokedark">
             <table className="w-full text-sm">
@@ -519,11 +487,35 @@ const DueSoonPage = () => {
           </div>
         ) : (
           <div className="rounded border border-dashed border-slate-300 py-10 text-center text-sm text-slate-500">
-            {activeTab === 'employees'
-              ? 'В выбранном периоде нет сотрудников с приближающимся сроком выдачи СИЗ.'
-              : 'В выбранном периоде нет сводных данных по требуемым СИЗ.'}
+            В выбранном периоде нет сводных данных по требуемым СИЗ.
           </div>
         )}
+
+        {activeTab === 'employees' && (payload?.total_pages || 0) > 1 ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stroke pt-3 text-sm dark:border-strokedark">
+            <div className="text-slate-600 dark:text-slate-300">
+              Страница {payload?.page || 1} из {payload?.total_pages || 1} (всего {payload?.total_count || 0})
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={!payload?.has_previous || loading}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                className="rounded border border-stroke px-3 py-1.5 text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark dark:text-slate-200"
+              >
+                Назад
+              </button>
+              <button
+                type="button"
+                disabled={!payload?.has_next || loading}
+                onClick={() => setPage((prev) => prev + 1)}
+                className="rounded border border-stroke px-3 py-1.5 text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark dark:text-slate-200"
+              >
+                Вперёд
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </>
   );

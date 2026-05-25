@@ -64,6 +64,7 @@ from PIL import Image
 from urllib.parse import parse_qs, unquote, urlsplit
 from functools import lru_cache
 from django.core.cache import cache
+from django.core.paginator import Paginator
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -3078,6 +3079,20 @@ class DueSoonEmployeePPEApiView(APIView):
         except (TypeError, ValueError):
             product_id = None
 
+        raw_page = request.query_params.get('page', '1')
+        try:
+            page = int(raw_page)
+        except (TypeError, ValueError):
+            page = 1
+        page = max(1, page)
+
+        raw_page_size = request.query_params.get('page_size', '50')
+        try:
+            page_size = int(raw_page_size)
+        except (TypeError, ValueError):
+            page_size = 50
+        page_size = min(max(1, page_size), 200)
+
         search = str(request.query_params.get('search', '')).strip()
         search_lower = search.lower()
 
@@ -3115,6 +3130,35 @@ class DueSoonEmployeePPEApiView(APIView):
                 ]).lower()
             ]
 
+        summary_map = {}
+        for row in filtered_rows:
+            normalized_size = str(row.get('size') or '').strip() or '-'
+            summary_key = (row['product_id'], normalized_size)
+            current = summary_map.get(summary_key)
+            if current is None:
+                summary_map[summary_key] = {
+                    'product_id': row['product_id'],
+                    'product_name': row['product_name'],
+                    'size': normalized_size,
+                    'count': 1,
+                    'label': f"{row['product_name']} (Размер {normalized_size})",
+                    'quantity_text': '1',
+                    'requirement_text': f"{row['product_name']} (Размер {normalized_size}) 1",
+                }
+            else:
+                current['count'] += 1
+                current['quantity_text'] = str(current['count'])
+                current['requirement_text'] = f"{current['product_name']} (Размер {current['size']}) {current['count']}"
+
+        summary = sorted(
+            summary_map.values(),
+            key=lambda row: (-row['count'], row['label'].lower()),
+        )
+
+        paginator = Paginator(filtered_rows, page_size)
+        page_obj = paginator.get_page(page)
+        paginated_results = list(page_obj.object_list)
+
         products = sorted(product_counts.values(), key=lambda product: product['name'].lower())
 
         return Response({
@@ -3122,8 +3166,14 @@ class DueSoonEmployeePPEApiView(APIView):
             'selected_product_id': product_id,
             'search': search,
             'total_count': len(filtered_rows),
+            'page': page_obj.number,
+            'page_size': page_size,
+            'total_pages': paginator.num_pages,
+            'has_next': page_obj.has_next(),
+            'has_previous': page_obj.has_previous(),
             'products': products,
-            'results': filtered_rows,
+            'summary': summary,
+            'results': paginated_results,
         })
 
 
