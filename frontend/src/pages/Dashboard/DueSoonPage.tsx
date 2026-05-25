@@ -38,13 +38,13 @@ type DueSoonResponse = {
   selected_product_id: number | null;
   search: string;
   total_count: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
-  has_next: boolean;
-  has_previous: boolean;
+  page?: number;
+  page_size?: number;
+  total_pages?: number;
+  has_next?: boolean;
+  has_previous?: boolean;
   products: DueSoonProduct[];
-  summary: DueSoonSummaryRow[];
+  summary?: DueSoonSummaryRow[];
   results: DueSoonRow[];
 };
 
@@ -98,6 +98,7 @@ const DueSoonPage = () => {
   const [page, setPage] = useState<number>(() => parsePageParam(searchParams.get('page')));
   const [loading, setLoading] = useState<boolean>(true);
   const [payload, setPayload] = useState<DueSoonResponse | null>(null);
+  const [serverPaginationSupported, setServerPaginationSupported] = useState<boolean>(true);
 
   // Debounced search: API only fires 500ms after user stops typing
   const [debouncedSearch, setDebouncedSearch] = useState<string>(search);
@@ -136,6 +137,7 @@ const DueSoonPage = () => {
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
     const { signal } = abortRef.current;
+    const apiPage = serverPaginationSupported ? page : 1;
 
     const fetchRows = async () => {
       setLoading(true);
@@ -143,13 +145,16 @@ const DueSoonPage = () => {
       try {
         const params = new URLSearchParams();
         params.set('due_days', String(dueMonths * 30));
-        params.set('page', String(page));
+        params.set('page', String(apiPage));
         params.set('page_size', String(DEFAULT_PAGE_SIZE));
         if (selectedProductId) params.set('product_id', selectedProductId);
         if (debouncedSearch) params.set('search', debouncedSearch);
 
         const response = await axioss.get(`${BASE_URL}/due-soon-employees/?${params.toString()}`, { signal });
-        setPayload(response.data as DueSoonResponse);
+        const nextPayload = response.data as DueSoonResponse;
+        const hasServerMeta = typeof nextPayload.total_pages === 'number' && typeof nextPayload.page === 'number';
+        setServerPaginationSupported(hasServerMeta);
+        setPayload(nextPayload);
       } catch (error: any) {
         if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
         const backendError = error?.response?.data?.error;
@@ -164,17 +169,72 @@ const DueSoonPage = () => {
     return () => {
       abortRef.current?.abort();
     };
-  }, [dueMonths, page, debouncedSearch, selectedProductId]);
+  }, [dueMonths, page, debouncedSearch, selectedProductId, serverPaginationSupported]);
+
+  const effectivePageSize = payload?.page_size || DEFAULT_PAGE_SIZE;
+  const effectiveTotalCount = payload?.total_count || 0;
+  const effectiveTotalPages = payload?.total_pages || Math.max(1, Math.ceil(effectiveTotalCount / effectivePageSize));
+  const effectivePage = payload?.page || page;
+
+  const visibleRows = useMemo(() => {
+    const rows = payload?.results || [];
+    if (serverPaginationSupported) {
+      return rows;
+    }
+    const start = (page - 1) * effectivePageSize;
+    return rows.slice(start, start + effectivePageSize);
+  }, [payload?.results, serverPaginationSupported, page, effectivePageSize]);
+
+  useEffect(() => {
+    if (page > effectiveTotalPages) {
+      setPage(effectiveTotalPages);
+    }
+  }, [page, effectiveTotalPages]);
 
   const subtitle = useMemo(() => {
-    const count = payload?.total_count ?? 0;
+    const count = effectiveTotalCount;
     return `Найдено ${count} записей по сотрудникам, которым скоро потребуется выдача СИЗ.`;
-  }, [payload?.total_count]);
+  }, [effectiveTotalCount]);
 
-  const summaryRows = payload?.summary || [];
+  const summaryRows = useMemo<DueSoonSummaryRow[]>(() => {
+    if (payload?.summary?.length) {
+      return payload.summary;
+    }
+
+    const grouped = new Map<string, DueSoonSummaryRow>();
+    (payload?.results || []).forEach((row) => {
+      const normalizedSize = String(row.size || '').trim() || '-';
+      const key = `${row.product_id}::${normalizedSize}`;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          product_id: row.product_id,
+          product_name: row.product_name,
+          size: normalizedSize,
+          count: 1,
+          label: `${row.product_name} (Размер ${normalizedSize})`,
+          quantity_text: '1',
+          requirement_text: `${row.product_name} (Размер ${normalizedSize}) 1`,
+        });
+        return;
+      }
+
+      const existing = grouped.get(key)!;
+      existing.count += 1;
+      existing.quantity_text = `${existing.count}`;
+      existing.requirement_text = `${existing.product_name} (Размер ${existing.size}) ${existing.count}`;
+    });
+
+    return Array.from(grouped.values()).sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      return left.label.localeCompare(right.label, 'ru');
+    });
+  }, [payload?.summary, payload?.results]);
 
   const exportDueSoonToExcel = () => {
-    const detailRows = payload?.results || [];
+    const detailRows = visibleRows;
     const hasData = activeTab === 'employees' ? detailRows.length > 0 : summaryRows.length > 0;
 
     if (!hasData) {
@@ -401,7 +461,7 @@ const DueSoonPage = () => {
 
         {loading ? (
           <div className="py-10 text-center text-sm text-slate-500">Загрузка...</div>
-        ) : activeTab === 'employees' && payload?.results?.length ? (
+        ) : activeTab === 'employees' && visibleRows.length ? (
           <div className="overflow-x-auto rounded border border-stroke dark:border-strokedark">
             <table className="w-full text-sm">
               <thead>
@@ -421,9 +481,9 @@ const DueSoonPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {(payload?.results || []).map((row, index) => (
+                {visibleRows.map((row, index) => (
                   <tr key={`${row.item_id}-${row.product_id}`} className="border-b border-stroke dark:border-strokedark">
-                    <td className="px-3 py-2">{((payload?.page || 1) - 1) * (payload?.page_size || DEFAULT_PAGE_SIZE) + index + 1}</td>
+                    <td className="px-3 py-2">{(page - 1) * effectivePageSize + index + 1}</td>
                     <td className="px-3 py-2">{row.tabel_number || '-'}</td>
                     <td className="px-3 py-2 font-medium text-slate-900 dark:text-white">{row.employee_name || '-'}</td>
                     <td className="px-3 py-2">{row.product_name || '-'}</td>
@@ -491,15 +551,15 @@ const DueSoonPage = () => {
           </div>
         )}
 
-        {activeTab === 'employees' && (payload?.total_pages || 0) > 1 ? (
+        {activeTab === 'employees' && effectiveTotalPages > 1 ? (
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stroke pt-3 text-sm dark:border-strokedark">
             <div className="text-slate-600 dark:text-slate-300">
-              Страница {payload?.page || 1} из {payload?.total_pages || 1} (всего {payload?.total_count || 0})
+              Страница {effectivePage} из {effectiveTotalPages} (всего {effectiveTotalCount})
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled={!payload?.has_previous || loading}
+                disabled={page <= 1 || loading}
                 onClick={() => setPage((prev) => Math.max(1, prev - 1))}
                 className="rounded border border-stroke px-3 py-1.5 text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark dark:text-slate-200"
               >
@@ -507,8 +567,8 @@ const DueSoonPage = () => {
               </button>
               <button
                 type="button"
-                disabled={!payload?.has_next || loading}
-                onClick={() => setPage((prev) => prev + 1)}
+                disabled={page >= effectiveTotalPages || loading}
+                onClick={() => setPage((prev) => Math.min(effectiveTotalPages, prev + 1))}
                 className="rounded border border-stroke px-3 py-1.5 text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-strokedark dark:text-slate-200"
               >
                 Вперёд
