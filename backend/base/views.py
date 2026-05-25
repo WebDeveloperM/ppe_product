@@ -207,6 +207,58 @@ def get_effective_product_renewal_months(product, employee_payload):
     return int(product.renewal_months or 0)
 
 
+def build_position_ppe_rules_lookup():
+    """
+    Pre-fetches ALL PositionPPERenewalRule rows in a single DB query and
+    returns two in-memory dicts for fast O(1) lookup, avoiding N+1 queries
+    in get_due_soon_employee_ppe_rows.
+
+    Returns:
+        dept_lookup   : {(dept_id, position_key, product_id): rule_namespace}
+        global_lookup : {(position_key, product_id): rule_namespace}
+    """
+    from types import SimpleNamespace
+
+    dept_lookup = {}
+    global_lookup = {}
+
+    qs = PositionPPERenewalRule.objects.only(
+        'department_service_id', 'position_key', 'ppeproduct_id',
+        'renewal_months', 'is_allowed',
+    )
+    for rule in qs:
+        ns = SimpleNamespace(
+            renewal_months=rule.renewal_months,
+            is_allowed=rule.is_allowed,
+        )
+        if rule.department_service_id is not None:
+            dept_lookup[(rule.department_service_id, rule.position_key, rule.ppeproduct_id)] = ns
+        else:
+            global_lookup[(rule.position_key, rule.ppeproduct_id)] = ns
+
+    return dept_lookup, global_lookup
+
+
+def lookup_effective_renewal_months(product, employee_payload, dept_lookup, global_lookup):
+    """
+    Same logic as get_effective_product_renewal_months but uses pre-built
+    in-memory dicts instead of hitting the DB for each call.
+    """
+    dept_id = get_employee_department_service_id(employee_payload)
+    pos_key = get_employee_position_key(employee_payload)
+
+    if pos_key:
+        if dept_id is not None:
+            rule = dept_lookup.get((dept_id, pos_key, product.id))
+            if rule is not None:
+                return int(rule.renewal_months or 0)
+        rule = global_lookup.get((pos_key, product.id))
+        if rule is not None:
+            return int(rule.renewal_months or 0)
+
+    return int(product.renewal_months or 0)
+
+
 def is_product_allowed_for_employee(product, employee_payload):
     rule = get_effective_position_ppe_rule(product, employee_payload)
     if rule is not None:
@@ -2664,9 +2716,15 @@ def get_due_soon_employee_ppe_rows(days: int = 30):
     """
     Returns all due-soon rows for the given period (no product/search filtering).
     Filtering is done in the caller to avoid running the heavy DB query twice.
+
+    Performance: PositionPPERenewalRule is fetched ONCE into memory via
+    build_position_ppe_rules_lookup() — eliminates N+1 DB queries.
     """
     now_dt = timezone.now()
     deadline = now_dt + dt.timedelta(days=days)
+
+    # Pre-fetch ALL renewal rules in a single query — avoids 2 queries per pair
+    dept_lookup, global_lookup = build_position_ppe_rules_lookup()
 
     latest_items = (
         Item.objects
@@ -2678,9 +2736,10 @@ def get_due_soon_employee_ppe_rows(days: int = 30):
     )
     attach_employee_snapshots(latest_items)
 
+    # Keep only the most recent item per (employee, product) pair
     latest_by_pair = {}
     for item in latest_items:
-        products = [product for product in item.ppeproduct.all() if product.is_active]
+        products = [p for p in item.ppeproduct.all() if p.is_active]
         for product in products:
             pair_key = (item.employee_service_id, product.id)
             if pair_key not in latest_by_pair:
@@ -2688,7 +2747,10 @@ def get_due_soon_employee_ppe_rows(days: int = 30):
 
     rows = []
     for item, product in latest_by_pair.values():
-        renewal_months = get_effective_product_renewal_months(product, item.employee)
+        # O(1) dict lookup instead of 2 DB queries
+        renewal_months = lookup_effective_renewal_months(
+            product, item.employee, dept_lookup, global_lookup
+        )
         if renewal_months <= 0 or not item.issued_at:
             continue
 
