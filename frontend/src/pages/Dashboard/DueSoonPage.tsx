@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Breadcrumb from '../../components/Breadcrumbs/Breadcrumb';
 import axioss from '../../api/axios';
@@ -86,35 +86,47 @@ const DueSoonPage = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [payload, setPayload] = useState<DueSoonResponse | null>(null);
 
+  // Debounced search: API only fires 500ms after user stops typing
+  const [debouncedSearch, setDebouncedSearch] = useState<string>(search);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(value.trim());
+    }, 500);
+  };
+
+  // Sync URL params
   useEffect(() => {
     const nextParams = new URLSearchParams();
     nextParams.set('dueMonths', String(dueMonths));
-    if (selectedProductId) {
-      nextParams.set('productId', selectedProductId);
-    }
-    if (search.trim()) {
-      nextParams.set('search', search.trim());
-    }
+    if (selectedProductId) nextParams.set('productId', selectedProductId);
+    if (debouncedSearch) nextParams.set('search', debouncedSearch);
     setSearchParams(nextParams, { replace: true });
-  }, [dueMonths, search, selectedProductId, setSearchParams]);
+  }, [dueMonths, debouncedSearch, selectedProductId, setSearchParams]);
 
+  // Fetch with abort controller — cancels previous in-flight request on filter change
   useEffect(() => {
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+    const { signal } = abortRef.current;
+
     const fetchRows = async () => {
       setLoading(true);
 
       try {
         const params = new URLSearchParams();
         params.set('due_days', String(dueMonths * 30));
-        if (selectedProductId) {
-          params.set('product_id', selectedProductId);
-        }
-        if (search.trim()) {
-          params.set('search', search.trim());
-        }
+        if (selectedProductId) params.set('product_id', selectedProductId);
+        if (debouncedSearch) params.set('search', debouncedSearch);
 
-        const response = await axioss.get(`${BASE_URL}/due-soon-employees/?${params.toString()}`);
+        const response = await axioss.get(`${BASE_URL}/due-soon-employees/?${params.toString()}`, { signal });
         setPayload(response.data as DueSoonResponse);
       } catch (error: any) {
+        if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') return;
         const backendError = error?.response?.data?.error;
         toast.error(backendError || 'Не удалось загрузить список по срокам СИЗ');
       } finally {
@@ -123,7 +135,11 @@ const DueSoonPage = () => {
     };
 
     fetchRows();
-  }, [dueMonths, search, selectedProductId]);
+
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, [dueMonths, debouncedSearch, selectedProductId]);
 
   const subtitle = useMemo(() => {
     const count = payload?.total_count ?? 0;
@@ -353,7 +369,7 @@ const DueSoonPage = () => {
             Поиск
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => handleSearchChange(event.target.value)}
               placeholder="ФИО, табель, СИЗ, размер"
               className="rounded border border-stroke bg-white px-3 py-2 text-sm dark:border-strokedark dark:bg-boxdark"
             />

@@ -166,6 +166,7 @@ const UserPage = () => {
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
   const [employeeLoading, setEmployeeLoading] = useState(false);
   const [employeeResultCount, setEmployeeResultCount] = useState(0);
+  const [employeeServiceWarning, setEmployeeServiceWarning] = useState<string | null>(null);
   const [generatedCredentials, setGeneratedCredentials] = useState<GeneratedCredentials | null>(null);
   const [deleteCandidate, setDeleteCandidate] = useState<DeleteCandidate | null>(null);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -207,9 +208,11 @@ const UserPage = () => {
       const results = Array.isArray(payload) ? payload : payload.results || [];
       setEmployees(results);
       setEmployeeResultCount(Array.isArray(payload) ? results.length : Number(payload.count || 0));
+      setEmployeeServiceWarning(payload.warning || null);
     } catch {
       setEmployees([]);
       setEmployeeResultCount(0);
+      setEmployeeServiceWarning(null);
     } finally {
       setEmployeeLoading(false);
     }
@@ -659,6 +662,11 @@ const UserPage = () => {
                     placeholder="Поиск по ФИО, табельному номеру, должности..."
                     className="w-full border-b border-stroke px-3 py-2 text-sm outline-none dark:border-strokedark dark:bg-boxdark"
                   />
+                  {employeeServiceWarning && (
+                    <div className="border-b border-stroke bg-yellow-50 px-3 py-2 text-xs text-yellow-700 dark:border-strokedark dark:bg-yellow-900/20 dark:text-yellow-400">
+                      {employeeServiceWarning}
+                    </div>
+                  )}
                   <div className="border-b border-stroke px-3 py-2 text-xs text-gray-400 dark:border-strokedark">
                     {employeeLoading ? 'Загрузка...' : `Найдено: ${employeeResultCount}. Показаны первые ${employees.length}.`}
                   </div>

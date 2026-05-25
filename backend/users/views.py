@@ -1234,7 +1234,7 @@ class EmployeeListProxyAPIView(APIView):
             return permission_error
 
         if not is_employee_service_enabled():
-            return Response({'count': 0, 'next': None, 'previous': None, 'results': []}, status=status.HTTP_200_OK)
+            return Response({'count': 0, 'next': None, 'previous': None, 'results': [], 'warning': 'Employee Service недоступен — показаны локальные сотрудники'}, status=status.HTTP_200_OK)
 
         search = request.query_params.get('search', '').strip()
         page = request.query_params.get('page')
@@ -1248,7 +1248,7 @@ class EmployeeListProxyAPIView(APIView):
                 page_size=page_size,
             )
         except EmployeeServiceClientError:
-            return Response({'count': 0, 'next': None, 'previous': None, 'results': []}, status=status.HTTP_200_OK)
+            return Response({'count': 0, 'next': None, 'previous': None, 'results': [], 'warning': 'Employee Service недоступен — показаны локальные сотрудники'}, status=status.HTTP_200_OK)
 
         count = 0
         next_link = None

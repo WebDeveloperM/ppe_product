@@ -2660,10 +2660,13 @@ def build_employee_table_rows(employee_queryset, include_issue_history=False):
     return rows
 
 
-def get_due_soon_employee_ppe_rows(days: int = 30, product_id: int | None = None, search: str = ''):
+def get_due_soon_employee_ppe_rows(days: int = 30):
+    """
+    Returns all due-soon rows for the given period (no product/search filtering).
+    Filtering is done in the caller to avoid running the heavy DB query twice.
+    """
     now_dt = timezone.now()
     deadline = now_dt + dt.timedelta(days=days)
-    search_value = str(search or '').strip().lower()
 
     latest_items = (
         Item.objects
@@ -2679,9 +2682,6 @@ def get_due_soon_employee_ppe_rows(days: int = 30, product_id: int | None = None
     for item in latest_items:
         products = [product for product in item.ppeproduct.all() if product.is_active]
         for product in products:
-            if product_id is not None and product.id != product_id:
-                continue
-
             pair_key = (item.employee_service_id, product.id)
             if pair_key not in latest_by_pair:
                 latest_by_pair[pair_key] = (item, product)
@@ -2712,7 +2712,7 @@ def get_due_soon_employee_ppe_rows(days: int = 30, product_id: int | None = None
         else:
             remaining_text = format_remaining_period_ru(get_months_remaining(now_dt, due_date))
 
-        row = {
+        rows.append({
             'item_id': item.id,
             'item_slug': item.slug,
             'employee_id': item.employee_service_id,
@@ -2729,22 +2729,7 @@ def get_due_soon_employee_ppe_rows(days: int = 30, product_id: int | None = None
             'due_date': due_date.isoformat() if due_date else None,
             'days_remaining': days_remaining,
             'remaining_text': remaining_text,
-        }
-
-        if search_value:
-            haystack = ' '.join([
-                row['employee_name'],
-                row['tabel_number'],
-                row['department_name'],
-                row['section_name'],
-                row['position'],
-                row['product_name'],
-                row['size'],
-            ]).lower()
-            if search_value not in haystack:
-                continue
-
-        rows.append(row)
+        })
 
     rows.sort(
         key=lambda row: (
@@ -3025,8 +3010,12 @@ class DueSoonEmployeePPEApiView(APIView):
             product_id = None
 
         search = str(request.query_params.get('search', '')).strip()
+        search_lower = search.lower()
 
+        # Single DB call — filter in Python to avoid a second expensive query
         all_rows = get_due_soon_employee_ppe_rows(days=due_days)
+
+        # Build product counts from all rows (no product/search filter)
         product_counts = {}
         for row in all_rows:
             current = product_counts.get(row['product_id'])
@@ -3039,11 +3028,23 @@ class DueSoonEmployeePPEApiView(APIView):
             else:
                 current['due_count'] += 1
 
-        filtered_rows = get_due_soon_employee_ppe_rows(
-            days=due_days,
-            product_id=product_id,
-            search=search,
-        )
+        # Apply product_id and search filters in memory
+        filtered_rows = all_rows
+        if product_id is not None:
+            filtered_rows = [r for r in filtered_rows if r['product_id'] == product_id]
+        if search_lower:
+            filtered_rows = [
+                r for r in filtered_rows
+                if search_lower in ' '.join([
+                    r['employee_name'],
+                    r['tabel_number'],
+                    r['department_name'],
+                    r['section_name'],
+                    r['position'],
+                    r['product_name'],
+                    r['size'],
+                ]).lower()
+            ]
 
         products = sorted(product_counts.values(), key=lambda product: product['name'].lower())
 
